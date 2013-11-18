@@ -117,6 +117,15 @@ private[spark] class Executor(
     }
   }
 
+  // Start logging.
+  if (conf.getBoolean("spark.procParser.enabled", false)) {
+    (new ProcParser(conf)).start(env)
+  }
+
+  // Akka's message frame size. If task result is bigger than this, we use the block manager
+  // to send the result back.
+  private val akkaFrameSize = AkkaUtils.maxFrameSizeBytes(conf)
+
   // Start worker thread pool
   val threadPool = Utils.newDaemonCachedThreadPool("Executor task launch worker")
 
@@ -204,6 +213,7 @@ private[spark] class Executor(
         taskStart = System.currentTimeMillis()
         val value = task.run(taskId.toInt)
         val taskFinish = System.currentTimeMillis()
+        logInfo("Task run from %d to %d".format(taskStart, taskFinish))
 
         // If the task has been killed, let's fail it.
         if (task.killed) {
