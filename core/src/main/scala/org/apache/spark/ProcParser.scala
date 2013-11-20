@@ -23,23 +23,44 @@ import java.io._
 import java.lang.management.ManagementFactory
 import java.util.concurrent.TimeUnit
 
+import scala.io.Source
+
 /**
  * Extracts information from the process info pseudo-filesystem at /proc.
  *
  * Based on https://code.google.com/p/djmonitor/source/browse/src/parser/ProcParser.java
  */
 class ProcParser extends Logging {
+
   val CPU_TOTALS_FILENAME = "/proc/stat"
 
   // 0-based index in /proc/pid/stat file of the user CPU time. Not necessarily portable.
   val UTIME_INDEX = 13
   val STIME_INDEX = 14
 
-  val LOG_INTERVAL_MILLIS = Duration(500, TimeUnit.MILLISECONDS)
-
   var previousUtime = -1
   var previousStime = -1
   var previousTotalCpuTime = -1
+
+  // 0-based index within the list of numbers in /proc/pid/net/dev file of the received and
+  // transmitted bytes/packets. Not necessarily portable.
+  val RECEIVED_BYTES_INDEX = 0
+  val RECEIVED_PACKETS_INDEX = 1
+  val TRANSMITTED_BYTES_INDEX = 8
+  val TRANSMITTED_PACKETS_INDEX = 9
+
+  // We need to store the bytes/packets recorded at the last time so that we can compute the delta.
+  var previousNetworkLogTime = -1L
+  var previousReceivedBytes = 0
+  var previousReceivedPackets = 0
+  var previousTransmittedBytes = 0
+  var previousTransmittedPackets = 0
+
+  val LOG_INTERVAL_MILLIS = Duration(500, TimeUnit.MILLISECONDS)
+
+  // Beware that the name returned by getName() is not guaranteed to keep following the pid@X
+  // format.
+  val PID = ManagementFactory.getRuntimeMXBean().getName().split("@")(0)
 
   def start(sc: SparkContext) {  
     logInfo("Starting ProcParser CPU logging")
@@ -47,14 +68,12 @@ class ProcParser extends Logging {
       Duration(0, TimeUnit.MILLISECONDS),
       LOG_INTERVAL_MILLIS) {
       logCpuUsage()
+      logNetworkUsage()
     }
   }
 
   def logCpuUsage() {
-    // Beware that the name returned by getName() is not guaranteed to keep following the pid@X
-    // format.
-    val myPid = ManagementFactory.getRuntimeMXBean().getName().split("@")(0)
-    val file = new File("/proc/%s/stat".format(myPid))
+    val file = new File("/proc/%s/stat".format(PID))
     val fileReader = new FileReader(file)
     val bufferedReader = new BufferedReader(fileReader)
     val line = bufferedReader.readLine()
@@ -87,5 +106,52 @@ class ProcParser extends Logging {
     previousUtime = currentUtime
     previousStime = currentStime
     previousTotalCpuTime = currentTotalCpuTime
+  }
+
+  def logNetworkUsage() {
+    val currentTime = System.currentTimeMillis
+    // TODO: change logCpuUsage() to use scala-y files
+    var totalTransmittedBytes = 0
+    var totalTransmittedPackets = 0
+    var totalReceivedBytes = 0
+    var totalReceivedPackets = 0
+    Source.fromFile("/proc/%s/net/dev".format(PID)).getLines().foreach { line =>
+      logInfo("read network line: %s".format(line))
+      if (line.contains(":") && !line.contains("lo")) {
+        val counts = line.split(":")(1).split(" ").filter(_.length > 0).map(_.toInt)
+        totalTransmittedBytes += counts(TRANSMITTED_BYTES_INDEX)
+        totalTransmittedPackets += counts(TRANSMITTED_PACKETS_INDEX)
+        totalReceivedBytes += counts(RECEIVED_BYTES_INDEX)
+        totalReceivedPackets += counts(RECEIVED_PACKETS_INDEX)
+      }
+    }
+    logInfo("Current totals: trans: %s bytes, %s packets, recv %s bytes %s packets".format(
+      totalTransmittedBytes, totalTransmittedPackets, totalReceivedBytes, totalReceivedPackets))
+    if (previousNetworkLogTime != -1) {
+      val timeDelta = previousNetworkLogTime - currentTime
+      val transmittedBytesRate = ((totalTransmittedBytes - previousTransmittedBytes) / timeDelta)
+      val transmittedPacketsRate = ((totalTransmittedPackets - previousTransmittedPackets) /
+        timeDelta)
+      val receivedBytesRate = ((totalReceivedBytes - previousReceivedBytes) / timeDelta)
+      val receivedPacketsRate = ((totalTransmittedPackets - previousTransmittedPackets) / timeDelta)
+      logInfo("%s: trans rates: %s bytes, %s packets; Recv rates: %s bytes, %s packets".format(
+        currentTime,
+        transmittedBytesRate,
+        transmittedPacketsRate,
+        receivedBytesRate,
+        receivedPacketsRate))
+    }
+    previousReceivedBytes = totalReceivedBytes
+    previousReceivedPackets = totalReceivedPackets
+    previousTransmittedBytes = totalTransmittedBytes
+    previousTransmittedPackets = totalTransmittedPackets
+    previousNetworkLogTime = currentTime
+  }
+
+  def logDiskUsage() {
+    Source.fromFile("/proc/%s/io".format(PID)).getLines().foreach { line => System.out.println(line)}
+  }
+
+  def logMemoryUsage() {
   }
 }
