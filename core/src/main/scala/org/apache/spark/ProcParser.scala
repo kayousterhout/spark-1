@@ -50,11 +50,26 @@ class ProcParser extends Logging {
   val TRANSMITTED_PACKETS_INDEX = 9
 
   // We need to store the bytes/packets recorded at the last time so that we can compute the delta.
-  var previousNetworkLogTime = -1L
+  var previousNetworkLogTime = 0L
   var previousReceivedBytes = 0
   var previousReceivedPackets = 0
   var previousTransmittedBytes = 0
   var previousTransmittedPackets = 0
+
+  // Chars read is the sm of bytes pased to read() and pread() -- so it includes tty IO,
+  // for example, and overestimtes the number of bytes written to physical disk. The bytes
+  // are an attempt to count the number of bytes fetched from the storage layer.
+  // (See http://stackoverflow.com/questions/3633286/understanding-the-counters-in-proc-pid-io)
+  val CHARS_READ_PREFIX = "rchar: "
+  val CHARS_WRITTEN_PREFIX = "wchar: "
+  val BYTES_READ_PREFIX = "read_bytes: "
+  val BYTES_WRITTEN_PREFIX = "write_bytes: "
+
+  var previousDiskLogTime = 0L
+  var previousCharsRead = 0
+  var previousCharsWritten = 0
+  var previousBytesRead = 0
+  var previousBytesWritten = 0
 
   val LOG_INTERVAL_MILLIS = Duration(500, TimeUnit.MILLISECONDS)
 
@@ -69,6 +84,7 @@ class ProcParser extends Logging {
       LOG_INTERVAL_MILLIS) {
       logCpuUsage()
       logNetworkUsage()
+      logDiskUsage()
     }
   }
 
@@ -82,17 +98,15 @@ class ProcParser extends Logging {
     val currentStime = values(STIME_INDEX).toInt
 
     // Read the total number of jiffies that have elapsed since the last time we read the CPU info.
-    val cpuTotalsBufferedReader = new BufferedReader(new FileReader(new File(CPU_TOTALS_FILENAME)))
     var currentTotalCpuTime = -1
-    while (currentTotalCpuTime == -1) {
-      val line = cpuTotalsBufferedReader.readLine()
-      if (line == null) {
-        logError("Couldn't find line begining with 'cpu' in file %s".format(CPU_TOTALS_FILENAME))
-        return
-      }
+    Source.fromFile(CPU_TOTALS_FILENAME).getLines().foreach { line =>
       if (line.startsWith("cpu")) {
         currentTotalCpuTime = line.substring(5, line.length ).split(" ").map(_.toInt).sum
       }
+    }
+    if (currentTotalCpuTime == -1) {
+      logError("Couldn't find line beginning with 'cpu' in file %s".format(CPU_TOTALS_FILENAME))
+      return
     }
 
     if (previousUtime != -1) {
@@ -110,13 +124,12 @@ class ProcParser extends Logging {
 
   def logNetworkUsage() {
     val currentTime = System.currentTimeMillis
-    // TODO: change logCpuUsage() to use scala-y files
     var totalTransmittedBytes = 0
     var totalTransmittedPackets = 0
     var totalReceivedBytes = 0
     var totalReceivedPackets = 0
     Source.fromFile("/proc/%s/net/dev".format(PID)).getLines().foreach { line =>
-      logInfo("read network line: %s".format(line))
+      //logInfo("read network line: %s".format(line))
       if (line.contains(":") && !line.contains("lo")) {
         val counts = line.split(":")(1).split(" ").filter(_.length > 0).map(_.toInt)
         totalTransmittedBytes += counts(TRANSMITTED_BYTES_INDEX)
@@ -127,13 +140,15 @@ class ProcParser extends Logging {
     }
     logInfo("Current totals: trans: %s bytes, %s packets, recv %s bytes %s packets".format(
       totalTransmittedBytes, totalTransmittedPackets, totalReceivedBytes, totalReceivedPackets))
-    if (previousNetworkLogTime != -1) {
-      val timeDelta = previousNetworkLogTime - currentTime
-      val transmittedBytesRate = ((totalTransmittedBytes - previousTransmittedBytes) / timeDelta)
-      val transmittedPacketsRate = ((totalTransmittedPackets - previousTransmittedPackets) /
-        timeDelta)
-      val receivedBytesRate = ((totalReceivedBytes - previousReceivedBytes) / timeDelta)
-      val receivedPacketsRate = ((totalTransmittedPackets - previousTransmittedPackets) / timeDelta)
+    if (previousNetworkLogTime > 0) {
+      val timeDeltaSeconds = (currentTime - previousNetworkLogTime) / 1000.0
+      val transmittedBytesRate = ((totalTransmittedBytes - previousTransmittedBytes) * 1.0 /
+        timeDeltaSeconds)
+      val transmittedPacketsRate = ((totalTransmittedPackets - previousTransmittedPackets) * 1.0 /
+        timeDeltaSeconds)
+      val receivedBytesRate = ((totalReceivedBytes - previousReceivedBytes) * 1.0 / timeDeltaSeconds)
+      val receivedPacketsRate = ((totalTransmittedPackets - previousTransmittedPackets) * 1.0 /
+        timeDeltaSeconds)
       logInfo("%s: trans rates: %s bytes, %s packets; Recv rates: %s bytes, %s packets".format(
         currentTime,
         transmittedBytesRate,
@@ -149,7 +164,38 @@ class ProcParser extends Logging {
   }
 
   def logDiskUsage() {
-    Source.fromFile("/proc/%s/io".format(PID)).getLines().foreach { line => System.out.println(line)}
+    val currentTime = System.currentTimeMillis
+
+    var totalCharsRead = 0
+    var totalCharsWritten = 0
+    var totalBytesRead = 0
+    var totalBytesWritten = 0
+    Source.fromFile("/proc/%s/io".format(PID)).getLines().foreach { line =>
+      if (line.startsWith(CHARS_READ_PREFIX)) {
+        totalCharsRead = line.substring(CHARS_READ_PREFIX.length).toInt
+      } else if (line.startsWith(CHARS_WRITTEN_PREFIX)) {
+        totalCharsWritten = line.substring(CHARS_WRITTEN_PREFIX.length).toInt
+      } else if (line.startsWith(BYTES_READ_PREFIX)) {
+        totalBytesRead = line.substring(BYTES_READ_PREFIX.length).toInt
+      } else if (line.startsWith(BYTES_WRITTEN_PREFIX)) {
+        totalBytesWritten = line.substring(BYTES_WRITTEN_PREFIX.length).toInt
+      }
+    }
+
+    if (previousDiskLogTime > 0) {
+      val timeDeltaSeconds = (currentTime - previousDiskLogTime) / 1000.0
+      val charsReadRate = (totalCharsRead - previousCharsRead) * 1.0 / timeDeltaSeconds
+      val charsWrittenRate = (totalCharsWritten - previousCharsWritten) * 1.0 / timeDeltaSeconds
+      val bytesReadRate = (totalBytesRead - previousBytesRead) * 1.0 / timeDeltaSeconds
+      val bytesWrittenRate = (totalBytesWritten - previousBytesWritten) * 1.0 / timeDeltaSeconds
+      logInfo("%s: rchar rate: %s, wchar rate: %s, rbytes rate: %s, wbytes rate: %s".format(
+        currentTime, charsReadRate, charsWrittenRate, bytesReadRate, bytesWrittenRate))
+    }
+    previousDiskLogTime = currentTime
+    previousCharsRead = totalCharsRead
+    previousCharsWritten = totalCharsWritten
+    previousBytesRead = totalBytesRead
+    previousBytesWritten = totalBytesWritten
   }
 
   def logMemoryUsage() {
