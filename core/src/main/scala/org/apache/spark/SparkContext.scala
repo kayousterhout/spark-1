@@ -196,7 +196,7 @@ class SparkContext(
   executorEnvs("SPARK_USER") = sparkUser
 
   // Start logging.
-  (new ProcParser()).start(this)
+  (new ProcParser()).start(env)
 
   // Create and start the scheduler
   private[spark] var taskScheduler = SparkContext.createTaskScheduler(this, master, appName)

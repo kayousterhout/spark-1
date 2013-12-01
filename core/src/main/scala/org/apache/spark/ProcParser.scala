@@ -51,10 +51,10 @@ class ProcParser extends Logging {
 
   // We need to store the bytes/packets recorded at the last time so that we can compute the delta.
   var previousNetworkLogTime = 0L
-  var previousReceivedBytes = 0
-  var previousReceivedPackets = 0
-  var previousTransmittedBytes = 0
-  var previousTransmittedPackets = 0
+  var previousReceivedBytes = 0L
+  var previousReceivedPackets = 0L
+  var previousTransmittedBytes = 0L
+  var previousTransmittedPackets = 0L
 
   // Chars read is the sm of bytes pased to read() and pread() -- so it includes tty IO,
   // for example, and overestimtes the number of bytes written to physical disk. The bytes
@@ -77,9 +77,9 @@ class ProcParser extends Logging {
   // format.
   val PID = ManagementFactory.getRuntimeMXBean().getName().split("@")(0)
 
-  def start(sc: SparkContext) {  
+  def start(env: SparkEnv) {  
     logInfo("Starting ProcParser CPU logging")
-    sc.env.actorSystem.scheduler.schedule(
+    env.actorSystem.scheduler.schedule(
       Duration(0, TimeUnit.MILLISECONDS),
       LOG_INTERVAL_MILLIS) {
       logCpuUsage()
@@ -124,14 +124,14 @@ class ProcParser extends Logging {
 
   def logNetworkUsage() {
     val currentTime = System.currentTimeMillis
-    var totalTransmittedBytes = 0
-    var totalTransmittedPackets = 0
-    var totalReceivedBytes = 0
-    var totalReceivedPackets = 0
+    var totalTransmittedBytes = 0L
+    var totalTransmittedPackets = 0L
+    var totalReceivedBytes = 0L
+    var totalReceivedPackets = 0L
     Source.fromFile("/proc/%s/net/dev".format(PID)).getLines().foreach { line =>
       //logInfo("read network line: %s".format(line))
       if (line.contains(":") && !line.contains("lo")) {
-        val counts = line.split(":")(1).split(" ").filter(_.length > 0).map(_.toInt)
+        val counts = line.split(":")(1).split(" ").filter(_.length > 0).map(_.toLong)
         totalTransmittedBytes += counts(TRANSMITTED_BYTES_INDEX)
         totalTransmittedPackets += counts(TRANSMITTED_PACKETS_INDEX)
         totalReceivedBytes += counts(RECEIVED_BYTES_INDEX)
