@@ -66,10 +66,10 @@ class ProcParser extends Logging {
   val BYTES_WRITTEN_PREFIX = "write_bytes: "
 
   var previousDiskLogTime = 0L
-  var previousCharsRead = 0
-  var previousCharsWritten = 0
-  var previousBytesRead = 0
-  var previousBytesWritten = 0
+  var previousCharsRead = 0L
+  var previousCharsWritten = 0L
+  var previousBytesRead = 0L
+  var previousBytesWritten = 0L
 
   val LOG_INTERVAL_MILLIS = Duration(500, TimeUnit.MILLISECONDS)
 
@@ -166,19 +166,19 @@ class ProcParser extends Logging {
   def logDiskUsage() {
     val currentTime = System.currentTimeMillis
 
-    var totalCharsRead = 0
-    var totalCharsWritten = 0
-    var totalBytesRead = 0
-    var totalBytesWritten = 0
+    var totalCharsRead = 0L
+    var totalCharsWritten = 0L
+    var totalBytesRead = 0L
+    var totalBytesWritten = 0L
     Source.fromFile("/proc/%s/io".format(PID)).getLines().foreach { line =>
       if (line.startsWith(CHARS_READ_PREFIX)) {
-        totalCharsRead = line.substring(CHARS_READ_PREFIX.length).toInt
+        totalCharsRead = line.substring(CHARS_READ_PREFIX.length).toLong
       } else if (line.startsWith(CHARS_WRITTEN_PREFIX)) {
-        totalCharsWritten = line.substring(CHARS_WRITTEN_PREFIX.length).toInt
+        totalCharsWritten = line.substring(CHARS_WRITTEN_PREFIX.length).toLong
       } else if (line.startsWith(BYTES_READ_PREFIX)) {
-        totalBytesRead = line.substring(BYTES_READ_PREFIX.length).toInt
+        totalBytesRead = line.substring(BYTES_READ_PREFIX.length).toLong
       } else if (line.startsWith(BYTES_WRITTEN_PREFIX)) {
-        totalBytesWritten = line.substring(BYTES_WRITTEN_PREFIX.length).toInt
+        totalBytesWritten = line.substring(BYTES_WRITTEN_PREFIX.length).toLong
       }
     }
 
