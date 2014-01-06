@@ -71,7 +71,7 @@ class ProcParser extends Logging {
   var previousBytesRead = 0L
   var previousBytesWritten = 0L
 
-  val LOG_INTERVAL_MILLIS = Duration(500, TimeUnit.MILLISECONDS)
+  val LOG_INTERVAL_MILLIS = Duration(50, TimeUnit.MILLISECONDS)
 
   // Beware that the name returned by getName() is not guaranteed to keep following the pid@X
   // format.
