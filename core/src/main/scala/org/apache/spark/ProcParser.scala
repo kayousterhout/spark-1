@@ -195,7 +195,7 @@ class ProcParser extends Logging {
       val charsWrittenRate = (totalCharsWritten - previousCharsWritten) * 1.0 / timeDeltaSeconds
       val bytesReadRate = (totalBytesRead - previousBytesRead) * 1.0 / timeDeltaSeconds
       val bytesWrittenRate = (totalBytesWritten - previousBytesWritten) * 1.0 / timeDeltaSeconds
-      logInfo("%s rchar rate: %s, wchar rate: %s, rbytes rate: %s, wbytes rate: %s".format(
+      logInfo("%s rchar rate: %s wchar rate: %s rbytes rate: %s wbytes rate: %s".format(
         currentTime, charsReadRate, charsWrittenRate, bytesReadRate, bytesWrittenRate))
     }
     previousDiskLogTime = currentTime
