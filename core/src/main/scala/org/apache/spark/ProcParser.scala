@@ -87,7 +87,10 @@ class ProcParser extends Logging {
       logDiskUsage()
     }
   }
-
+  
+  /**
+   * Logs the CPU utilization during the period of time since the last log message.
+   */
   def logCpuUsage() {
     val file = new File("/proc/%s/stat".format(PID))
     val fileReader = new FileReader(file)
@@ -114,7 +117,8 @@ class ProcParser extends Logging {
       val userUtil = (currentUtime - previousUtime) * 1.0 / elapsedCpuTime
       val sysUtil = (currentStime - previousStime) * 1.0 / elapsedCpuTime
       val totalUtil = userUtil + sysUtil
-      logInfo("CPU utilization: user: %s, sys: %s, total: %s".format(userUtil, sysUtil, totalUtil))
+      logInfo("%s CPU utilization: user: %s sys: %s total: %s"
+        .format(System.currentTimeMillis, userUtil, sysUtil, totalUtil))
     }
 
     previousUtime = currentUtime
@@ -129,7 +133,6 @@ class ProcParser extends Logging {
     var totalReceivedBytes = 0L
     var totalReceivedPackets = 0L
     Source.fromFile("/proc/%s/net/dev".format(PID)).getLines().foreach { line =>
-      //logInfo("read network line: %s".format(line))
       if (line.contains(":") && !line.contains("lo")) {
         val counts = line.split(":")(1).split(" ").filter(_.length > 0).map(_.toLong)
         totalTransmittedBytes += counts(TRANSMITTED_BYTES_INDEX)
@@ -138,8 +141,12 @@ class ProcParser extends Logging {
         totalReceivedPackets += counts(RECEIVED_PACKETS_INDEX)
       }
     }
-    logInfo("Current totals: trans: %s bytes, %s packets, recv %s bytes %s packets".format(
-      totalTransmittedBytes, totalTransmittedPackets, totalReceivedBytes, totalReceivedPackets))
+    logInfo("%s Current totals: trans: %s bytes, %s packets, recv %s bytes %s packets".format(
+      currentTime,
+      totalTransmittedBytes,
+      totalTransmittedPackets,
+      totalReceivedBytes,
+      totalReceivedPackets))
     if (previousNetworkLogTime > 0) {
       val timeDeltaSeconds = (currentTime - previousNetworkLogTime) / 1000.0
       val transmittedBytesRate = ((totalTransmittedBytes - previousTransmittedBytes) * 1.0 /
@@ -149,7 +156,7 @@ class ProcParser extends Logging {
       val receivedBytesRate = ((totalReceivedBytes - previousReceivedBytes) * 1.0 / timeDeltaSeconds)
       val receivedPacketsRate = ((totalTransmittedPackets - previousTransmittedPackets) * 1.0 /
         timeDeltaSeconds)
-      logInfo("%s: trans rates: %s bytes, %s packets; Recv rates: %s bytes, %s packets".format(
+      logInfo("%s trans rates: %s bytes, %s packets; Recv rates: %s bytes, %s packets".format(
         currentTime,
         transmittedBytesRate,
         transmittedPacketsRate,
@@ -188,7 +195,7 @@ class ProcParser extends Logging {
       val charsWrittenRate = (totalCharsWritten - previousCharsWritten) * 1.0 / timeDeltaSeconds
       val bytesReadRate = (totalBytesRead - previousBytesRead) * 1.0 / timeDeltaSeconds
       val bytesWrittenRate = (totalBytesWritten - previousBytesWritten) * 1.0 / timeDeltaSeconds
-      logInfo("%s: rchar rate: %s, wchar rate: %s, rbytes rate: %s, wbytes rate: %s".format(
+      logInfo("%s rchar rate: %s, wchar rate: %s, rbytes rate: %s, wbytes rate: %s".format(
         currentTime, charsReadRate, charsWrittenRate, bytesReadRate, bytesWrittenRate))
     }
     previousDiskLogTime = currentTime
