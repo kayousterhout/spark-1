@@ -37,7 +37,10 @@ class ProcParser extends Logging {
   // 0-based index in /proc/pid/stat file of the user CPU time. Not necessarily portable.
   val UTIME_INDEX = 13
   val STIME_INDEX = 14
+  // This is the correct value for most linux systems, and for the default Spark AMI.
+  val JIFFIES_PER_SECOND = 100
 
+  var previousCpuLogTime = 0L
   var previousUtime = -1
   var previousStime = -1
   var previousTotalCpuTime = -1
@@ -112,18 +115,34 @@ class ProcParser extends Logging {
       return
     }
 
+    val currentTime = System.currentTimeMillis
     val elapsedCpuTime = currentTotalCpuTime - previousTotalCpuTime
     if (previousUtime != -1 && elapsedCpuTime > 0) {
       val userUtil = (currentUtime - previousUtime) * 1.0 / elapsedCpuTime
       val sysUtil = (currentStime - previousStime) * 1.0 / elapsedCpuTime
       val totalUtil = userUtil + sysUtil
-      logInfo("%s CPU utilization: user: %s sys: %s total: %s"
-        .format(System.currentTimeMillis, userUtil, sysUtil, totalUtil))
+      logInfo("%s CPU utilization (relative metric): user: %s sys: %s total: %s"
+        .format(currentTime, userUtil, sysUtil, totalUtil))
     }
+
+    // Log alternate CPU utilization metric: the CPU counters are measured in jiffies,
+    // so log the elapsed jiffies / jiffies per sec / seconds since last measurement.
+    if (previousCpuLogTime > 0) {
+      val elapsedTimeMillis = currentTime - previousCpuLogTime
+      val elapsedJiffies = JIFFIES_PER_SECOND * (elapsedTimeMillis / 1000)
+      val userUtil = (currentUtime - previousUtime) / elapsedJiffies
+      val sysUtil = (currentUtime - previousUtime) / elapsedJiffies
+      logInfo("%s CPU utilization (jiffie-based): user: %s sys: %s total: %s"
+        .format(currentTime, userUtil, sysUtil, userUtil + sysUtil))
+    }
+
+    // Log absolute counters to make it easier to compute utilization over the entire experiment.
+    logInfo("%s CPU counters: user: %s sys: %s".format(currentTime, currentUtime, currentStime)) 
 
     previousUtime = currentUtime
     previousStime = currentStime
     previousTotalCpuTime = currentTotalCpuTime
+    previousCpuLogTime = currentTime
   }
 
   def logNetworkUsage() {
