@@ -189,8 +189,8 @@ class ProcParser extends Logging {
       }
     }
 
-    if (previousDiskLogTime > 0) {
-      val timeDeltaSeconds = (currentTime - previousDiskLogTime) / 1000.0
+    val timeDeltaSeconds = (currentTime - previousDiskLogTime) / 1000.0
+    if (previousDiskLogTime > 0 && timeDeltaSeconds > 0) {
       val charsReadRate = (totalCharsRead - previousCharsRead) * 1.0 / timeDeltaSeconds
       val charsWrittenRate = (totalCharsWritten - previousCharsWritten) * 1.0 / timeDeltaSeconds
       val bytesReadRate = (totalBytesRead - previousBytesRead) * 1.0 / timeDeltaSeconds
