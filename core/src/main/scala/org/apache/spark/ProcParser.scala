@@ -112,8 +112,8 @@ class ProcParser extends Logging {
       return
     }
 
-    if (previousUtime != -1) {
-      val elapsedCpuTime = currentTotalCpuTime - previousTotalCpuTime
+    val elapsedCpuTime = currentTotalCpuTime - previousTotalCpuTime
+    if (previousUtime != -1 && elapsedCpuTime > 0) {
       val userUtil = (currentUtime - previousUtime) * 1.0 / elapsedCpuTime
       val sysUtil = (currentStime - previousStime) * 1.0 / elapsedCpuTime
       val totalUtil = userUtil + sysUtil
