@@ -127,8 +127,8 @@ class ProcParser extends Logging {
 
     // Log alternate CPU utilization metric: the CPU counters are measured in jiffies,
     // so log the elapsed jiffies / jiffies per sec / seconds since last measurement.
-    if (previousCpuLogTime > 0) {
-      val elapsedTimeMillis = currentTime - previousCpuLogTime
+    val elapsedTimeMillis = currentTime - previousCpuLogTime
+    if (previousCpuLogTime > 0 && elapsedTimeMillis > 0) {
       val elapsedJiffies = JIFFIES_PER_SECOND * (elapsedTimeMillis / 1000)
       val userUtil = (currentUtime - previousUtime) / elapsedJiffies
       val sysUtil = (currentUtime - previousUtime) / elapsedJiffies
