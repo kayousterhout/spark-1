@@ -116,7 +116,7 @@ class ProcParser extends Logging {
     var currentTotalUserTime = -1
     var currentTotalNiceTime = -1
     var currentTotalSysTime = -1
-    var currentTotalIdleTime  -1
+    var currentTotalIdleTime = -1
     var currentTotalIowaitTime = -1
     var currentTotalIrqTime = -1
     var currentTotalSoftIrqTime = -1
@@ -152,18 +152,18 @@ class ProcParser extends Logging {
         (previousTotalUserTime + previousTotalNiceTime + previousTotalSysTime
         + previousTotalIrqTime + previousTotalSoftIrqTime + previousTotalGuestTime)) * 1.0 /
         elapsedCpuTime
-      val ioWait = (currentTotalIowaitTime + previousTotalIowaitTime) * 1.0 / elapsedCpuTime
+      val ioWait = (currentTotalIowaitTime - previousTotalIowaitTime) * 1.0 / elapsedCpuTime
       logInfo(
         "%s CPU utilization (relative metric): user: %s sys: %s proctotal: %s total: %s iowait: %s" 
         .format(currentTime, userUtil, sysUtil, totalProcessUtil, totalUtil, ioWait))
-      logInfo("Conversion: %s".format(elapsedCpuTime / (currentTime - previousTime)))
+      logInfo("Conversion: %s".format(elapsedCpuTime * 1.0 / (currentTime - previousCpuLogTime)))
     }
 
     // Log alternate CPU utilization metric: the CPU counters are measured in jiffies,
     // so log the elapsed jiffies / jiffies per sec / seconds since last measurement.
     val elapsedTimeMillis = currentTime - previousCpuLogTime
     if (previousCpuLogTime > 0 && elapsedTimeMillis > 0) {
-      val elapsedJiffies = JIFFIES_PER_SECOND * (elapsedTimeMillis / 1000)
+      val elapsedJiffies = JIFFIES_PER_SECOND * (elapsedTimeMillis * 1.0 / 1000)
       val userUtil = (currentUtime - previousUtime) / elapsedJiffies
       val sysUtil = (currentUtime - previousUtime) / elapsedJiffies
       logInfo("%s CPU utilization (jiffie-based): user: %s sys: %s total: %s"
@@ -176,6 +176,14 @@ class ProcParser extends Logging {
     previousUtime = currentUtime
     previousStime = currentStime
     previousTotalCpuTime = currentTotalCpuTime
+    previousTotalUserTime = currentTotalUserTime
+    previousTotalNiceTime = currentTotalNiceTime
+    previousTotalSysTime = currentTotalSysTime
+    previousTotalIowaitTime = currentTotalIdleTime
+    previousTotalIowaitTime = currentTotalIowaitTime
+    previousTotalIrqTime = currentTotalIrqTime
+    previousTotalSoftIrqTime = currentTotalSoftIrqTime
+    previousTotalGuestTime = currentTotalGuestTime
     previousCpuLogTime = currentTime
   }
 
