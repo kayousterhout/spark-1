@@ -47,7 +47,7 @@ class ProcParser extends Logging {
   var previousTotalUserTime = -1
   var previousTotalNiceTime = -1
   var previousTotalSysTime = -1
-  var prevousTotalIdleTime = -1
+  var previousTotalIdleTime = -1
   var previousTotalIowaitTime = -1
   var previousTotalIrqTime = -1
   var previousTotalSoftIrqTime = -1
@@ -153,9 +153,11 @@ class ProcParser extends Logging {
         + previousTotalIrqTime + previousTotalSoftIrqTime + previousTotalGuestTime)) * 1.0 /
         elapsedCpuTime
       val ioWait = (currentTotalIowaitTime - previousTotalIowaitTime) * 1.0 / elapsedCpuTime
+      val idle = (currentTotalIdleTime - previousTotalIdleTime) * 1.0 / elapsedCpuTime
       logInfo(
-        "%s CPU utilization (relative metric): user: %s sys: %s proctotal: %s total: %s iowait: %s" 
-        .format(currentTime, userUtil, sysUtil, totalProcessUtil, totalUtil, ioWait))
+        ("%s CPU utilization (relative metric): user: %s sys: %s proctotal: %s total: %s " +
+          "iowait: %s idle: %s")
+        .format(currentTime, userUtil, sysUtil, totalProcessUtil, totalUtil, ioWait, idle))
       logInfo("Conversion: %s".format(elapsedCpuTime * 1.0 / (currentTime - previousCpuLogTime)))
     }
 
@@ -179,7 +181,7 @@ class ProcParser extends Logging {
     previousTotalUserTime = currentTotalUserTime
     previousTotalNiceTime = currentTotalNiceTime
     previousTotalSysTime = currentTotalSysTime
-    previousTotalIowaitTime = currentTotalIdleTime
+    previousTotalIdleTime = currentTotalIdleTime
     previousTotalIowaitTime = currentTotalIowaitTime
     previousTotalIrqTime = currentTotalIrqTime
     previousTotalSoftIrqTime = currentTotalSoftIrqTime
