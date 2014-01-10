@@ -44,6 +44,14 @@ class ProcParser extends Logging {
   var previousUtime = -1
   var previousStime = -1
   var previousTotalCpuTime = -1
+  var previousTotalUserTime = -1
+  var previousTotalNiceTime = -1
+  var previousTotalSysTime = -1
+  var prevousTotalIdleTime = -1
+  var previousTotalIowaitTime = -1
+  var previousTotalIrqTime = -1
+  var previousTotalSoftIrqTime = -1
+  var previousTotalGuestTime = -1
 
   // 0-based index within the list of numbers in /proc/pid/net/dev file of the received and
   // transmitted bytes/packets. Not necessarily portable.
@@ -105,9 +113,28 @@ class ProcParser extends Logging {
 
     // Read the total number of jiffies that have elapsed since the last time we read the CPU info.
     var currentTotalCpuTime = -1
+    var currentTotalUserTime = -1
+    var currentTotalNiceTime = -1
+    var currentTotalSysTime = -1
+    var currentTotalIdleTime  -1
+    var currentTotalIowaitTime = -1
+    var currentTotalIrqTime = -1
+    var currentTotalSoftIrqTime = -1
+    var currentTotalGuestTime = -1
+    val currentTime = System.currentTimeMillis
     Source.fromFile(CPU_TOTALS_FILENAME).getLines().foreach { line =>
-      if (line.startsWith("cpu")) {
-        currentTotalCpuTime = line.substring(5, line.length ).split(" ").map(_.toInt).sum
+      // Need the space after "cpu" to make sure we parse the total line and not the per-cpu line!
+      if (line.startsWith("cpu ")) {
+        val cpuTimes = line.substring(5, line.length).split(" ").map(_.toInt)
+        currentTotalUserTime = cpuTimes(0)
+        currentTotalNiceTime = cpuTimes(1)
+        currentTotalSysTime = cpuTimes(2)
+        currentTotalIdleTime = cpuTimes(3)
+        currentTotalIowaitTime = cpuTimes(4)
+        currentTotalIrqTime = cpuTimes(5)
+        currentTotalSoftIrqTime = cpuTimes(6)
+        currentTotalGuestTime = cpuTimes(7)
+        currentTotalCpuTime = cpuTimes.sum
       }
     }
     if (currentTotalCpuTime == -1) {
@@ -115,14 +142,21 @@ class ProcParser extends Logging {
       return
     }
 
-    val currentTime = System.currentTimeMillis
     val elapsedCpuTime = currentTotalCpuTime - previousTotalCpuTime
     if (previousUtime != -1 && elapsedCpuTime > 0) {
       val userUtil = (currentUtime - previousUtime) * 1.0 / elapsedCpuTime
       val sysUtil = (currentStime - previousStime) * 1.0 / elapsedCpuTime
-      val totalUtil = userUtil + sysUtil
-      logInfo("%s CPU utilization (relative metric): user: %s sys: %s total: %s"
-        .format(currentTime, userUtil, sysUtil, totalUtil))
+      val totalProcessUtil = userUtil + sysUtil
+      val totalUtil = ((currentTotalUserTime + currentTotalNiceTime + currentTotalSysTime +
+        currentTotalIrqTime + currentTotalSoftIrqTime + currentTotalGuestTime) -
+        (previousTotalUserTime + previousTotalNiceTime + previousTotalSysTime
+        + previousTotalIrqTime + previousTotalSoftIrqTime + previousTotalGuestTime)) * 1.0 /
+        elapsedCpuTime
+      val ioWait = (currentTotalIowaitTime + previousTotalIowaitTime) * 1.0 / elapsedCpuTime
+      logInfo(
+        "%s CPU utilization (relative metric): user: %s sys: %s proctotal: %s total: %s iowait: %s" 
+        .format(currentTime, userUtil, sysUtil, totalProcessUtil, totalUtil, ioWait))
+      logInfo("Conversion: %s".format(elapsedCpuTime / (currentTime - previousTime)))
     }
 
     // Log alternate CPU utilization metric: the CPU counters are measured in jiffies,
