@@ -33,6 +33,7 @@ import scala.io.Source
 class ProcParser extends Logging {
 
   val CPU_TOTALS_FILENAME = "/proc/stat"
+  val DISK_TOTALS_FILENAME = "/proc/diskstats"
 
   // 0-based index in /proc/pid/stat file of the user CPU time. Not necessarily portable.
   val UTIME_INDEX = 13
@@ -82,6 +83,30 @@ class ProcParser extends Logging {
   var previousBytesRead = 0L
   var previousBytesWritten = 0L
 
+  // The disk stats read from /proc/stat don't really reflect what's happening on the disk;
+  // just when the reads/writes were issued.  So, also parse the diskstats file to understand
+  // disk performance.
+  val SECTORS_READ_INDEX = 5
+  val MILLIS_READING_INDEX = 6
+  val SECTORS_WRITTEN_INDEX = 9
+  val MILLIS_WRITING_INDEX = 10
+  val MILLIS_TOTAL_INDEX = 12
+  // Dictionaries with one entry for each block device (indexed by device name). 
+  var previousSectorsRead = {}
+  var previousSectorsWritten = {}
+  var previousMillisReading = {}
+  var previousMillisWriting = {}
+  var previousMillisTotal = {}
+  Source.fromFile("/proc/%s/io".format(PID)).getLines().foreach { line =>
+    if (line.indexOf("loop") == -1) {
+      val deviceName = line.split(" ").filter(!_.isEmpty())(2)
+      previousSectionsRead(deviceName) = 0L
+      previousSectorsWritten(deviceName) = 0L
+      previousMillisReading(deviceName) = 0L
+      previousMillisWriting(deviceName) = 0L
+      previousMillisTotal(deviceName) = 0L
+    }
+  }
   val LOG_INTERVAL_MILLIS = Duration(50, TimeUnit.MILLISECONDS)
 
   // Beware that the name returned by getName() is not guaranteed to keep following the pid@X
@@ -261,6 +286,38 @@ class ProcParser extends Logging {
       logInfo("%s rchar rate: %s wchar rate: %s rbytes rate: %s wbytes rate: %s".format(
         currentTime, charsReadRate, charsWrittenRate, bytesReadRate, bytesWrittenRate))
     }
+  
+    Source.fromFile("/proc/%s/io".format(PID)).getLines().foreach { line =>
+      if (line.indexOf("loop") == -1) {
+        val items = line.split(" ").filter(!_.isEmpty())
+        val deviceName = items(2)
+        val totalSectorsRead = items(SECTORS_READ_INDEX)
+        val sectorsReadRate = ((totalSectorsRead - previousSectorsRead(deviceName)) * 1.0 /
+          timeDeltaSeconds)
+        val totalMillisReading = items(MILLIS_READING_INDEX)
+        val fractionTimeReading = ((totalMillisReading - previousMillisReading(deviceName)) * 1.0 /
+          timeDeltaSeconds)
+        val totalSectorsWritten = items(SECTORS_WRITTEN_INDEX)
+        val sectorsWriteRate = ((totalSectorsWritten - previousSectorsWritten(deviceName)) * 1.0 /
+          timeDeltaSeconds)
+        val totalMillisWriting = items(MILLIS_WRITING_INDEX)
+        val fractionTimeWriting = ((totalMillisWriting - previousMillisWriting(deviceName)) * 1.0 /
+          timeDeltaSeconds)
+        val totalMillis = items(MILLIS_TOTAL_INDEX)
+        val fractionTimeTotal = ((totalMillis - previousMillisTotal(deviceName)) * 1.0 /
+          timeDeltaSeconds)
+        logInfo("%s %s sectors rate read %s written %s fraction millis read %s written %s total %s"
+          .format(currentTime, deviceName, sectorsReadRate, sectorsWriteRate, fractionTimeReading,
+            fractionTimeWriting, fractionTimeTotal))
+
+        previousSectorsRead(deviceName) = totalSectorsRead
+        previousMillisReading(deviceName) = totalMillisReading
+        previousSectorsWritten(deviceName) = totalSectorsWritten
+        previousMillisWriting(deviceName) = totalMillisWriting
+        previousMillisTotal(deviceName) = totalMillis
+      }
+    }
+
     previousDiskLogTime = currentTime
     previousCharsRead = totalCharsRead
     previousCharsWritten = totalCharsWritten
