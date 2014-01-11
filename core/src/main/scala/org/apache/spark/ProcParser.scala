@@ -100,11 +100,11 @@ class ProcParser extends Logging {
   Source.fromFile("/proc/%s/io".format(PID)).getLines().foreach { line =>
     if (line.indexOf("loop") == -1) {
       val deviceName = line.split(" ").filter(!_.isEmpty())(2)
-      previousSectionsRead(deviceName) = 0L
-      previousSectorsWritten(deviceName) = 0L
-      previousMillisReading(deviceName) = 0L
-      previousMillisWriting(deviceName) = 0L
-      previousMillisTotal(deviceName) = 0L
+      previousSectorsRead += deviceName -> 0L
+      previousSectorsWritten += deviceName -> 0L
+      previousMillisReading += deviceName -> 0L
+      previousMillisWriting += deviceName -> 0L
+      previousMillisTotal += deviceName -> 0L
     }
   }
   val LOG_INTERVAL_MILLIS = Duration(50, TimeUnit.MILLISECONDS)
@@ -310,11 +310,11 @@ class ProcParser extends Logging {
           .format(currentTime, deviceName, sectorsReadRate, sectorsWriteRate, fractionTimeReading,
             fractionTimeWriting, fractionTimeTotal))
 
-        previousSectorsRead(deviceName) = totalSectorsRead
-        previousMillisReading(deviceName) = totalMillisReading
-        previousSectorsWritten(deviceName) = totalSectorsWritten
-        previousMillisWriting(deviceName) = totalMillisWriting
-        previousMillisTotal(deviceName) = totalMillis
+        previousSectorsRead += deviceName -> totalSectorsRead
+        previousMillisReading += deviceName -> totalMillisReading
+        previousSectorsWritten += deviceName -> totalSectorsWritten
+        previousMillisWriting += deviceName -> totalMillisWriting
+        previousMillisTotal += deviceName -> totalMillis
       }
     }
 
