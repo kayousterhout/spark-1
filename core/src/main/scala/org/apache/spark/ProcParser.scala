@@ -23,6 +23,8 @@ import java.io._
 import java.lang.management.ManagementFactory
 import java.util.concurrent.TimeUnit
 
+import scala.collection.mutable.HashMap
+
 import scala.io.Source
 
 /**
@@ -92,12 +94,12 @@ class ProcParser extends Logging {
   val MILLIS_WRITING_INDEX = 10
   val MILLIS_TOTAL_INDEX = 12
   // Dictionaries with one entry for each block device (indexed by device name). 
-  var previousSectorsRead = {}
-  var previousSectorsWritten = {}
-  var previousMillisReading = {}
-  var previousMillisWriting = {}
-  var previousMillisTotal = {}
-  Source.fromFile("/proc/%s/io".format(PID)).getLines().foreach { line =>
+  var previousSectorsRead = HashMap[String, Long]()
+  var previousSectorsWritten = HashMap[String, Long]()
+  var previousMillisReading = HashMap[String, Long]()
+  var previousMillisWriting = HashMap[String, Long]()
+  var previousMillisTotal = HashMap[String, Long]()
+  Source.fromFile(DISK_TOTALS_FILENAME).getLines().foreach { line =>
     if (line.indexOf("loop") == -1) {
       val deviceName = line.split(" ").filter(!_.isEmpty())(2)
       previousSectorsRead += deviceName -> 0L
@@ -287,23 +289,23 @@ class ProcParser extends Logging {
         currentTime, charsReadRate, charsWrittenRate, bytesReadRate, bytesWrittenRate))
     }
   
-    Source.fromFile("/proc/%s/io".format(PID)).getLines().foreach { line =>
+    Source.fromFile(DISK_TOTALS_FILENAME).getLines().foreach { line =>
       if (line.indexOf("loop") == -1) {
         val items = line.split(" ").filter(!_.isEmpty())
         val deviceName = items(2)
-        val totalSectorsRead = items(SECTORS_READ_INDEX)
+        val totalSectorsRead = items(SECTORS_READ_INDEX).toLong
         val sectorsReadRate = ((totalSectorsRead - previousSectorsRead(deviceName)) * 1.0 /
           timeDeltaSeconds)
-        val totalMillisReading = items(MILLIS_READING_INDEX)
+        val totalMillisReading = items(MILLIS_READING_INDEX).toLong
         val fractionTimeReading = ((totalMillisReading - previousMillisReading(deviceName)) * 1.0 /
           timeDeltaSeconds)
-        val totalSectorsWritten = items(SECTORS_WRITTEN_INDEX)
+        val totalSectorsWritten = items(SECTORS_WRITTEN_INDEX).toLong
         val sectorsWriteRate = ((totalSectorsWritten - previousSectorsWritten(deviceName)) * 1.0 /
           timeDeltaSeconds)
-        val totalMillisWriting = items(MILLIS_WRITING_INDEX)
+        val totalMillisWriting = items(MILLIS_WRITING_INDEX).toLong
         val fractionTimeWriting = ((totalMillisWriting - previousMillisWriting(deviceName)) * 1.0 /
           timeDeltaSeconds)
-        val totalMillis = items(MILLIS_TOTAL_INDEX)
+        val totalMillis = items(MILLIS_TOTAL_INDEX).toLong
         val fractionTimeTotal = ((totalMillis - previousMillisTotal(deviceName)) * 1.0 /
           timeDeltaSeconds)
         logInfo("%s %s sectors rate read %s written %s fraction millis read %s written %s total %s"
