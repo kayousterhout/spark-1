@@ -96,17 +96,11 @@ class ProcParser extends Logging {
   // Dictionaries with one entry for each block device (indexed by device name). 
   var previousSectorsRead = HashMap[String, Long]()
   var previousSectorsWritten = HashMap[String, Long]()
-  var previousMillisReading = HashMap[String, Long]()
-  var previousMillisWriting = HashMap[String, Long]()
-  var previousMillisTotal = HashMap[String, Long]()
   Source.fromFile(DISK_TOTALS_FILENAME).getLines().foreach { line =>
     if (line.indexOf("loop") == -1) {
       val deviceName = line.split(" ").filter(!_.isEmpty())(2)
       previousSectorsRead += deviceName -> 0L
       previousSectorsWritten += deviceName -> 0L
-      previousMillisReading += deviceName -> 0L
-      previousMillisWriting += deviceName -> 0L
-      previousMillisTotal += deviceName -> 0L
     }
   }
   val LOG_INTERVAL_MILLIS = Duration(50, TimeUnit.MILLISECONDS)
@@ -296,27 +290,15 @@ class ProcParser extends Logging {
         val totalSectorsRead = items(SECTORS_READ_INDEX).toLong
         val sectorsReadRate = ((totalSectorsRead - previousSectorsRead(deviceName)) * 1.0 /
           timeDeltaSeconds)
-        val totalMillisReading = items(MILLIS_READING_INDEX).toLong
-        val fractionTimeReading = ((totalMillisReading - previousMillisReading(deviceName)) * 1.0 /
-          timeDeltaSeconds)
         val totalSectorsWritten = items(SECTORS_WRITTEN_INDEX).toLong
         val sectorsWriteRate = ((totalSectorsWritten - previousSectorsWritten(deviceName)) * 1.0 /
           timeDeltaSeconds)
-        val totalMillisWriting = items(MILLIS_WRITING_INDEX).toLong
-        val fractionTimeWriting = ((totalMillisWriting - previousMillisWriting(deviceName)) * 1.0 /
-          timeDeltaSeconds)
-        val totalMillis = items(MILLIS_TOTAL_INDEX).toLong
-        val fractionTimeTotal = ((totalMillis - previousMillisTotal(deviceName)) * 1.0 /
-          timeDeltaSeconds)
-        logInfo("%s %s sectors rate read %s written %s fraction millis read %s written %s total %s"
-          .format(currentTime, deviceName, sectorsReadRate, sectorsWriteRate, fractionTimeReading,
-            fractionTimeWriting, fractionTimeTotal))
+        logInfo("%s %s sectors rate read %s written %s total read %s written %s"
+          .format(currentTime, deviceName, sectorsReadRate, sectorsWriteRate, totalSectorsRead,
+            totalSectorsWritten))
 
         previousSectorsRead += deviceName -> totalSectorsRead
-        previousMillisReading += deviceName -> totalMillisReading
         previousSectorsWritten += deviceName -> totalSectorsWritten
-        previousMillisWriting += deviceName -> totalMillisWriting
-        previousMillisTotal += deviceName -> totalMillis
       }
     }
 
