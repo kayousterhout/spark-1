@@ -272,6 +272,8 @@ class ProcParser extends Logging {
         totalBytesWritten = line.substring(BYTES_WRITTEN_PREFIX.length).toLong
       }
     }
+    logInfo("%s IO Totals: rchar %s wchar %s rbytes %s wbytes %s".format(
+      currentTime, totalCharsRead, totalCharsWritten, totalBytesRead, totalBytesWritten))
 
     val timeDeltaSeconds = (currentTime - previousDiskLogTime) / 1000.0
     if (previousDiskLogTime > 0 && timeDeltaSeconds > 0) {
