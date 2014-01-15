@@ -240,12 +240,13 @@ class ProcParser extends Logging {
       val receivedBytesRate = ((totalReceivedBytes - previousReceivedBytes) * 1.0 / timeDeltaSeconds)
       val receivedPacketsRate = ((totalTransmittedPackets - previousTransmittedPackets) * 1.0 /
         timeDeltaSeconds)
-      logInfo("%s trans rates: %s bytes, %s packets; Recv rates: %s bytes, %s packets".format(
-        currentTime,
-        transmittedBytesRate,
-        transmittedPacketsRate,
-        receivedBytesRate,
-        receivedPacketsRate))
+      logInfo("%s trans rates: %s bytes/s, %s packets/s; Recv rates: %s bytes/s, %s packets/s"
+        .format(
+          currentTime,
+          transmittedBytesRate,
+          transmittedPacketsRate,
+          receivedBytesRate,
+          receivedPacketsRate))
     }
     previousReceivedBytes = totalReceivedBytes
     previousReceivedPackets = totalReceivedPackets
