@@ -34,7 +34,7 @@ import scala.io.Source
  */
 class ProcParser extends Logging {
   var previousGcLogTime = 0L
-  var previousGcTime = 0L
+  var previousGcTime = -1L
 
   val CPU_TOTALS_FILENAME = "/proc/stat"
   val DISK_TOTALS_FILENAME = "/proc/diskstats"
@@ -126,10 +126,12 @@ class ProcParser extends Logging {
   def logGcTime() {
     val currentTime = System.currentTimeMillis
     val currentGcTime = ManagementFactory.getGarbageCollectorMXBeans.map(_.getCollectionTime).sum
-    val percentTimeGcing = ((currentGcTime - previousGcLogTime) * 1.0 /
+    val percentTimeGcing = ((currentGcTime - previousGcTime) * 1.0 /
       (currentTime - previousGcLogTime))
-    logInfo("%s GC total %s Fraction of last interval GCing %s"
-      .format(currentTime, percentTimeGcing, currentGcTime))
+    if (previousGcTime != -1L) {
+      logInfo("%s GC total %s Fraction of last interval GCing %s"
+        .format(currentTime, currentGcTime, percentTimeGcing))
+    }
     previousGcLogTime = currentTime
     previousGcTime = currentGcTime
   }
@@ -187,6 +189,9 @@ class ProcParser extends Logging {
         (previousTotalUserTime + previousTotalNiceTime + previousTotalSysTime
         + previousTotalIrqTime + previousTotalSoftIrqTime + previousTotalGuestTime)) * 1.0 /
         elapsedCpuTime
+      if (currentTotalIowaitTime < previousTotalIowaitTime) {
+        logError("Current: %s, previous: %s".format(currentTotalIowaitTime, previousTotalIowaitTime))
+      }
       val ioWait = (currentTotalIowaitTime - previousTotalIowaitTime) * 1.0 / elapsedCpuTime
       val idle = (currentTotalIdleTime - previousTotalIdleTime) * 1.0 / elapsedCpuTime
       logInfo(
