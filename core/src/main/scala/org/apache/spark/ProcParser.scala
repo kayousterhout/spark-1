@@ -18,11 +18,11 @@
 package org.apache.spark
 
 import akka.util.Duration
-
 import java.io._
 import java.lang.management.ManagementFactory
 import java.util.concurrent.TimeUnit
 
+import scala.collection.JavaConversions._
 import scala.collection.mutable.HashMap
 
 import scala.io.Source
@@ -33,6 +33,8 @@ import scala.io.Source
  * Based on https://code.google.com/p/djmonitor/source/browse/src/parser/ProcParser.java
  */
 class ProcParser extends Logging {
+  var previousGcLogTime = 0L
+  var previousGcTime = 0L
 
   val CPU_TOTALS_FILENAME = "/proc/stat"
   val DISK_TOTALS_FILENAME = "/proc/diskstats"
@@ -114,10 +116,22 @@ class ProcParser extends Logging {
     env.actorSystem.scheduler.schedule(
       Duration(0, TimeUnit.MILLISECONDS),
       LOG_INTERVAL_MILLIS) {
+      logGcTime()
       logCpuUsage()
       logNetworkUsage()
       logDiskUsage()
     }
+  }
+
+  def logGcTime() {
+    val currentTime = System.currentTimeMillis
+    val currentGcTime = ManagementFactory.getGarbageCollectorMXBeans.map(_.getCollectionTime).sum
+    val percentTimeGcing = ((currentGcTime - previousGcLogTime) * 1.0 /
+      (currentTime - previousGcLogTime))
+    logInfo("%s GC total %s Fraction of last interval GCing %s"
+      .format(currentTime, percentTimeGcing, currentGcTime))
+    previousGcLogTime = currentTime
+    previousGcTime = currentGcTime
   }
   
   /**
