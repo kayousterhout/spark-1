@@ -161,6 +161,24 @@ private[spark] class StagePage(parent: JobProgressUI) {
           }
           val shuffleReadQuantiles = "Shuffle Read (Remote)" +: getQuantileCols(shuffleReadSizes)
 
+          val fetchWaitTimes = validTasks.map {
+            case(info, metrics, exception) =>
+              metrics.get.shuffleReadMetrics.map(_.fetchWaitTime).getOrElse(0L).toDouble
+          }
+          val fetchWaitQuantiles = ("Fetch Wait" +:
+            Distribution(fetchWaitTimes).get.getQuantiles().map(
+              millis => parent.formatDuration(millis.toLong)))
+
+          val fractionWaiting = validTasks.map {
+            case(info, metrics, exception) => {
+              val fetchWait = metrics.get.shuffleReadMetrics.map(_.fetchWaitTime).getOrElse(
+                0L).toDouble
+              fetchWait / metrics.get.executorRunTime.toDouble
+            }
+          }
+          val fractionWaitingQuantiles = ("Fraction waiting" +:
+            Distribution(fractionWaiting).get.getQuantiles().map(_.toString))
+
           val shuffleWriteSizes = validTasks.map {
             case(info, metrics, exception) =>
               metrics.get.shuffleWriteMetrics.map(_.shuffleBytesWritten).getOrElse(0L).toDouble
@@ -187,6 +205,8 @@ private[spark] class StagePage(parent: JobProgressUI) {
             gettingResultQuantiles,
             schedulerDelayQuantiles,
             if (hasShuffleRead) shuffleReadQuantiles else Nil,
+            if (hasShuffleRead) fetchWaitQuantiles else Nil,
+            if (hasShuffleRead) fractionWaitingQuantiles else Nil,
             if (hasShuffleWrite) shuffleWriteQuantiles else Nil,
             if (hasBytesSpilled) memoryBytesSpilledQuantiles else Nil,
             if (hasBytesSpilled) diskBytesSpilledQuantiles else Nil)
