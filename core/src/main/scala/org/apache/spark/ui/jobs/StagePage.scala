@@ -162,6 +162,12 @@ private[spark] class StagePage(parent: JobProgressUI) {
           }
           val shuffleReadQuantiles = "Shuffle Read (Remote)" +: getQuantileCols(shuffleReadSizes)
 
+          val fetchWaitTimes = validTasks.map {
+            case(info, metrics, exception) =>
+              metrics.get.shuffleReadMetrics.map(_.fetchWaitTime).getOrElse(0L).toDouble
+          }
+          val fetchWaitQuantiles = "Fetch Wait" +: getQuantileCols(fetchWaitTimes)
+
           val shuffleWriteSizes = validTasks.map {
             case(info, metrics, exception) =>
               metrics.get.shuffleWriteMetrics.map(_.shuffleBytesWritten).getOrElse(0L).toDouble
@@ -188,6 +194,7 @@ private[spark] class StagePage(parent: JobProgressUI) {
             gettingResultQuantiles,
             schedulerDelayQuantiles,
             if (hasShuffleRead) shuffleReadQuantiles else Nil,
+            if (hasShuffleRead) fetchWaitQuantiles else Nil,
             if (hasShuffleWrite) shuffleWriteQuantiles else Nil,
             if (hasBytesSpilled) memoryBytesSpilledQuantiles else Nil,
             if (hasBytesSpilled) diskBytesSpilledQuantiles else Nil)
