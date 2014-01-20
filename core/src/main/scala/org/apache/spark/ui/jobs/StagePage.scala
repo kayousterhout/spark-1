@@ -168,7 +168,17 @@ private[spark] class StagePage(parent: JobProgressUI) {
           }
           val fetchWaitQuantiles = ("Fetch Wait" +:
             Distribution(fetchWaitTimes).get.getQuantiles().map(
-              millis -> parent.formatDuration(millis)))
+              millis -> parent.formatDuration(millis.toLong)))
+
+          val fractionWaiting = validTasks.map {
+            case(info, metrics, exception) => {
+              val fetchWait = metrics.get.shuffleReadMetrics.map(_.fetchWaitTime).getOrElse(
+                0L).toDouble
+              fetchWait / metrics.get.executorRunTime.toDouble
+            }
+          }
+          val fractionWaitingQuantiles = ("Fraction waiting" +:
+            Distribution(fractionWaiting).get.getQuantiles().map(_.toString))
 
           val shuffleWriteSizes = validTasks.map {
             case(info, metrics, exception) =>
@@ -197,9 +207,11 @@ private[spark] class StagePage(parent: JobProgressUI) {
             schedulerDelayQuantiles,
             if (hasShuffleRead) shuffleReadQuantiles else Nil,
             if (hasShuffleRead) fetchWaitQuantiles else Nil,
+            if (hasShuffleRead) fractionWaitingQuantiles else Nil,
             if (hasShuffleWrite) shuffleWriteQuantiles else Nil,
             if (hasBytesSpilled) memoryBytesSpilledQuantiles else Nil,
             if (hasBytesSpilled) diskBytesSpilledQuantiles else Nil)
+            if (hasShuffleWrite) shuffleWriteQuantiles else Nil)
 
           val quantileHeaders = Seq("Metric", "Min", "25th percentile",
             "Median", "75th percentile", "Max")
