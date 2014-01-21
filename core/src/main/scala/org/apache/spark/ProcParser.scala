@@ -17,13 +17,13 @@
 
 package org.apache.spark
 
-import akka.util.Duration
 import java.io._
 import java.lang.management.ManagementFactory
 import java.util.concurrent.TimeUnit
 
 import scala.collection.JavaConversions._
 import scala.collection.mutable.HashMap
+import scala.concurrent.duration._
 
 import scala.io.Source
 
@@ -113,6 +113,7 @@ class ProcParser extends Logging {
 
   def start(env: SparkEnv) {  
     logInfo("Starting ProcParser CPU logging")
+    import env.actorSystem.dispatcher
     env.actorSystem.scheduler.schedule(
       Duration(0, TimeUnit.MILLISECONDS),
       LOG_INTERVAL_MILLIS) {
