@@ -503,6 +503,7 @@ private[spark] class TaskSetManager(
           abort("Task %s:%s had a not serializable result: %s".format(
             taskSet.id, index, ef.description))
           return
+
         }
         val key = ef.description
         failureReason = "Exception failure: %s".format(ef.description)

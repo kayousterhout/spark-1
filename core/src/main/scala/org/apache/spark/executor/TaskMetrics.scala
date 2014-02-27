@@ -17,6 +17,8 @@
 
 package org.apache.spark.executor
 
+import org.apache.spark.storage.FetchInfo
+
 class TaskMetrics extends Serializable {
   /**
    * Host's name the task runs on 
@@ -113,6 +115,26 @@ class ShuffleReadMetrics extends Serializable {
    * Total number of remote bytes read from the shuffle by this task
    */
   var remoteBytesRead: Long = _
+
+  /**
+   * For each block, the time when it was requested by the application and the time when the request was fulfilled.
+   */
+  var blockRequestTimes: Seq[(Long, Long)] = _
+
+  /**
+   * Time taken (in milliseconds) to fetch blocks stored locally.
+   */
+  var localReadTime: Long = _
+
+  /**
+   * Shuffle bytes read locally.
+   */
+  var localReadBytes: Long = _
+
+  /**
+   * Fine-grained information about the size and time taken to fetch each block.
+   */
+  var fetchInfos: Seq[FetchInfo] = _
 }
 
 class ShuffleWriteMetrics extends Serializable {

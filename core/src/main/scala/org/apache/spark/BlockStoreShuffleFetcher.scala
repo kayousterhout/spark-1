@@ -82,10 +82,14 @@ private[spark] class BlockStoreShuffleFetcher extends ShuffleFetcher with Loggin
       shuffleMetrics.shuffleFinishTime = System.currentTimeMillis
       shuffleMetrics.remoteFetchTime = blockFetcherItr.remoteFetchTime
       shuffleMetrics.fetchWaitTime = blockFetcherItr.fetchWaitTime
+      shuffleMetrics.localReadTime = blockFetcherItr.localReadTime
+      shuffleMetrics.localReadBytes = blockFetcherItr.localReadBytes
       shuffleMetrics.remoteBytesRead = blockFetcherItr.remoteBytesRead
       shuffleMetrics.totalBlocksFetched = blockFetcherItr.totalBlocks
       shuffleMetrics.localBlocksFetched = blockFetcherItr.numLocalBlocks
       shuffleMetrics.remoteBlocksFetched = blockFetcherItr.numRemoteBlocks
+      shuffleMetrics.blockRequestTimes = blockFetcherItr.blockRequestTimes
+      shuffleMetrics.fetchInfos = blockFetcherItr.fetchInfos
       context.taskMetrics.shuffleReadMetrics = Some(shuffleMetrics)
     })
 
