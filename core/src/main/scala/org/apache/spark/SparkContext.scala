@@ -202,6 +202,14 @@ class SparkContext(
   @volatile private[spark] var dagScheduler = new DAGScheduler(taskScheduler)
   dagScheduler.start()
 
+  // Add a job logger.
+  if (conf.getBoolean("spark.jobLogger.enabled", false)) {
+    val jobLogger = new JobLogger()
+    if (jobLogger.successfullyCreatedLogDir) {
+      addSparkListener(jobLogger)
+    }
+  }
+
   ui.start()
 
   /** A default Hadoop Configuration for the Hadoop code (e.g. file systems) that we reuse. */
