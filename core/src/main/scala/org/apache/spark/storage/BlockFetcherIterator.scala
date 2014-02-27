@@ -22,6 +22,7 @@ import java.util.concurrent.LinkedBlockingQueue
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.mutable.HashSet
 import scala.collection.mutable.Queue
+import scala.collection.mutable.SynchronizedBuffer
 
 import io.netty.buffer.ByteBuf
 
@@ -42,7 +43,6 @@ import org.apache.spark.util.Utils
  * but extensive tests show that under some circumstances (e.g. large shuffles with lots of cores),
  * NIO would perform poorly and thus the need for the Netty OIO one.
  */
-
 private[storage]
 trait BlockFetcherIterator extends Iterator[(BlockId, Option[Iterator[Any]])] with Logging {
   def initialize()
@@ -51,6 +51,10 @@ trait BlockFetcherIterator extends Iterator[(BlockId, Option[Iterator[Any]])] wi
   def numRemoteBlocks: Int
   def fetchWaitTime: Long
   def remoteBytesRead: Long
+  def blockRequestTimes: Seq[(Long, Long)]
+  def localReadTime: Long
+  def localReadBytes: Long
+  def fetchInfos: Seq[FetchInfo]
 }
 
 
@@ -93,11 +97,22 @@ object BlockFetcherIterator {
     private var numLocal = 0
     // BlockIds for local blocks that need to be fetched. Excludes zero-sized blocks
     protected val localBlocksToFetch = new ArrayBuffer[BlockId]()
+    // Time spent (in milliseconds) reading local blocks from disk.
+    private var _localReadTime : Long = 0L
+    // Total bytes read locally.
+    private var _localReadBytes: Long = 0L
 
     // This represents the number of remote blocks, also counting zero-sized blocks
     private var numRemote = 0
     // BlockIds for remote blocks that need to be fetched. Excludes zero-sized blocks
     protected val remoteBlocksToFetch = new HashSet[BlockId]()
+
+    // Stats about each block that was fetched.
+    private val _fetchInfos = new ArrayBuffer[FetchInfo]() with SynchronizedBuffer[FetchInfo]
+
+    // For each time the application requested a block, the time the block was requested and the
+    // time that the request was fulfilled.
+    private val _blockRequestTimes = new ArrayBuffer[(Long, Long)]()
 
     // A queue to hold our results.
     protected val results = new LinkedBlockingQueue[FetchResult]
@@ -136,6 +151,12 @@ object BlockFetcherIterator {
               () => dataDeserialize(blockId, blockMessage.getData, serializer)))
             _remoteBytesRead += networkSize
             logDebug("Got remote block " + blockId + " after " + Utils.getUsedTimeMs(startTime))
+            _fetchInfos += new FetchInfo(
+              networkSize,
+              fetchStart,
+              fetchDone,
+              System.currentTimeMillis(),
+              blockMessage.readTime)
           }
         }
         case None => {
@@ -157,6 +178,7 @@ object BlockFetcherIterator {
           // Filter out zero-sized blocks
           localBlocksToFetch ++= blockInfos.filter(_._2 != 0).map(_._1)
           _numBlocksToFetch += localBlocksToFetch.size
+          _localReadBytes = blockInfos.map(_._2).sum
         } else {
           numRemote += blockInfos.size
           // Make our requests at least maxBytesInFlight / 5 in length; the reason to keep them
@@ -200,6 +222,7 @@ object BlockFetcherIterator {
       // Get the local blocks while remote blocks are being fetched. Note that it's okay to do
       // these all at once because they will just memory-map some files, so they won't consume
       // any memory that might exceed our maxBytesInFlight
+      val startTime = System.currentTimeMillis()
       for (id <- localBlocksToFetch) {
         getLocalFromDisk(id, serializer) match {
           case Some(iter) => {
@@ -212,6 +235,7 @@ object BlockFetcherIterator {
           }
         }
       }
+      _localReadTime = System.currentTimeMillis() - startTime
     }
 
     override def initialize() {
@@ -240,7 +264,10 @@ object BlockFetcherIterator {
     override def numRemoteBlocks: Int = numRemote
     override def fetchWaitTime: Long = _fetchWaitTime
     override def remoteBytesRead: Long = _remoteBytesRead
- 
+    override def blockRequestTimes: Seq[(Long, Long)] = _blockRequestTimes
+    override def localReadTime: Long = _localReadTime
+    override def localReadBytes: Long = _localReadBytes
+    override def fetchInfos: Seq[FetchInfo] = _fetchInfos
 
     // Implementing the Iterator methods with an iterator that reads fetched blocks off the queue
     // as they arrive.
@@ -254,6 +281,7 @@ object BlockFetcherIterator {
       val result = results.take()
       val stopFetchWait = System.currentTimeMillis()
       _fetchWaitTime += (stopFetchWait - startFetchWait)
+      _blockRequestTimes += ((startFetchWait, stopFetchWait))
       if (! result.failed) bytesInFlight -= result.size
       while (!fetchRequests.isEmpty &&
         (bytesInFlight == 0 || bytesInFlight + fetchRequests.front.size <= maxBytesInFlight)) {

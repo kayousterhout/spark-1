@@ -196,7 +196,9 @@ class SparkContext(
   executorEnvs("SPARK_USER") = sparkUser
 
   // Start logging.
-  (new ProcParser()).start(env)
+  if (conf.getBoolean("spark.procParser", false)) {
+    (new ProcParser()).start(env)
+  }
 
   // Create and start the scheduler
   private[spark] var taskScheduler = SparkContext.createTaskScheduler(this, master, appName)
@@ -204,6 +206,9 @@ class SparkContext(
 
   @volatile private[spark] var dagScheduler = new DAGScheduler(taskScheduler)
   dagScheduler.start()
+
+  // Add a job logger.
+  addSparkListener(new JobLogger())
 
   ui.start()
 

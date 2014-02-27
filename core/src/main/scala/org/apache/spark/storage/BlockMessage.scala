@@ -25,7 +25,7 @@ import scala.collection.mutable.StringBuilder
 import org.apache.spark.network._
 
 private[spark] case class GetBlock(id: BlockId)
-private[spark] case class GotBlock(id: BlockId, data: ByteBuffer)
+private[spark] case class GotBlock(id: BlockId, data: ByteBuffer, readTime: Long)
 private[spark] case class PutBlock(id: BlockId, data: ByteBuffer, level: StorageLevel)
 
 private[spark] class BlockMessage() {
@@ -37,6 +37,9 @@ private[spark] class BlockMessage() {
   private var id: BlockId = null
   private var data: ByteBuffer = null
   private var level: StorageLevel = null
+
+  // For GotBlock messages, the time taken to read the block from disk.
+  var readTime: Long = 0L
  
   def set(getBlock: GetBlock) {
     typ = BlockMessage.TYPE_GET_BLOCK
@@ -47,6 +50,7 @@ private[spark] class BlockMessage() {
     typ = BlockMessage.TYPE_GOT_BLOCK
     id = gotBlock.id
     data = gotBlock.data
+    readTime = gotBlock.readTime
   }
 
   def set(putBlock: PutBlock) {

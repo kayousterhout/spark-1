@@ -27,7 +27,7 @@ import scala.collection.mutable.{HashMap, HashSet, ListBuffer}
 import org.apache.spark._
 import org.apache.spark.executor.TaskMetrics
 import org.apache.spark.rdd.RDD
-import org.apache.spark.storage.StorageLevel
+import org.apache.spark.storage.{FetchInfo, StorageLevel}
 
 /**
  * A logger class to record runtime information for jobs in Spark. This class outputs one log file
@@ -255,6 +255,27 @@ class JobLogger(val user: String, val logDirName: String)
     }
   }
 
+  private def startEndTimesToString(times: Seq[(Long, Long)]): String = {
+    val builder = new StringBuilder()
+    times.foreach { t =>
+      builder ++= "%s,%s;".format(t._1, t._2)
+    }
+    builder.toString
+  }
+
+  private def fetchInfosToString(fetchInfos: Seq[FetchInfo]): String = {
+    val builder = new StringBuilder()
+    fetchInfos.foreach { info =>
+      builder ++= "Bytes:%s,Start:%s,FetchEnd:%s,FetchProcessingEnd:%s,DiskReadTime:%s;".format(
+        info.bytes,
+        info.fetchStartTime,
+        info.fetchEndTime,
+        info.processingEndTime,
+        info.diskReadTime)
+    }
+    builder.toString
+  }
+
   /**
    * Record task metrics into job log files, including execution info and shuffle metrics
    * @param stageID Stage ID of the task
@@ -276,6 +297,10 @@ class JobLogger(val user: String, val logDirName: String)
         " BLOCK_FETCHED_REMOTE=" + metrics.remoteBlocksFetched +
         " REMOTE_FETCH_WAIT_TIME=" + metrics.fetchWaitTime +
         " REMOTE_BYTES_READ=" + metrics.remoteBytesRead
+        " BLOCK_REQUEST_TIMES=" + startEndTimesToString(metrics.blockRequestTimes) +
+        " FETCH_INFOS=" + fetchInfosToString(metrics.fetchInfos) +
+        " LOCAL_READ_TIME=" + metrics.localReadTime +
+        " LOCAL_READ_BYTES=" + metrics.localReadBytes
       case None => ""
     }
     val writeMetrics = taskMetrics.shuffleWriteMetrics match {

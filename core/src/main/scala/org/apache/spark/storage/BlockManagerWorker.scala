@@ -66,11 +66,11 @@ private[spark] class BlockManagerWorker(val blockManager: BlockManager) extends 
       case BlockMessage.TYPE_GET_BLOCK => {
         val gB = new GetBlock(blockMessage.getId)
         logDebug("Received [" + gB + "]")
-        val buffer = getBlock(gB.id)
-        if (buffer == null) {
+        val block = getBlock(gB.id)
+        if (block.data == null) {
           return None
         }
-        Some(BlockMessage.fromGotBlock(GotBlock(gB.id, buffer)))
+        Some(BlockMessage.fromGotBlock(block))
       }
       case _ => None
     }
@@ -84,16 +84,16 @@ private[spark] class BlockManagerWorker(val blockManager: BlockManager) extends 
         + " with data size: " + bytes.limit)
   }
 
-  private def getBlock(id: BlockId): ByteBuffer = {
+  private def getBlock(id: BlockId): GotBlock = {
     val startTimeMs = System.currentTimeMillis()
     logDebug("GetBlock " + id + " started from " + startTimeMs)
     val buffer = blockManager.getLocalBytes(id) match {
       case Some(bytes) => bytes
       case None => null
     }
-    logDebug("GetBlock " + id + " used " + Utils.getUsedTimeMs(startTimeMs)
-        + " and got buffer " + buffer)
-    buffer
+    val gotBlock = new GotBlock(id, buffer, System.currentTimeMillis() - startTimeMs)
+    logDebug("GetBlock " + id + " used " + gotBlock.readTime + "ms and got buffer " + buffer)
+    gotBlock
   }
 }
 

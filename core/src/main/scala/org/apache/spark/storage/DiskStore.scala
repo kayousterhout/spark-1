@@ -84,11 +84,14 @@ private class DiskStore(blockManager: BlockManager, diskManager: DiskBlockManage
   override def getBytes(blockId: BlockId): Option[ByteBuffer] = {
     val segment = diskManager.getBlockLocation(blockId)
     val channel = new RandomAccessFile(segment.file, "r").getChannel()
+    val startTime = System.currentTimeMillis
     val buffer = try {
       channel.map(MapMode.READ_ONLY, segment.offset, segment.length)
     } finally {
       channel.close()
     }
+    val timeTaken = System.currentTimeMillis - startTime
+    logDebug("Memory mapping file took %s".format(timeTaken))
     Some(buffer)
   }
 
