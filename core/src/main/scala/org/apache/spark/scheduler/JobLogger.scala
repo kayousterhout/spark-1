@@ -25,8 +25,8 @@ import java.util.concurrent.LinkedBlockingQueue
 import scala.collection.mutable.{HashMap, HashSet, ListBuffer}
 
 import org.apache.spark._
-import org.apache.spark.rdd.RDD
 import org.apache.spark.executor.TaskMetrics
+import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
 
 /**
@@ -59,7 +59,7 @@ class JobLogger(val user: String, val logDirName: String)
   private val DATE_FORMAT = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss")
   private val eventQueue = new LinkedBlockingQueue[SparkListenerEvents]
 
-  createLogDir()
+  val successfullyCreatedLogDir = createLogDir()
 
   // The following 5 functions are used only in testing.
   private[scheduler] def getLogDir = logDir
@@ -69,15 +69,16 @@ class JobLogger(val user: String, val logDirName: String)
   private[scheduler] def getEventQueue = eventQueue
 
   /** Create a folder for log files, the folder's name is the creation time of jobLogger */
-  protected def createLogDir() {
+  protected def createLogDir(): Boolean = {
     val dir = new File(logDir + "/" + logDirName + "/")
     if (dir.exists()) {
-      return
+      return true
     }
     if (dir.mkdirs() == false) {
-      // JobLogger should throw a exception rather than continue to construct this object.
-      throw new IOException("create log directory error:" + logDir + "/" + logDirName + "/")
+      logError("Unable to create log directory for job logger at %s/%s/".format(logDir, logDirName))
+      return false
     }
+    return true
   }
 
   /**
@@ -87,10 +88,14 @@ class JobLogger(val user: String, val logDirName: String)
    */
   protected def createLogWriter(jobID: Int) {
     try {
-      val fileWriter = new PrintWriter(logDir + "/" + logDirName + "/" + jobID)
+      val logFileName = logDir + "/" + logDirName + "/" + jobID
+      logInfo("JobLogger for job %s logging to %s".format(jobID, logFileName))
+      val fileWriter = new PrintWriter(logFileName)
       jobIDToPrintWriter += (jobID -> fileWriter)
     } catch {
-      case e: FileNotFoundException => e.printStackTrace()
+      case e: FileNotFoundException => {
+        logError("Unable to create log writer for job %s: %s".format(jobID, e.getMessage))
+      }
     }
   }
 
@@ -267,7 +272,9 @@ class JobLogger(val user: String, val logDirName: String)
                                 taskInfo: TaskInfo, taskMetrics: TaskMetrics) {
     val info = " TID=" + taskInfo.taskId + " STAGE_ID=" + stageID +
                " START_TIME=" + taskInfo.launchTime + " FINISH_TIME=" + taskInfo.finishTime +
-               " EXECUTOR_ID=" + taskInfo.executorId +  " HOST=" + taskMetrics.hostname
+               " EXECUTOR_ID=" + taskInfo.executorId +  " HOST=" + taskMetrics.hostname +
+               " GC_TIME=" + taskMetrics.jvmGCTime +
+               " EXECUTOR_DESERIALIZE_TIME=" + taskMetrics.executorDeserializeTime
     val executorRunTime = " EXECUTOR_RUN_TIME=" + taskMetrics.executorRunTime
     val readMetrics = taskMetrics.shuffleReadMetrics match {
       case Some(metrics) =>
@@ -277,11 +284,16 @@ class JobLogger(val user: String, val logDirName: String)
         " BLOCK_FETCHED_REMOTE=" + metrics.remoteBlocksFetched +
         " REMOTE_FETCH_WAIT_TIME=" + metrics.fetchWaitTime +
         " REMOTE_FETCH_TIME=" + metrics.remoteFetchTime +
-        " REMOTE_BYTES_READ=" + metrics.remoteBytesRead
+        " REMOTE_DISK_READ_TIME=" + metrics.remoteDiskReadTime +
+        " REMOTE_BYTES_READ=" + metrics.remoteBytesRead +
+        " LOCAL_READ_TIME=" + metrics.localReadTime +
+        " LOCAL_READ_BYTES=" + metrics.localReadBytes
       case None => ""
     }
     val writeMetrics = taskMetrics.shuffleWriteMetrics match {
-      case Some(metrics) => " SHUFFLE_BYTES_WRITTEN=" + metrics.shuffleBytesWritten
+      case Some(metrics) =>
+        " SHUFFLE_BYTES_WRITTEN=" + metrics.shuffleBytesWritten +
+        " SHUFFLE_WRITE_TIME=" + metrics.shuffleWriteTime
       case None => ""
     }
     stageLogInfo(stageID, status + info + executorRunTime + readMetrics + writeMetrics)
