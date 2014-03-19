@@ -22,13 +22,14 @@ import java.nio.ByteBuffer
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.mutable.StringBuilder
 
+import org.apache.spark.Logging
 import org.apache.spark.network._
 
 private[spark] case class GetBlock(id: BlockId)
 private[spark] case class GotBlock(id: BlockId, data: ByteBuffer, readTime: Long)
 private[spark] case class PutBlock(id: BlockId, data: ByteBuffer, level: StorageLevel)
 
-private[spark] class BlockMessage() {
+private[spark] class BlockMessage() extends Logging {
   // Un-initialized: typ = 0
   // GetBlock: typ = 1
   // GotBlock: typ = 2
@@ -38,8 +39,9 @@ private[spark] class BlockMessage() {
   private var data: ByteBuffer = null
   private var level: StorageLevel = null
 
-  // For GotBlock messages, the time taken to read the block from disk.
-  var readTime: Long = 0L
+  // For GotBlock messages, the time taken to read the block from disk. Initialize
+  // to -1 so it's clear when this doesn't get properly set.
+  var readTime: Long = -1L
  
   def set(getBlock: GetBlock) {
     typ = BlockMessage.TYPE_GET_BLOCK
@@ -94,6 +96,7 @@ private[spark] class BlockMessage() {
       data.put(buffer)
       data.flip()
     } else if (typ == BlockMessage.TYPE_GOT_BLOCK) {
+      readTime = buffer.getLong()
 
       val dataLength = buffer.getInt()
       data = ByteBuffer.allocate(dataLength)
@@ -138,11 +141,12 @@ private[spark] class BlockMessage() {
 
       buffers += data
     } else if (typ == BlockMessage.TYPE_GOT_BLOCK) {
-      buffer = ByteBuffer.allocate(4).putInt(data.remaining)
+      buffer = ByteBuffer.allocate(8 + 4).putLong(readTime).putInt(data.remaining)
       buffer.flip()
       buffers += buffer
 
       buffers += data
+      logDebug("Finished writing at %s".format(System.currentTimeMillis()))
     }
     
     /*
