@@ -287,7 +287,9 @@ class JobLogger(val user: String, val logDirName: String)
                                 taskInfo: TaskInfo, taskMetrics: TaskMetrics) {
     val info = " TID=" + taskInfo.taskId + " STAGE_ID=" + stageID +
                " START_TIME=" + taskInfo.launchTime + " FINISH_TIME=" + taskInfo.finishTime +
-               " EXECUTOR_ID=" + taskInfo.executorId +  " HOST=" + taskMetrics.hostname
+               " EXECUTOR_ID=" + taskInfo.executorId +  " HOST=" + taskMetrics.hostname +
+               " GC_TIME=" + taskMetrics.jvmGCTime +
+               " EXECUTOR_DESERIALIZE_TIME=" + taskMetrics.executorDeserializeTime
     val executorRunTime = " EXECUTOR_RUN_TIME=" + taskMetrics.executorRunTime
     val readMetrics = taskMetrics.shuffleReadMetrics match {
       case Some(metrics) =>
