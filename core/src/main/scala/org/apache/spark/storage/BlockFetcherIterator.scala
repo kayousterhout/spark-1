@@ -156,7 +156,7 @@ object BlockFetcherIterator {
               fetchStart,
               fetchDone,
               System.currentTimeMillis(),
-              blockMessage.readTime)
+              blockMessage.readTimeNanos)
           }
         }
         case None => {

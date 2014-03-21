@@ -271,7 +271,7 @@ class JobLogger(val user: String, val logDirName: String)
         info.fetchStartTime,
         info.fetchEndTime,
         info.processingEndTime,
-        info.diskReadTime)
+        info.diskReadTimeNanos)
     }
     builder.toString
   }

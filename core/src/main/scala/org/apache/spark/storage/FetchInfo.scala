@@ -27,7 +27,7 @@ package org.apache.spark.storage
  * @param fetchStartTime Time (in milliseconds) when the fetch started.
  * @param fetchEndTime Time (in milliseconds) when the fetch ended.
  * @param processingEndTime Time (in milliseconds) when the fetch was done being processed.
- * @param diskReadTime Milliseconds taken to read the data from disk on the remote machine.
+ * @param diskReadTimeNanos Nanoseconds taken to read the data from disk on the remote machine.
  */
 case class FetchInfo(bytes: Long, fetchStartTime: Long, fetchEndTime: Long, processingEndTime: Long,
-    diskReadTime: Long)
+    diskReadTimeNanos: Long)

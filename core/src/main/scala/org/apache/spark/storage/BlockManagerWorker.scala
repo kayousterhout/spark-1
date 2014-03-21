@@ -85,14 +85,14 @@ private[spark] class BlockManagerWorker(val blockManager: BlockManager) extends 
   }
 
   private def getBlock(id: BlockId): GotBlock = {
-    val startTimeMs = System.currentTimeMillis()
-    logDebug("GetBlock " + id + " started from " + startTimeMs)
+    val startTimeNanos = System.nanoTime()
+    logDebug("GetBlock " + id + " started from " + startTimeNanos / 1e6)
     val buffer = blockManager.getLocalBytes(id) match {
       case Some(bytes) => bytes
       case None => null
     }
-    val gotBlock = new GotBlock(id, buffer, System.currentTimeMillis() - startTimeMs)
-    logDebug("GetBlock " + id + " used " + gotBlock.readTime + "ms and got buffer " + buffer)
+    val gotBlock = new GotBlock(id, buffer, System.nanoTime() - startTimeNanos)
+    logDebug("GetBlock " + id + " used " + gotBlock.readTimeNanos + "ms and got buffer " + buffer)
     gotBlock
   }
 }
