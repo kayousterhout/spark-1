@@ -117,11 +117,6 @@ class ShuffleReadMetrics extends Serializable {
   var remoteBytesRead: Long = _
 
   /**
-   * For each block, the time when it was requested by the application and the time when the request was fulfilled.
-   */
-  var blockRequestTimes: Seq[(Long, Long)] = _
-
-  /**
    * Time taken (in milliseconds) to fetch blocks stored locally.
    */
   var localReadTime: Long = _

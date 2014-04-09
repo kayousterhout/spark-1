@@ -256,14 +256,6 @@ class JobLogger(val user: String, val logDirName: String)
     }
   }
 
-  private def startEndTimesToString(times: Seq[(Long, Long)]): String = {
-    val builder = new StringBuilder()
-    times.foreach { t =>
-      builder ++= "%s,%s;".format(t._1, t._2)
-    }
-    builder.toString
-  }
-
   private def fetchInfosToString(fetchInfos: Seq[FetchInfo]): String = {
     val builder = new StringBuilder()
     fetchInfos.foreach { info =>
@@ -301,7 +293,6 @@ class JobLogger(val user: String, val logDirName: String)
         " REMOTE_FETCH_WAIT_TIME=" + metrics.fetchWaitTime +
         " REMOTE_FETCH_TIME=" + metrics.remoteFetchTime +
         " REMOTE_BYTES_READ=" + metrics.remoteBytesRead +
-        " BLOCK_REQUEST_TIMES=" + startEndTimesToString(metrics.blockRequestTimes) +
         " FETCH_INFOS=" + fetchInfosToString(metrics.fetchInfos) +
         " LOCAL_READ_TIME=" + metrics.localReadTime +
         " LOCAL_READ_BYTES=" + metrics.localReadBytes
