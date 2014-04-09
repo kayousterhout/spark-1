@@ -51,7 +51,6 @@ trait BlockFetcherIterator extends Iterator[(BlockId, Option[Iterator[Any]])] wi
   def numRemoteBlocks: Int
   def fetchWaitTime: Long
   def remoteBytesRead: Long
-  def blockRequestTimes: Seq[(Long, Long)]
   def localReadTime: Long
   def localReadBytes: Long
   def fetchInfos: Seq[FetchInfo]
@@ -109,10 +108,6 @@ object BlockFetcherIterator {
 
     // Stats about each block that was fetched.
     private val _fetchInfos = new ArrayBuffer[FetchInfo]() with SynchronizedBuffer[FetchInfo]
-
-    // For each time the application requested a block, the time the block was requested and the
-    // time that the request was fulfilled.
-    private val _blockRequestTimes = new ArrayBuffer[(Long, Long)]()
 
     // A queue to hold our results.
     protected val results = new LinkedBlockingQueue[FetchResult]
@@ -264,7 +259,6 @@ object BlockFetcherIterator {
     override def numRemoteBlocks: Int = numRemote
     override def fetchWaitTime: Long = _fetchWaitTime
     override def remoteBytesRead: Long = _remoteBytesRead
-    override def blockRequestTimes: Seq[(Long, Long)] = _blockRequestTimes
     override def localReadTime: Long = _localReadTime
     override def localReadBytes: Long = _localReadBytes
     override def fetchInfos: Seq[FetchInfo] = _fetchInfos
@@ -281,7 +275,6 @@ object BlockFetcherIterator {
       val result = results.take()
       val stopFetchWait = System.currentTimeMillis()
       _fetchWaitTime += (stopFetchWait - startFetchWait)
-      _blockRequestTimes += ((startFetchWait, stopFetchWait))
       if (! result.failed) bytesInFlight -= result.size
       while (!fetchRequests.isEmpty &&
         (bytesInFlight == 0 || bytesInFlight + fetchRequests.front.size <= maxBytesInFlight)) {
