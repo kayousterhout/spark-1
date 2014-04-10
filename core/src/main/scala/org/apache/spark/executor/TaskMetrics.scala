@@ -67,6 +67,12 @@ class TaskMetrics extends Serializable {
   var diskBytesSpilled: Long = _
 
   /**
+   * If this task reads from a HadoopRDD or from cached data, metrics on how much data was read
+   * and how long the read took are stored here.
+   */
+  var inputMetrics: Option[InputMetrics] = None
+
+  /**
    * If this task reads from shuffle output, metrics on getting shuffle data will be collected here
    */
   var shuffleReadMetrics: Option[ShuffleReadMetrics] = None
@@ -85,6 +91,32 @@ class TaskMetrics extends Serializable {
 
 private[spark] object TaskMetrics {
   def empty: TaskMetrics = new TaskMetrics
+}
+
+/**
+ * Method by which input data was read.  Network means that the data was read over the network
+ * from a remote block manager.
+ */
+private[spark] object DataReadMethod extends Enumeration with Serializable {
+  type DataReadMethod = Value
+  val Memory, Disk, Hdfs, Network = Value
+}
+
+/**
+ * :: DeveloperApi ::
+ * Metrics about reading input data.
+ */
+@DeveloperApi
+case class InputMetrics(val readMethod: DataReadMethod.Value, val setupTime: Long) {
+  /**
+   * Total time spent blocking on reading input data, in nanoseconds.
+   */
+  var readTime: Long = 0L
+
+  /**
+   * Total bytes read.
+   */
+  var bytesRead: Long = 0L
 }
 
 

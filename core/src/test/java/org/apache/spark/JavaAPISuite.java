@@ -20,6 +20,8 @@ package org.apache.spark;
 import java.io.*;
 import java.util.*;
 
+import com.google.common.base.Optional;
+import org.apache.spark.executor.TaskMetrics;
 import scala.Tuple2;
 
 import com.google.common.collect.Iterables;
