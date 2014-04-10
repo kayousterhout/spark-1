@@ -18,8 +18,10 @@
 package org.apache.spark
 
 import scala.collection.mutable.{ArrayBuffer, HashSet}
-import org.apache.spark.storage.{BlockId, BlockManager, StorageLevel, RDDBlockId}
+
+import org.apache.spark.executor.InputMetrics
 import org.apache.spark.rdd.RDD
+import org.apache.spark.storage.{BlockId, BlockManager, BlockResult, RDDBlockId, StorageLevel}
 
 
 /** Spark class responsible for passing RDDs split contents to the BlockManager and making
@@ -36,9 +38,10 @@ private[spark] class CacheManager(blockManager: BlockManager) extends Logging {
     val key = RDDBlockId(rdd.id, split.index)
     logDebug("Looking for partition " + key)
     blockManager.get(key) match {
-      case Some(values) =>
+      case Some(blockResult) =>
         // Partition is already materialized, so just return its values
-        new InterruptibleIterator(context, values.asInstanceOf[Iterator[T]])
+        context.taskMetrics.inputMetrics = Some(blockResult.inputMetrics)
+        new InterruptibleIterator(context, blockResult.data.asInstanceOf[Iterator[T]])
 
       case None =>
         // Mark the split as loading (unless someone else marks it first)
@@ -55,8 +58,9 @@ private[spark] class CacheManager(blockManager: BlockManager) extends Logging {
             // because it's unlikely that two threads would work on the same RDD partition. One
             // downside of the current code is that threads wait serially if this does happen.
             blockManager.get(key) match {
-              case Some(values) =>
-                return new InterruptibleIterator(context, values.asInstanceOf[Iterator[T]])
+              case Some(blockResult) =>
+                context.taskMetrics.inputMetrics = Some(blockResult.inputMetrics)
+                return new InterruptibleIterator(context, blockResult.data.asInstanceOf[Iterator[T]])
               case None =>
                 logInfo("Whoever was loading %s failed; we'll try it ourselves".format(key))
                 loading.add(key)
