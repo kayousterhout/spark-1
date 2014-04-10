@@ -30,6 +30,7 @@ import org.apache.hadoop.util.ReflectionUtils
 import org.apache.spark._
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.deploy.SparkHadoopUtil
+import org.apache.spark.executor.{DataReadMethod, InputMetrics}
 import org.apache.spark.util.NextIterator
 
 
@@ -147,13 +148,18 @@ class HadoopRDD[K, V](
 
   override def compute(theSplit: Partition, context: TaskContext) = {
     val iter = new NextIterator[(K, V)] {
+      val startTime = System.currentTimeMillis()
       val split = theSplit.asInstanceOf[HadoopPartition]
       logInfo("Input split: " + split.inputSplit)
       var reader: RecordReader[K, V] = null
 
       val jobConf = getJobConf()
       val inputFormat = getInputFormat(jobConf)
-      reader = inputFormat.getRecordReader(split.inputSplit.value, jobConf, Reporter.NULL)
+      reader = inputFormat.getRecordReader(split.inputSplit.value, jobConf, Reporter.NULL)\
+
+      val inputMetrics = new InputMetrics(DataReadMethod.Hdfs)
+      inputMetrics.bytesRead = split.inputSplit.value.getLength()
+      context.taskMetrics.inputMetrics = Some(inputMetrics)
 
       // Register an on-task-completion callback to close the input stream.
       context.addOnCompleteCallback{ () => closeIfNeeded() }
@@ -163,8 +169,9 @@ class HadoopRDD[K, V](
         try {
           finished = !reader.next(key, value)
         } catch {
-          case eof: EOFException =>
+          case eof: EOFException => {
             finished = true
+          }
         }
         (key, value)
       }

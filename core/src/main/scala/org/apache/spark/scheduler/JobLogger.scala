@@ -25,7 +25,7 @@ import java.util.concurrent.LinkedBlockingQueue
 import scala.collection.mutable.{HashMap, HashSet, ListBuffer}
 
 import org.apache.spark._
-import org.apache.spark.executor.TaskMetrics
+import org.apache.spark.executor.{DataReadMethod, TaskMetrics}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
 
@@ -276,7 +276,13 @@ class JobLogger(val user: String, val logDirName: String)
                " GC_TIME=" + taskMetrics.jvmGCTime +
                " EXECUTOR_DESERIALIZE_TIME=" + taskMetrics.executorDeserializeTime
     val executorRunTime = " EXECUTOR_RUN_TIME=" + taskMetrics.executorRunTime
-    val readMetrics = taskMetrics.shuffleReadMetrics match {
+    val inputMetrics = taskMetrics.inputMetrics match {
+      case Some(metrics) =>
+        " READ_METHOD=" + metrics.readMethod.toString +
+        " INPUT_BYTES=" + metrics.bytesRead
+      case None => ""
+    }
+    val shuffleReadMetrics = taskMetrics.shuffleReadMetrics match {
       case Some(metrics) =>
         " SHUFFLE_FINISH_TIME=" + metrics.shuffleFinishTime +
         " BLOCK_FETCHED_TOTAL=" + metrics.totalBlocksFetched +
@@ -296,7 +302,8 @@ class JobLogger(val user: String, val logDirName: String)
         " SHUFFLE_WRITE_TIME=" + metrics.shuffleWriteTime
       case None => ""
     }
-    stageLogInfo(stageID, status + info + executorRunTime + readMetrics + writeMetrics)
+    stageLogInfo(stageID, status + info + executorRunTime + inputMetrics + shuffleReadMetrics +
+      writeMetrics)
   }
 
   /**
