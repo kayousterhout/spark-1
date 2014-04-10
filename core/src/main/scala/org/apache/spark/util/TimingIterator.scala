@@ -15,16 +15,24 @@
  * limitations under the License.
  */
 
-package org.apache.spark.ui.jobs
 
-/** class for reporting aggregated metrics for each executors in stageUI */
-private[spark] class ExecutorSummary {
-  var taskTime : Long = 0
-  var failedTasks : Int = 0
-  var succeededTasks : Int = 0
-  var inputBytes: Long = 0
-  var shuffleRead : Long = 0
-  var shuffleWrite : Long = 0
-  var memoryBytesSpilled : Long = 0
-  var diskBytesSpilled : Long = 0
+package org.apache.spark.util
+
+/**
+ * Wraps an iterator and times each next() call.
+ */
+private[spark] class TimingIterator[T](val iterator: Iterator[T]) extends Iterator[T] {
+  /** Total time spent getting the next element. */
+  var totalTimeNanos = 0L
+
+  override def next(): T = {
+    val startTime = System.nanoTime()
+    val nextItem = iterator.next()
+    totalTimeNanos += System.nanoTime() - startTime
+    return nextItem
+  }
+
+  override def hasNext(): Boolean = {
+    return iterator.hasNext
+  }
 }

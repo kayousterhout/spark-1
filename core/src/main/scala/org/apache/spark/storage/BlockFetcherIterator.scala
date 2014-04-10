@@ -260,15 +260,6 @@ object BlockFetcherIterator {
       logDebug("Got local blocks in " + Utils.getUsedTimeMs(startTime) + " ms")
     }
 
-    override def totalBlocks: Int = numLocal + numRemote
-    override def numLocalBlocks: Int = numLocal
-    override def numRemoteBlocks: Int = numRemote
-    override def fetchWaitTime: Long = _fetchWaitTime
-    override def remoteBytesRead: Long = _remoteBytesRead
-    override def localReadTime: Long = _localReadTime
-    override def localReadBytes: Long = _localReadBytes
-    override def fetchInfos: Seq[FetchInfo] = _fetchInfos
-
     //an iterator that will read fetched blocks off the queue as they arrive.
     @volatile protected var resultsGotten = 0
 
@@ -295,6 +286,9 @@ object BlockFetcherIterator {
     override def remoteFetchTime: Long = _remoteFetchTime
     override def fetchWaitTime: Long = _fetchWaitTime
     override def remoteBytesRead: Long = _remoteBytesRead
+    override def localReadTime: Long = _localReadTime
+    override def localReadBytes: Long = _localReadBytes
+    override def fetchInfos: Seq[FetchInfo] = _fetchInfos
   }
   // End of BasicBlockFetcherIterator
 
