@@ -19,8 +19,10 @@ package org.apache.spark
 
 import scala.collection.mutable.{ArrayBuffer, HashSet}
 
+import org.apache.spark.executor.InputMetrics
 import org.apache.spark.rdd.RDD
-import org.apache.spark.storage.{BlockId, BlockManager, BlockStatus, RDDBlockId, StorageLevel}
+import org.apache.spark.storage.{BlockId, BlockManager, BlockResult, BlockStatus, RDDBlockId,
+  StorageLevel}
 
 /**
  * Spark class responsible for passing RDDs split contents to the BlockManager and making
@@ -37,9 +39,10 @@ private[spark] class CacheManager(blockManager: BlockManager) extends Logging {
     val key = RDDBlockId(rdd.id, split.index)
     logDebug("Looking for partition " + key)
     blockManager.get(key) match {
-      case Some(values) =>
+      case Some(blockResult) =>
         // Partition is already materialized, so just return its values
-        new InterruptibleIterator(context, values.asInstanceOf[Iterator[T]])
+        context.taskMetrics.inputMetrics = Some(blockResult.inputMetrics)
+        new InterruptibleIterator(context, blockResult.data.asInstanceOf[Iterator[T]])
 
       case None =>
         // Mark the split as loading (unless someone else marks it first)
@@ -61,8 +64,9 @@ private[spark] class CacheManager(blockManager: BlockManager) extends Logging {
              * because it's unlikely that two threads would work on the same RDD partition. One
              * downside of the current code is that threads wait serially if this does happen. */
             blockManager.get(key) match {
-              case Some(values) =>
-                return new InterruptibleIterator(context, values.asInstanceOf[Iterator[T]])
+              case Some(blockResult) =>
+                context.taskMetrics.inputMetrics = Some(blockResult.inputMetrics)
+                new InterruptibleIterator(context, blockResult.data.asInstanceOf[Iterator[T]])
               case None =>
                 logInfo("Whoever was loading %s failed; we'll try it ourselves".format(key))
                 loading.add(key)
@@ -95,7 +99,7 @@ private[spark] class CacheManager(blockManager: BlockManager) extends Logging {
               updatedBlocks = blockManager.put(key, computedValues, storageLevel, tellMaster = true)
               blockManager.get(key) match {
                 case Some(values) =>
-                  values.asInstanceOf[Iterator[T]]
+                  values.data.asInstanceOf[Iterator[T]]
                 case None =>
                   logInfo("Failure to store %s".format(key))
                   throw new Exception("Block manager failed to return persisted valued")
