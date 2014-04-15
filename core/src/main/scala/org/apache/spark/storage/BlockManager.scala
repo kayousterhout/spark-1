@@ -31,7 +31,7 @@ import scala.concurrent.duration._
 import it.unimi.dsi.fastutil.io.{FastBufferedOutputStream, FastByteArrayOutputStream}
 
 import org.apache.spark.{Logging, SparkConf, SparkEnv, SparkException}
-import org.apache.spark.executor.{DataReadMethod, InputMetrics}
+import org.apache.spark.executor.{IOMethod, InputMetrics}
 import org.apache.spark.io.CompressionCodec
 import org.apache.spark.network._
 import org.apache.spark.serializer.Serializer
@@ -40,7 +40,7 @@ import org.apache.spark.util._
 import sun.nio.ch.DirectBuffer
 
 /* Class for returning a fetched block and associated metrics. */
-private[spark] class BlockResult(val data: Iterator[Any], readMethod: DataReadMethod.Value,
+private[spark] class BlockResult(val data: Iterator[Any], readMethod: IOMethod.Value,
     bytes: Long, startTime: Long) {
   val inputMetrics = new InputMetrics(readMethod, System.currentTimeMillis() - startTime)
   inputMetrics.bytesRead = bytes
@@ -320,7 +320,7 @@ private[spark] class BlockManager(
         if (level.useMemory) {
           logDebug("Getting block " + blockId + " from memory")
           val result = if (asBlockResult) {
-            memoryStore.getValues(blockId).map(new BlockResult(_, DataReadMethod.Memory, info.size,
+            memoryStore.getValues(blockId).map(new BlockResult(_, IOMethod.Memory, info.size,
               startTime))
           } else {
             memoryStore.getBytes(blockId)
@@ -346,7 +346,7 @@ private[spark] class BlockManager(
           if (!level.useMemory) {
             // If the block shouldn't be stored in memory, we can just return it:
             if (asBlockResult) {
-              return Some(new BlockResult(dataDeserialize(blockId, bytes), DataReadMethod.Disk,
+              return Some(new BlockResult(dataDeserialize(blockId, bytes), IOMethod.Disk,
                 info.size, startTime))
             } else {
               return Some(bytes)
@@ -373,12 +373,12 @@ private[spark] class BlockManager(
                 valuesBuffer ++= values
                 memoryStore.putValues(blockId, valuesBuffer, level, true).data match {
                   case Left(values2) =>
-                    return Some(new BlockResult(values2, DataReadMethod.Disk, info.size, startTime))
+                    return Some(new BlockResult(values2, IOMethod.Disk, info.size, startTime))
                   case _ =>
                     throw new Exception("Memory store did not return back an iterator")
                 }
               } else {
-                return Some(new BlockResult(values, DataReadMethod.Disk, info.size, startTime))
+                return Some(new BlockResult(values, IOMethod.Disk, info.size, startTime))
               }
             }
           }
@@ -418,7 +418,7 @@ private[spark] class BlockManager(
         if (asBlockResult) {
           return Some(new BlockResult(
             dataDeserialize(blockId, data),
-            DataReadMethod.Network,
+            IOMethod.Network,
             data.limit(),
             startTime))
         } else {

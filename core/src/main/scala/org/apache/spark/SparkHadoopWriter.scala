@@ -27,6 +27,7 @@ import org.apache.hadoop.fs.Path
 
 import org.apache.spark.Logging
 import org.apache.spark.SerializableWritable
+import org.apache.spark.executor.{IOMethod, OutputMetrics}
 
 /**
  * Internal helper class that saves an RDD using a Hadoop OutputFormat. This is only public
@@ -51,11 +52,13 @@ class SparkHadoopWriter(@transient jobConf: JobConf)
   private var jID: SerializableWritable[JobID] = null
   private var taID: SerializableWritable[TaskAttemptID] = null
 
+  @transient private var path: Path = null
   @transient private var writer: RecordWriter[AnyRef,AnyRef] = null
   @transient private var format: OutputFormat[AnyRef,AnyRef] = null
   @transient private var committer: OutputCommitter = null
   @transient private var jobContext: JobContext = null
   @transient private var taskContext: TaskAttemptContext = null
+  @transient var writeNanos = 0L
 
   def preSetup() {
     setIDs(0, 0, 0)
@@ -77,7 +80,7 @@ class SparkHadoopWriter(@transient jobConf: JobConf)
     numfmt.setGroupingUsed(false)
     
     val outputName = "part-"  + numfmt.format(splitID)
-    val path = FileOutputFormat.getOutputPath(conf.value)
+    path = FileOutputFormat.getOutputPath(conf.value)
     val fs: FileSystem = {
       if (path != null) {
         path.getFileSystem(conf.value)
@@ -88,11 +91,14 @@ class SparkHadoopWriter(@transient jobConf: JobConf)
 
     getOutputCommitter().setupTask(getTaskContext()) 
     writer = getOutputFormat().getRecordWriter(fs, conf.value, outputName, Reporter.NULL)
+    getOutputFormat().checkOutputSpecs(fs, conf.value)
   }
 
   def write(key: AnyRef, value: AnyRef) {
     if (writer != null) {
+      val startTime = System.nanoTime()
       writer.write(key, value)
+      writeNanos += System.nanoTime() - startTime
     } else {
       throw new IOException("Writer is null, open() has not been called")
     }
@@ -119,6 +125,14 @@ class SparkHadoopWriter(@transient jobConf: JobConf)
     } else {
       logWarning ("No need to commit output of task: " + taID.value)
     }
+  }
+
+  /**
+   * Returns the size of the file written.
+   */
+  def getBytesWritten(): Long = {
+    val fs = path.getFileSystem(conf.value)
+    fs.getFileStatus(path).getLen()
   }
 
   def commitJob() {

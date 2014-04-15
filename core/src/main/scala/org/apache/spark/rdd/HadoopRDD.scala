@@ -30,7 +30,7 @@ import org.apache.hadoop.util.ReflectionUtils
 import org.apache.spark._
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.deploy.SparkHadoopUtil
-import org.apache.spark.executor.{DataReadMethod, InputMetrics}
+import org.apache.spark.executor.{IOMethod, InputMetrics}
 import org.apache.spark.util.NextIterator
 
 
@@ -150,15 +150,15 @@ class HadoopRDD[K, V](
     val iter = new NextIterator[(K, V)] {
       val startTime = System.currentTimeMillis()
       val split = theSplit.asInstanceOf[HadoopPartition]
-      logInfo("Input split: " + split.inputSplit)
       var reader: RecordReader[K, V] = null
 
       val jobConf = getJobConf()
       val inputFormat = getInputFormat(jobConf)
       reader = inputFormat.getRecordReader(split.inputSplit.value, jobConf, Reporter.NULL)
 
-      val inputMetrics = new InputMetrics(DataReadMethod.Hdfs,
+      val inputMetrics = new InputMetrics(IOMethod.Hdfs,
         System.currentTimeMillis() - startTime)
+      inputMetrics.rawBytesRead = split.inputSplit.value.getLength
 
       var totalBytesRead = 0L
       var totalReadTimeNanos = 0L

@@ -25,7 +25,7 @@ import java.util.concurrent.LinkedBlockingQueue
 import scala.collection.mutable.{HashMap, HashSet, ListBuffer}
 
 import org.apache.spark._
-import org.apache.spark.executor.{DataReadMethod, TaskMetrics}
+import org.apache.spark.executor.{IOMethod, TaskMetrics}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.{FetchInfo, StorageLevel}
 
@@ -287,21 +287,26 @@ class JobLogger(val user: String, val logDirName: String)
     val inputMetrics = taskMetrics.inputMetrics match {
       case Some(metrics) =>
         val readMethod = metrics.readMethod match {
-          case DataReadMethod.Memory =>
+          case IOMethod.Memory =>
             "Memory"
-          case DataReadMethod.Disk =>
+          case IOMethod.Disk =>
             "Disk"
-          case DataReadMethod.Hdfs =>
+          case IOMethod.Hdfs =>
             "HDFS"
-          case DataReadMethod.Network =>
+          case IOMethod.Network =>
             "Network"
         }
         " READ_METHOD=" + readMethod +
         " READ_SETUP_TIME=" + metrics.setupTime +
         " READ_BLOCKED_TIME=" + metrics.readTime +
-        " INPUT_BYTES=" + metrics.bytesRead
+        " INPUT_BYTES=" + metrics.bytesRead +
+        " INPUT_BYTES_RAW=" + metrics.rawBytesRead
       case None => ""
     }
+    val allOutputMetrics = taskMetrics.outputMetrics.map { metrics =>
+      s"Hdfs,${metrics.writeTime},${metrics.bytesWritten}"
+    }
+    val outputMetrics = allOutputMetrics.reduce(_ + ";" + _)
     val shuffleReadMetrics = taskMetrics.shuffleReadMetrics match {
       case Some(metrics) =>
         " SHUFFLE_FINISH_TIME=" + metrics.shuffleFinishTime +
@@ -323,7 +328,7 @@ class JobLogger(val user: String, val logDirName: String)
       case None => ""
     }
     stageLogInfo(stageID, status + info + executorRunTime + inputMetrics + shuffleReadMetrics +
-      writeMetrics)
+      writeMetrics + allOutputMetrics)
   }
 
   /**

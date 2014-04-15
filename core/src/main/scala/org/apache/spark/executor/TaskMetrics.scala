@@ -17,6 +17,8 @@
 
 package org.apache.spark.executor
 
+import scala.collection.mutable.ArrayBuffer
+
 import org.apache.spark.storage.FetchInfo
 
 class TaskMetrics extends Serializable {
@@ -67,6 +69,11 @@ class TaskMetrics extends Serializable {
   var inputMetrics: Option[InputMetrics] = None
 
   /**
+   * Metrics for each RDD persisted to memory / disk / Hadoop by this task.
+   */
+  var outputMetrics = new ArrayBuffer[OutputMetrics]()
+
+  /**
    * If this task reads from shuffle output, metrics on getting shuffle data will be collected here
    */
   var shuffleReadMetrics: Option[ShuffleReadMetrics] = None
@@ -82,11 +89,11 @@ object TaskMetrics {
 }
 
 /**
- * Method by which input data was read.  Network means that the data was read over the network
- * from a remote block manager.
+ * Method by which input data was read or output data was written.  Network means that the data was
+ * read over the network from a remote block manager (network is not a valid method for output).
  */
-private[spark] object DataReadMethod extends Enumeration with Serializable {
-  type DataReadMethod = Value
+private[spark] object IOMethod extends Enumeration with Serializable {
+  type IOMethod = Value
   val Memory, Disk, Hdfs, Network = Value
 }
 
@@ -98,7 +105,7 @@ private[spark] object DataReadMethod extends Enumeration with Serializable {
  *                  time during next() iterator calls will dominate if the read is streaming rather
  *                  than blocking at the beginning).
  */
-case class InputMetrics(val readMethod: DataReadMethod.Value, val setupTime: Long) {
+class InputMetrics(val readMethod: IOMethod.Value, val setupTime: Long) extends Serializable {
   /**
    * Total time spent reading during next() iterator calls, in nanoseconds.
    */
@@ -108,8 +115,25 @@ case class InputMetrics(val readMethod: DataReadMethod.Value, val setupTime: Lon
    * Total bytes read.
    */
   var bytesRead: Long = 0L
+
+  /**
+   * Used for Hadoop.
+   * TODO
+   */
+  var rawBytesRead: Long = 0L
 }
 
+/**
+ * Currently only used for Hadoop output!
+ * TODO: Add support for other types of output.
+ */
+case class OutputMetrics(val writeMethod: IOMethod.Value) extends Serializable{
+  /**
+   * Write time in nanoseconds.
+   */
+  var writeTime: Long = 0L
+  var bytesWritten: Long = 0L
+}
 
 class ShuffleReadMetrics extends Serializable {
   /**

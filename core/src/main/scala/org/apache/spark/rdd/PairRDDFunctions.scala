@@ -39,6 +39,7 @@ import org.apache.hadoop.mapreduce.{RecordWriter => NewRecordWriter}
 import org.apache.hadoop.mapreduce.lib.output.{FileOutputFormat => NewFileOutputFormat}
 
 import com.clearspring.analytics.stream.cardinality.HyperLogLog
+import org.apache.spark.executor.{OutputMetrics, IOMethod}
 
 // SparkHadoopWriter and SparkHadoopMapReduceUtil are actually source files defined in Spark.
 import org.apache.hadoop.mapred.SparkHadoopWriter
@@ -736,6 +737,11 @@ class PairRDDFunctions[K: ClassTag, V: ClassTag](self: RDD[(K, V)])
 
       writer.close()
       writer.commit()
+
+      val outputMetrics = new OutputMetrics(IOMethod.Hdfs)
+      outputMetrics.writeTime = writer.writeNanos
+      outputMetrics.bytesWritten = writer.getBytesWritten()
+      context.taskMetrics.outputMetrics += outputMetrics
     }
 
     self.context.runJob(self, writeToFile _)

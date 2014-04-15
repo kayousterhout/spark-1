@@ -30,7 +30,7 @@ import org.scalatest.matchers.ShouldMatchers._
 import org.scalatest.time.SpanSugar._
 
 import org.apache.spark.{SparkConf, SparkContext}
-import org.apache.spark.executor.DataReadMethod
+import org.apache.spark.executor.IOMethod
 import org.apache.spark.serializer.{JavaSerializer, KryoSerializer}
 import org.apache.spark.util.{AkkaUtils, ByteBufferInputStream, SizeEstimator, Utils}
 import scala.collection.mutable.ArrayBuffer
@@ -344,19 +344,19 @@ class BlockManagerSuite extends FunSuite with BeforeAndAfter with PrivateMethodT
     assert(list1Get.isDefined, "list1 expected to be in store")
     assert(list1Get.get.data.size === 2)
     assert(list1Get.get.inputMetrics.bytesRead === list1SizeEstimate)
-    assert(list1Get.get.inputMetrics.readMethod === DataReadMethod.Memory)
+    assert(list1Get.get.inputMetrics.readMethod === IOMethod.Memory)
     val list2MemoryGet = store.get("list2memory")
     assert(list2MemoryGet.isDefined, "list2memory expected to be in store")
     assert(list2MemoryGet.get.data.size === 3)
     assert(list2MemoryGet.get.inputMetrics.bytesRead === list2SizeEstimate)
-    assert(list2MemoryGet.get.inputMetrics.readMethod === DataReadMethod.Memory)
+    assert(list2MemoryGet.get.inputMetrics.readMethod === IOMethod.Memory)
     val list2DiskGet = store.get("list2disk")
     assert(list2DiskGet.isDefined, "list2memory expected to be in store")
     assert(list2DiskGet.get.data.size === 3)
     System.out.println(list2DiskGet)
     // We don't know the exact size of the data on disk, but it should certainly be > 0.
     assert(list2DiskGet.get.inputMetrics.bytesRead > 0)
-    assert(list2DiskGet.get.inputMetrics.readMethod === DataReadMethod.Disk)
+    assert(list2DiskGet.get.inputMetrics.readMethod === IOMethod.Disk)
   }
 
   test("in-memory LRU storage") {

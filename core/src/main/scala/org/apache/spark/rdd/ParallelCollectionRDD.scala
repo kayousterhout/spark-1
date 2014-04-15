@@ -26,7 +26,7 @@ import scala.collection.Map
 import scala.reflect.ClassTag
 
 import org.apache.spark._
-import org.apache.spark.executor.{DataReadMethod, InputMetrics}
+import org.apache.spark.executor.{IOMethod, InputMetrics}
 import org.apache.spark.serializer.JavaSerializer
 import org.apache.spark.util.{SizeEstimator, Utils}
 
@@ -102,7 +102,7 @@ private[spark] class ParallelCollectionRDD[T: ClassTag](
     val parallelCollectionsPartition = s.asInstanceOf[ParallelCollectionPartition[T]]
 
     // Set the input metrics for the task.
-    val inputMetrics = new InputMetrics(DataReadMethod.Memory, 0)
+    val inputMetrics = new InputMetrics(IOMethod.Memory, 0)
     inputMetrics.bytesRead = SizeEstimator.estimate(parallelCollectionsPartition.values)
     context.taskMetrics.inputMetrics = Some(inputMetrics)
 
