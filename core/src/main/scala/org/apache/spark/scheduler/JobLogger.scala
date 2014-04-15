@@ -306,7 +306,7 @@ class JobLogger(val user: String, val logDirName: String)
     val allOutputMetrics = taskMetrics.outputMetrics.map { metrics =>
       s"Hdfs,${metrics.writeTime},${metrics.bytesWritten}"
     }
-    val outputMetrics = allOutputMetrics.foldLeft("")(_ + ";" + _)
+    val outputMetrics = allOutputMetrics.foldLeft(" SHUFFLE_OUTPUT_METRICS=")(_ + ";" + _)
     val shuffleReadMetrics = taskMetrics.shuffleReadMetrics match {
       case Some(metrics) =>
         " SHUFFLE_FINISH_TIME=" + metrics.shuffleFinishTime +
