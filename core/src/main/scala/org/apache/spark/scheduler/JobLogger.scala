@@ -328,7 +328,7 @@ class JobLogger(val user: String, val logDirName: String)
       case None => ""
     }
     stageLogInfo(stageID, status + info + executorRunTime + inputMetrics + shuffleReadMetrics +
-      writeMetrics + allOutputMetrics)
+      writeMetrics + outputMetrics)
   }
 
   /**
