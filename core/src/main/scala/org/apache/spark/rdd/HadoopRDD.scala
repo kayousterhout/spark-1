@@ -155,7 +155,7 @@ class HadoopRDD[K, V](
 
       val jobConf = getJobConf()
       val inputFormat = getInputFormat(jobConf)
-      reader = inputFormat.getRecordReader(split.inputSplit.value, jobConf, Reporter.NULL)\
+      reader = inputFormat.getRecordReader(split.inputSplit.value, jobConf, Reporter.NULL)
 
       val inputMetrics = new InputMetrics(DataReadMethod.Hdfs)
       inputMetrics.bytesRead = split.inputSplit.value.getLength()
