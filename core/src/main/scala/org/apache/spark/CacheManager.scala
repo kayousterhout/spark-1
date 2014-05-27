@@ -21,7 +21,8 @@ import scala.collection.mutable.{ArrayBuffer, HashSet}
 
 import org.apache.spark.executor.InputMetrics
 import org.apache.spark.rdd.RDD
-import org.apache.spark.storage.{BlockId, BlockManager, BlockResult, RDDBlockId, StorageLevel}
+import org.apache.spark.storage.{BlockId, BlockManager, BlockResult, BlockStatus, RDDBlockId,
+  StorageLevel}
 
 /**
  * Wraps an iterator and times hasNext() and next() calls.  Sets the entries in the given
@@ -46,9 +47,6 @@ private class ReadTimingIterator[T](val delegate: Iterator[T], val metrics: Inpu
     hasNext
   }
 }
-
-import org.apache.spark.rdd.RDD
-import org.apache.spark.storage.{BlockId, BlockManager, BlockStatus, RDDBlockId, StorageLevel}
 
 /**
  * Spark class responsible for passing RDDs split contents to the BlockManager and making
@@ -123,7 +121,7 @@ private[spark] class CacheManager(blockManager: BlockManager) extends Logging {
               updatedBlocks = blockManager.put(key, computedValues, storageLevel, tellMaster = true)
               blockManager.get(key) match {
                 case Some(values) =>
-                  values.asInstanceOf[Iterator[T]]
+                  values.data.asInstanceOf[Iterator[T]]
                 case None =>
                   logInfo("Failure to store %s".format(key))
                   throw new Exception("Block manager failed to return persisted valued")

@@ -192,9 +192,7 @@ class HadoopRDD[K, V](
 
       val inputMetrics = new InputMetrics(DataReadMethod.Hdfs,
         System.currentTimeMillis() - startTime)
-
-      var totalBytesRead = 0L
-      var totalReadTimeNanos = 0L
+      context.taskMetrics.inputMetrics = Some(inputMetrics)
 
       // Register an on-task-completion callback to close the input stream.
       context.addOnCompleteCallback{ () => closeIfNeeded() }
@@ -205,24 +203,14 @@ class HadoopRDD[K, V](
           val beginPosition = reader.getPos()
           val startTime = System.nanoTime()
           finished = !reader.next(key, value)
-          totalReadTimeNanos += System.nanoTime() - startTime
-          totalBytesRead += reader.getPos() - beginPosition
-          if (finished) {
-            setInputMetrics()
-          }
+          inputMetrics.readTime += System.nanoTime() - startTime
+          inputMetrics.bytesRead += reader.getPos() - beginPosition
         } catch {
           case eof: EOFException => {
             finished = true
-            setInputMetrics()
           }
         }
         (key, value)
-      }
-
-      def setInputMetrics() {
-        inputMetrics.readTime = totalReadTimeNanos
-        inputMetrics.bytesRead = totalBytesRead
-        context.taskMetrics.inputMetrics = Some(inputMetrics)
       }
 
       override def close() {
