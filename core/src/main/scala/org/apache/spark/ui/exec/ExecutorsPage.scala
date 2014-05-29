@@ -71,6 +71,7 @@ private[ui] class ExecutorsPage(parent: ExecutorsTab) extends WebUIPage("") {
     "Complete Tasks",
     "Total Tasks",
     "Task Time",
+    "Input Bytes",
     "Shuffle Read",
     "Shuffle Write")
 
@@ -95,6 +96,7 @@ private[ui] class ExecutorsPage(parent: ExecutorsTab) extends WebUIPage("") {
       <td>{values("Complete Tasks")}</td>
       <td>{values("Total Tasks")}</td>
       <td>{Utils.msDurationToString(values("Task Time").toLong)}</td>
+      <td>{Utils.bytesToString(values("Input Bytes").toLong)}</td>
       <td>{Utils.bytesToString(values("Shuffle Read").toLong)}</td>
       <td>{Utils.bytesToString(values("Shuffle Write").toLong)}</td>
     </tr>
