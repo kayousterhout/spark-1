@@ -166,8 +166,6 @@ class JobLogger(val user: String, val logDirName: String) extends SparkListener 
       case Some(metrics) =>
         val readMethod = metrics.readMethod.toString
         " READ_METHOD=" + readMethod +
-        " READ_SETUP_TIME=" + metrics.setupTime +
-        " READ_BLOCKED_TIME=" + metrics.readTime +
         " INPUT_BYTES=" + metrics.bytesRead
       case None => ""
     }

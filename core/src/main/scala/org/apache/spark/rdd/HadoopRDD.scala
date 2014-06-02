@@ -180,7 +180,6 @@ class HadoopRDD[K, V](
 
   override def compute(theSplit: Partition, context: TaskContext): InterruptibleIterator[(K, V)] = {
     val iter = new NextIterator[(K, V)] {
-      val startTime = System.currentTimeMillis()
       val split = theSplit.asInstanceOf[HadoopPartition]
       logInfo("Input split: " + split.inputSplit)
       var reader: RecordReader[K, V] = null
@@ -190,8 +189,7 @@ class HadoopRDD[K, V](
         context.stageId, theSplit.index, context.attemptId.toInt, jobConf)
       reader = inputFormat.getRecordReader(split.inputSplit.value, jobConf, Reporter.NULL)
 
-      val inputMetrics = new InputMetrics(DataReadMethod.Hdfs,
-        System.currentTimeMillis() - startTime)
+      val inputMetrics = new InputMetrics(DataReadMethod.Hdfs)
       context.taskMetrics.inputMetrics = Some(inputMetrics)
 
       // Register an on-task-completion callback to close the input stream.
@@ -201,9 +199,7 @@ class HadoopRDD[K, V](
       override def getNext() = {
         try {
           val beginPosition = reader.getPos()
-          val startTime = System.nanoTime()
           finished = !reader.next(key, value)
-          inputMetrics.readTime += System.nanoTime() - startTime
           inputMetrics.bytesRead += reader.getPos() - beginPosition
         } catch {
           case eof: EOFException => {

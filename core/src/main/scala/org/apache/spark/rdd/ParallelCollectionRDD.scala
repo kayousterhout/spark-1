@@ -103,7 +103,7 @@ private[spark] class ParallelCollectionRDD[T: ClassTag](
     val parallelCollectionsPartition = s.asInstanceOf[ParallelCollectionPartition[T]]
 
     // Set the input metrics for the task.
-    val inputMetrics = new InputMetrics(DataReadMethod.Memory, 0)
+    val inputMetrics = new InputMetrics(DataReadMethod.Memory)
     inputMetrics.bytesRead = SizeEstimator.estimate(parallelCollectionsPartition.values)
     context.taskMetrics.inputMetrics = Some(inputMetrics)
 

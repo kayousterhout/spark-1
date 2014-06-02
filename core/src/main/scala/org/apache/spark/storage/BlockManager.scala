@@ -43,8 +43,8 @@ private[spark] case class ArrayBufferValues(buffer: ArrayBuffer[Any]) extends Va
 
 /* Class for returning a fetched block and associated metrics. */
 private[spark] class BlockResult(val data: Iterator[Any], readMethod: DataReadMethod.Value,
-    bytes: Long, startTime: Long) {
-  val inputMetrics = new InputMetrics(readMethod, System.currentTimeMillis() - startTime)
+    bytes: Long) {
+  val inputMetrics = new InputMetrics(readMethod)
   inputMetrics.bytesRead = bytes
 }
 
@@ -370,7 +370,6 @@ private[spark] class BlockManager(
 
   private def doGetLocal(blockId: BlockId, asBlockResult: Boolean): Option[Any] = {
     val info = blockInfo.get(blockId).orNull
-    val startTime = System.currentTimeMillis()
     if (info != null) {
       info.synchronized {
 
@@ -388,8 +387,7 @@ private[spark] class BlockManager(
         if (level.useMemory) {
           logDebug("Getting block " + blockId + " from memory")
           val result = if (asBlockResult) {
-            memoryStore.getValues(blockId).map(new BlockResult(_, DataReadMethod.Memory, info.size,
-              startTime))
+            memoryStore.getValues(blockId).map(new BlockResult(_, DataReadMethod.Memory, info.size))
           } else {
             memoryStore.getBytes(blockId)
           }
@@ -411,7 +409,7 @@ private[spark] class BlockManager(
                   return Some(bytes)
                 } else {
                   return Some(new BlockResult(
-                    dataDeserialize(blockId, bytes), DataReadMethod.Memory, info.size, startTime))
+                    dataDeserialize(blockId, bytes), DataReadMethod.Memory, info.size))
                 }
               }
               case None =>
@@ -434,7 +432,7 @@ private[spark] class BlockManager(
             // If the block shouldn't be stored in memory, we can just return it:
             if (asBlockResult) {
               return Some(new BlockResult(dataDeserialize(blockId, bytes), DataReadMethod.Disk,
-                info.size, startTime))
+                info.size))
             } else {
               return Some(bytes)
             }
@@ -460,12 +458,12 @@ private[spark] class BlockManager(
                 valuesBuffer ++= values
                 memoryStore.putValues(blockId, valuesBuffer, level, true).data match {
                   case Left(values2) =>
-                    return Some(new BlockResult(values2, DataReadMethod.Disk, info.size, startTime))
+                    return Some(new BlockResult(values2, DataReadMethod.Disk, info.size))
                   case _ =>
                     throw new Exception("Memory store did not return back an iterator")
                 }
               } else {
-                return Some(new BlockResult(values, DataReadMethod.Disk, info.size, startTime))
+                return Some(new BlockResult(values, DataReadMethod.Disk, info.size))
               }
             }
           }
@@ -496,7 +494,6 @@ private[spark] class BlockManager(
   private def doGetRemote(blockId: BlockId, asBlockResult: Boolean): Option[Any] = {
     require(blockId != null, "BlockId is null")
     val locations = Random.shuffle(master.getLocations(blockId))
-    val startTime = System.currentTimeMillis()
     for (loc <- locations) {
       logDebug("Getting remote block " + blockId + " from " + loc)
       val data = BlockManagerWorker.syncGetBlock(
@@ -506,8 +503,7 @@ private[spark] class BlockManager(
           return Some(new BlockResult(
             dataDeserialize(blockId, data),
             DataReadMethod.Network,
-            data.limit(),
-            startTime))
+            data.limit()))
         } else {
           return Some(data)
         }

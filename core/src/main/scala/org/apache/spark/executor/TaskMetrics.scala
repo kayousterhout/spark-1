@@ -68,7 +68,7 @@ class TaskMetrics extends Serializable {
 
   /**
    * If this task reads from a HadoopRDD, from cached data, or from a parallelized collection,
-   * metrics on how much data was read and how long the read took are stored here.
+   * metrics on how much data was read are stored here.
    */
   var inputMetrics: Option[InputMetrics] = None
 
@@ -110,12 +110,7 @@ private[spark] object DataReadMethod extends Enumeration with Serializable {
  * setupTime: in millis
  */
 @DeveloperApi
-case class InputMetrics(val readMethod: DataReadMethod.Value, val setupTime: Long) {
-  /**
-   * Total time spent blocking on reading input data, in nanoseconds.
-   */
-  var readTime: Long = 0L
-
+case class InputMetrics(val readMethod: DataReadMethod.Value) {
   /**
    * Total bytes read.
    */

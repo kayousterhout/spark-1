@@ -67,8 +67,7 @@ class CacheManagerSuite extends FunSuite with BeforeAndAfter with EasyMockSugar 
 
   test("get cached rdd") {
     expecting {
-      val result = new BlockResult(ArrayBuffer(5, 6, 7).iterator, DataReadMethod.Memory, 12,
-        System.currentTimeMillis())
+      val result = new BlockResult(ArrayBuffer(5, 6, 7).iterator, DataReadMethod.Memory, 12)
       blockManager.get(RDDBlockId(0, 0)).andReturn(Some(result))
     }
 
