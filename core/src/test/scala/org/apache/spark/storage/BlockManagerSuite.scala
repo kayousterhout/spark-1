@@ -419,7 +419,8 @@ class BlockManagerSuite extends FunSuite with BeforeAndAfter with PrivateMethodT
   }
 
   test("correct BlockResult returned from get() calls") {
-    store = new BlockManager("<driver>", actorSystem, master, serializer, 1200, conf)
+    store = new BlockManager("<driver>", actorSystem, master, serializer, 1200, conf, securityMgr,
+      mapOutputTracker)
     val list1 = List(new Array[Byte](200), new Array[Byte](200))
     val list1ForSizeEstimate = new ArrayBuffer[Any]
     list1ForSizeEstimate ++= list1.iterator
