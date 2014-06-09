@@ -190,18 +190,27 @@ class HadoopRDD[K, V](
         context.stageId, theSplit.index, context.attemptId.toInt, jobConf)
       reader = inputFormat.getRecordReader(split.inputSplit.value, jobConf, Reporter.NULL)
 
-      val inputMetrics = new InputMetrics(DataReadMethod.Hdfs)
-      context.taskMetrics.inputMetrics = Some(inputMetrics)
-
       // Register an on-task-completion callback to close the input stream.
       context.addOnCompleteCallback{ () => closeIfNeeded() }
       val key: K = reader.createKey()
       val value: V = reader.createValue()
+
+      // Set the task input metrics.
+      val inputMetrics = new InputMetrics(DataReadMethod.Hdfs)
+      context.taskMetrics.inputMetrics = Some(inputMetrics)
+      val beginPosition = {
+        try {
+          reader.getPos()
+        } catch {
+          case e: java.io.IOException =>
+            logWarning("Unable to get reader position in order to set task input bytes", e)
+            -1
+        }
+      }
+
       override def getNext() = {
         try {
-          val beginPosition = reader.getPos()
           finished = !reader.next(key, value)
-          inputMetrics.bytesRead += reader.getPos() - beginPosition
         } catch {
           case eof: EOFException =>
             finished = true
@@ -210,6 +219,14 @@ class HadoopRDD[K, V](
       }
 
       override def close() {
+        if (beginPosition >= 0) {
+          try {
+            inputMetrics.bytesRead += reader.getPos() - beginPosition
+          } catch {
+            case e: java.io.IOException =>
+              logWarning("Unable to get reader position in order to set task input bytes", e)
+          }
+        }
         try {
           reader.close()
         } catch {
