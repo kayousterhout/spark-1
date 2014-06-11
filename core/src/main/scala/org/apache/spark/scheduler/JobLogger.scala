@@ -280,7 +280,9 @@ class JobLogger(val user: String, val logDirName: String)
     val inputMetrics = taskMetrics.inputMetrics match {
       case Some(metrics) =>
         " READ_METHOD=" + metrics.readMethod.toString +
-        " INPUT_BYTES=" + metrics.bytesRead
+        " INPUT_BYTES=" + metrics.bytesRead +
+        " PACKETS_READ=" + metrics.numPackets +
+        " READ_TIME_NANOS=" + metrics.readTimeNanos
       case None => ""
     }
     val shuffleReadMetrics = taskMetrics.shuffleReadMetrics match {
