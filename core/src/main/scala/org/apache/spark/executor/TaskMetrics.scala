@@ -96,6 +96,16 @@ case class InputMetrics(val readMethod: DataReadMethod.Value) {
    * Total bytes read.
    */
   var bytesRead: Long = 0L
+
+  /**
+   * Read time.
+   */
+  var readTimeNanos: Long = 0L
+
+  /**
+   * Packets (just for debugging).
+   */
+  var numPackets: Int = 0L
 }
 
 
