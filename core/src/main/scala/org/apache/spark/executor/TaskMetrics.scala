@@ -17,6 +17,10 @@
 
 package org.apache.spark.executor
 
+import scala.collection.mutable.ArrayBuffer
+
+import org.apache.spark.SparkEnv
+
 class TaskMetrics extends Serializable {
   /**
    * Host's name the task runs on 
@@ -81,6 +85,10 @@ class TaskMetrics extends Serializable {
 }
 
 object TaskMetrics {
+  private[spark] def getSerializeSampleProbability(): Double = {
+    SparkEnv.get.conf.getDouble("spark.metrics.serializeTime.sampleProbability", 0.01)
+  }
+
   private[spark] def empty(): TaskMetrics = new TaskMetrics
 }
 
@@ -91,6 +99,12 @@ object TaskMetrics {
 private[spark] object DataReadMethod extends Enumeration with Serializable {
   type DataReadMethod = Value
   val Memory, Disk, Hdfs, Network = Value
+}
+
+// Deserialization always is included in setupTime + readTime
+case class DeserializationMetrics() {
+  var deserializationSamples = new ArrayBuffer[Long]
+  var itemsDeserialized: Int = _
 }
 
 /**
@@ -115,6 +129,9 @@ case class InputMetrics(val readMethod: DataReadMethod.Value) {
 
 
 class ShuffleReadMetrics extends Serializable {
+  /** Deserialization counts as part of the compute time and is not included in the shuffle time. */
+  var deserializationMetrics: Option[DeserializationMetrics] = None
+
   /**
    * Absolute time when this task finished reading shuffle data
    */
@@ -182,4 +199,15 @@ class ShuffleWriteMetrics extends Serializable {
    * Time the task spent blocking on writes to disk or buffer cache, in nanoseconds
    */
   var shuffleWriteTime: Long = _
+
+  /**
+   * Sampled times to perform serialization. Each sample is in nanoseconds.
+   */
+  var serializationSamples = new ArrayBuffer[Long]
+
+  /**
+   * Total items serialized (along with serializationSamples, can be used to estimate time
+   * spent serializing).
+   */
+  var itemsSerialized: Long = _
 }
