@@ -105,7 +105,7 @@ case class InputMetrics(val readMethod: DataReadMethod.Value) {
   /**
    * Packets (just for debugging).
    */
-  var numPackets: Int = 0L
+  var numPackets: Int = 0
 }
 
 
