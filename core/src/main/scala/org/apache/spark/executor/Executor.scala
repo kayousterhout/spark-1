@@ -231,6 +231,10 @@ private[spark] class Executor(
           m.executorRunTime = (taskFinish - taskStart).toInt
           m.jvmGCTime = gcTime - startGCTime
           m.resultSerializationTime = (afterSerialization - beforeSerialization).toInt
+          // Read the output write time for all tasks, even though they may not have written output
+          // data. If tasks did not write output data, DFSOutputStream.writeTimeNanos will just be
+          // equal to 0.
+          m.outputWriteBlockedNanos = org.apache.hadoop.hdfs.DFSOutputStream.writeTimeNanos.get()
         }
 
         val accumUpdates = Accumulators.values
