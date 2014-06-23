@@ -73,6 +73,11 @@ class TaskMetrics extends Serializable {
    * If this task writes to shuffle output, metrics on the written shuffle data will be collected here
    */
   var shuffleWriteMetrics: Option[ShuffleWriteMetrics] = None
+
+  /**
+   * Nanoseconds spent blocked waiting to write output data to HDFS.
+   */
+  var outputWriteBlockedNanos: Long = _
 }
 
 object TaskMetrics {
