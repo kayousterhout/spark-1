@@ -164,7 +164,7 @@ object SparkBuild extends Build {
     concurrentRestrictions in Global += Tags.limit(Tags.Test, 1),
 
     // also check the local Maven repository ~/.m2
-    resolvers ++= Seq(Resolver.file("Local Maven Repo", file(Path.userHome + "/.m2/repository"))),
+    resolvers += Resolver.mavenLocal,
 
     // For Sonatype publishing
     resolvers ++= Seq("sonatype-snapshots" at "https://oss.sonatype.org/content/repositories/snapshots",
