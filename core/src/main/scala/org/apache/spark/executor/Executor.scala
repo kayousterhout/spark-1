@@ -211,6 +211,11 @@ private[spark] class Executor(
 
         // Run the actual task and measure its runtime.
         taskStart = System.currentTimeMillis()
+        // These thread-local variables describing the read and write time need to be set to 0
+        // because tasks are run from a thread pool, so we need to clear earlier values that
+        // may have been set in tasks that ran in the same thread.
+        org.apache.hadoop.hdfs.DFSOutputStream.writeTimeNanos.set(0L)
+        org.apache.hadoop.hdfs.RemoteBlockReader2.readTimeNanos.set(0L)
         val value = task.run(taskId.toInt)
         val taskFinish = System.currentTimeMillis()
         logInfo("Task run from %d to %d".format(taskStart, taskFinish))
