@@ -102,7 +102,7 @@ private[spark] class StagePage(parent: JobProgressUI) {
       val taskHeaders: Seq[String] =
         Seq("Task Index", "Task ID", "Status", "Locality Level", "Executor", "Launch Time") ++
         Seq("Duration", "GC Time", "Result Ser Time") ++
-        {if (hasInputRead) Seq("Input") else Nil} ++
+        {if (hasInputRead) Seq("Input", "Read Time") else Nil} ++
         {if (hasShuffleRead) Seq("Shuffle Read")  else Nil} ++
         {if (hasShuffleWrite) Seq("Write Time", "Shuffle Write") else Nil} ++
         {if (hasBytesSpilled) Seq("Shuffle Spill (Memory)", "Shuffle Spill (Disk)") else Nil} ++
@@ -226,9 +226,14 @@ private[spark] class StagePage(parent: JobProgressUI) {
     val gcTime = metrics.map(m => m.jvmGCTime).getOrElse(0L)
     val serializationTime = metrics.map(m => m.resultSerializationTime).getOrElse(0L)
 
-    val maybeInputRead = metrics.flatMap(m => m.inputMetrics).map(s => s.bytesRead)
-    val inputReadSortable = maybeInputRead.map(_.toString).getOrElse("")
-    val inputReadReadable = maybeInputRead.map(Utils.bytesToString).getOrElse("")
+    val maybeInput = metrics.flatMap(m => m.inputMetrics)
+    val inputReadSortable = maybeInput.map(_.bytesRead.toString).getOrElse("")
+    val inputReadReadable = maybeInput
+      .map(metrics => s"${Utils.bytesToString(metrics.bytesRead)} (${metrics.readMethod})")
+      .getOrElse("")
+
+    val readTimeSortable = maybeInput.map(_.readTimeNanos.toString).getOrElse("")
+    val readTimeReadable = maybeInput.map(m => s"${m.readTimeNanos / 1e6} ms").getOrElse("")
 
     val maybeShuffleRead = metrics.flatMap(m => m.shuffleReadMetrics).map(s => s.remoteBytesRead)
     val shuffleReadSortable = maybeShuffleRead.map(_.toString).getOrElse("")
@@ -268,9 +273,12 @@ private[spark] class StagePage(parent: JobProgressUI) {
         {if (serializationTime > 0) parent.formatDuration(serializationTime) else ""}
       </td>
       {if (inputRead) {
-      <td sorttable_customkey={inputReadSortable}>
-        {inputReadReadable}
-      </td>
+        <td sorttable_customkey={inputReadSortable}>
+          {inputReadReadable}
+        </td>
+        <td sorttable_customkey={readTimeSortable}>
+          {readTimeReadable}
+        </td>
       }}
       {if (shuffleRead) {
       <td sorttable_customkey={shuffleReadSortable}>
