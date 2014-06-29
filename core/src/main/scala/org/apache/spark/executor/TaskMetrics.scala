@@ -20,6 +20,7 @@ package org.apache.spark.executor
 import scala.collection.mutable.ArrayBuffer
 
 import org.apache.spark.SparkEnv
+import org.apache.spark.performance_logging.{DiskUtilization, NetworkUtilization, CpuUtilization}
 
 class TaskMetrics extends Serializable {
   /**
@@ -82,6 +83,13 @@ class TaskMetrics extends Serializable {
    * Nanoseconds spent blocked waiting to write output data to HDFS.
    */
   var outputWriteBlockedNanos: Long = _
+
+  /**
+   * Metrics about machine utilization while the task was running.
+   */
+  var cpuUtilization: Option[CpuUtilization] = None
+  var networkUtilization: Option[NetworkUtilization] = None
+  var diskUtilization: Option[DiskUtilization] = None
 }
 
 object TaskMetrics {
