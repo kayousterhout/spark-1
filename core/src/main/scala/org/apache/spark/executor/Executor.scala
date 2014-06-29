@@ -27,6 +27,7 @@ import scala.collection.mutable.HashMap
 
 import org.apache.spark._
 import org.apache.spark.deploy.SparkHadoopUtil
+import org.apache.spark.performance_logging._
 import org.apache.spark.scheduler._
 import org.apache.spark.storage.{StorageLevel, TaskResultBlockId}
 import org.apache.spark.util.{AkkaUtils, Utils}
@@ -218,9 +219,18 @@ private[spark] class Executor(
         // may have been set in tasks that ran in the same thread.
         org.apache.hadoop.hdfs.DFSOutputStream.writeTimeNanos.set(0L)
         org.apache.hadoop.hdfs.RemoteBlockReader2.readTimeNanos.set(0L)
+
+        val startCpuCounters = new CpuCounters()
+        val startNetworkCounters = new NetworkCounters()
+        val startDiskCounters = new DiskCounters()
+
         val value = task.run(taskId.toInt)
         val taskFinish = System.currentTimeMillis()
         logInfo("Task run from %d to %d".format(taskStart, taskFinish))
+
+        val cpuUtilization = new CpuUtilization(startCpuCounters)
+        val networkUtilization = new NetworkUtilization(startNetworkCounters)
+        val diskUtilization = new DiskUtilization(startDiskCounters)
 
         // If the task has been killed, let's fail it.
         if (task.killed) {
@@ -242,6 +252,9 @@ private[spark] class Executor(
           // data. If tasks did not write output data, DFSOutputStream.writeTimeNanos will just be
           // equal to 0.
           m.outputWriteBlockedNanos = org.apache.hadoop.hdfs.DFSOutputStream.writeTimeNanos.get()
+          m.cpuUtilization = Some(cpuUtilization)
+          m.networkUtilization = Some(networkUtilization)
+          m.diskUtilization = Some(diskUtilization)
         }
 
         val accumUpdates = Accumulators.values

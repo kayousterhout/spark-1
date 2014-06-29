@@ -26,6 +26,7 @@ import scala.collection.mutable.{HashMap, HashSet, ListBuffer}
 
 import org.apache.spark._
 import org.apache.spark.executor.{DataReadMethod, TaskMetrics}
+import org.apache.spark.performance_logging.{BlockDeviceUtilization, DiskUtilization}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
 
@@ -261,6 +262,16 @@ class JobLogger(val user: String, val logDirName: String)
     }
   }
 
+  private def diskUtilizationToString(diskUtilization: DiskUtilization) {
+    var output = "DISK_UTILIZATION="
+    diskUtilization.deviceNameToUtilization.foreach {
+      case (deviceName: String, deviceUtilization: BlockDeviceUtilization) =>
+        output += s"$deviceName:${deviceUtilization.diskUtilization}," +
+          s"${deviceUtilization.readThroughput},${deviceUtilization.writeThroughput}"
+    }
+    output
+  }
+
   /**
    * Record task metrics into job log files, including execution info and shuffle metrics
    * @param stageID Stage ID of the task
@@ -320,8 +331,23 @@ class JobLogger(val user: String, val logDirName: String)
         metricsStr
       case None => ""
     }
+
+    val diskUtilizationMetrics = taskMetrics.diskUtilization.map(diskUtilizationToString(_))
+      .getOrElse("")
+    val cpuUtilizationMetrics = taskMetrics.cpuUtilization.map { cpuUtilization =>
+      s" CPU_UTILIZATION=pu:${cpuUtilization.processUserUtilization}," +
+        s"ps:${cpuUtilization.processSystemUtilization}," +
+        s"tu:${cpuUtilization.totalUserUtilization}" +
+        s"tp:${cpuUtilization.totalUserUtilization}"
+    }.getOrElse("")
+    val networkUtilizationMetrics = taskMetrics.networkUtilization.map { networkUtilization =>
+      s" NETWORK_UTILIZATION=brps:${networkUtilization.bytesReceivedPerSecond}," +
+      s"btps:${networkUtilization.bytesTransmittedPerSecond}," +
+      s"prps:${networkUtilization.packetsReceivedPerSecond}," +
+      s"ptps:${networkUtilization.packetsTransmittedPerSecond}"
+    }.getOrElse("")
     stageLogInfo(stageID, status + info + executorRunTime + inputMetrics + shuffleReadMetrics +
-      writeMetrics)
+      writeMetrics + diskUtilizationMetrics + cpuUtilizationMetrics + networkUtilizationMetrics)
   }
 
   /**
