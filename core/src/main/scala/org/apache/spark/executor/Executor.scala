@@ -26,6 +26,7 @@ import scala.collection.JavaConversions._
 import scala.collection.mutable.{ArrayBuffer, HashMap}
 
 import org.apache.spark._
+import org.apache.spark.performance_logging._
 import org.apache.spark.scheduler._
 import org.apache.spark.shuffle.FetchFailedException
 import org.apache.spark.storage.{StorageLevel, TaskResultBlockId}
@@ -174,8 +175,17 @@ private[spark] class Executor(
 
         // Run the actual task and measure its runtime.
         taskStart = System.currentTimeMillis()
+
+        val startCpuCounters = new CpuCounters()
+        val startNetworkCounters = new NetworkCounters()
+        val startDiskCounters = new DiskCounters()
+
         val value = task.run(taskId.toInt)
         val taskFinish = System.currentTimeMillis()
+
+        val cpuUtilization = new CpuUtilization(startCpuCounters)
+        val networkUtilization = new NetworkUtilization(startNetworkCounters)
+        val diskUtilization = new DiskUtilization(startDiskCounters)
 
         // If the task has been killed, let's fail it.
         if (task.killed) {
@@ -192,6 +202,9 @@ private[spark] class Executor(
           m.executorRunTime = taskFinish - taskStart
           m.jvmGCTime = gcTime - startGCTime
           m.resultSerializationTime = afterSerialization - beforeSerialization
+          m.cpuUtilization = Some(cpuUtilization)
+          m.networkUtilization = Some(networkUtilization)
+          m.diskUtilization = Some(diskUtilization)
         }
 
         val accumUpdates = Accumulators.values
