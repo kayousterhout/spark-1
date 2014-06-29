@@ -20,6 +20,7 @@ package org.apache.spark.executor
 import scala.collection.mutable.ArrayBuffer
 
 import org.apache.spark.annotation.DeveloperApi
+import org.apache.spark.performance_logging.{CpuUtilization, DiskUtilization, NetworkUtilization}
 import org.apache.spark.storage.{BlockId, BlockStatus}
 
 /**
@@ -114,6 +115,13 @@ class TaskMetrics extends Serializable {
    * Storage statuses of any blocks that have been updated as a result of this task.
    */
   var updatedBlocks: Option[Seq[(BlockId, BlockStatus)]] = None
+
+  /**
+   * Metrics about machine utilization while the task was running.
+   */
+  var cpuUtilization: Option[CpuUtilization] = None
+  var networkUtilization: Option[NetworkUtilization] = None
+  var diskUtilization: Option[DiskUtilization] = None
 
   /**
    * A task may have multiple shuffle readers for multiple dependencies. To avoid synchronization
