@@ -26,7 +26,10 @@ import org.json4s.DefaultFormats
 import org.json4s.JsonDSL._
 import org.json4s.JsonAST._
 
+
 import org.apache.spark.executor._
+import org.apache.spark.performance_logging.{BlockDeviceUtilization, CpuUtilization,
+  DiskUtilization, NetworkUtilization}
 import org.apache.spark.scheduler._
 import org.apache.spark.storage._
 import org.apache.spark._
@@ -255,6 +258,10 @@ private[spark] object JsonProtocol {
           ("Status" -> blockStatusToJson(status))
         })
       }.getOrElse(JNothing)
+    val cpuUtilization = taskMetrics.cpuUtilization.map(cpuUtilizationToJson).getOrElse(JNothing)
+    val diskUtilization = taskMetrics.diskUtilization.map(diskUtilizationToJson).getOrElse(JNothing)
+    val networkUtilization =
+      taskMetrics.networkUtilization.map(networkUtilizationToJson).getOrElse(JNothing)
     ("Host Name" -> taskMetrics.hostname) ~
     ("Executor Deserialize Time" -> taskMetrics.executorDeserializeTime) ~
     ("Executor Run Time" -> taskMetrics.executorRunTime) ~
@@ -267,7 +274,36 @@ private[spark] object JsonProtocol {
     ("Shuffle Write Metrics" -> shuffleWriteMetrics) ~
     ("Input Metrics" -> inputMetrics) ~
     ("Output Metrics" -> outputMetrics) ~
-    ("Updated Blocks" -> updatedBlocks)
+    ("Updated Blocks" -> updatedBlocks) ~
+    ("Cpu Utilization" -> cpuUtilization) ~
+    ("Disk Utilization" -> diskUtilization) ~
+    ("Network Utilization" -> networkUtilization)
+  }
+
+  def cpuUtilizationToJson(cpuUtilization: CpuUtilization): JValue = {
+    ("Process User Utilization" -> cpuUtilization.processUserUtilization) ~
+    ("Process System Utilization" -> cpuUtilization.processSystemUtilization) ~
+    ("Total User Utilization" -> cpuUtilization.totalUserUtilization) ~
+    ("Total System Utilization" -> cpuUtilization.totalSystemUtilization)
+  }
+
+  def blockDeviceUtilizationToJson(blockDeviceUtilization: BlockDeviceUtilization): JValue = {
+    ("Disk Utilization" -> blockDeviceUtilization.diskUtilization) ~
+    ("Read Throughput" -> blockDeviceUtilization.readThroughput) ~
+    ("Write Throughput" -> blockDeviceUtilization.writeThroughput)
+  }
+
+  def diskUtilizationToJson(diskUtilization: DiskUtilization): JValue = {
+    diskUtilization.deviceNameToUtilization.map { diskNameAndUtil =>
+      diskNameAndUtil._1 -> blockDeviceUtilizationToJson(diskNameAndUtil._2)
+    }
+  }
+
+  def networkUtilizationToJson(networkUtilization: NetworkUtilization): JValue = {
+    ("Bytes Received Per Second" -> networkUtilization.bytesReceivedPerSecond) ~
+    ("Bytes Transmitted Per Second" -> networkUtilization.bytesTransmittedPerSecond) ~
+    ("Packets Received Per Second" -> networkUtilization.packetsReceivedPerSecond) ~
+    ("Packets Transmitted Per Second" -> networkUtilization.packetsTransmittedPerSecond)
   }
 
   def shuffleReadMetricsToJson(shuffleReadMetrics: ShuffleReadMetrics): JValue = {

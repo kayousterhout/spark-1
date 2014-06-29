@@ -26,6 +26,9 @@ import scala.collection.mutable.HashMap
 import org.apache.spark._
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.executor.TaskMetrics
+import org.apache.spark.performance_logging.{BlockDeviceUtilization, DiskUtilization}
+import org.apache.spark.rdd.RDD
+import org.apache.spark.storage.StorageLevel
 
 /**
  * :: DeveloperApi ::
@@ -138,6 +141,16 @@ class JobLogger(val user: String, val logDirName: String) extends SparkListener 
     stageIdToJobId.get(stageId).foreach(jobId => jobLogInfo(jobId, info, withTime))
   }
 
+  private def diskUtilizationToString(diskUtilization: DiskUtilization): String = {
+    var output = " DISK_UTILIZATION="
+    diskUtilization.deviceNameToUtilization.foreach {
+      case (deviceName: String, deviceUtilization: BlockDeviceUtilization) =>
+        output += s"$deviceName:${deviceUtilization.diskUtilization}," +
+          s"${deviceUtilization.readThroughput},${deviceUtilization.writeThroughput};"
+    }
+    output
+  }
+
   /**
    * Record task metrics into job log files, including execution info and shuffle metrics
    * @param stageId Stage ID of the task
@@ -183,8 +196,24 @@ class JobLogger(val user: String, val logDirName: String) extends SparkListener 
         " SHUFFLE_WRITE_TIME=" + metrics.shuffleWriteTime
       case None => ""
     }
+
+    val diskUtilizationMetrics = taskMetrics.diskUtilization.map(diskUtilizationToString(_))
+      .getOrElse("")
+    val cpuUtilizationMetrics = taskMetrics.cpuUtilization.map { cpuUtilization =>
+      s" CPU_UTILIZATION=pu:${cpuUtilization.processUserUtilization}," +
+        s"ps:${cpuUtilization.processSystemUtilization}," +
+        s"tu:${cpuUtilization.totalUserUtilization}," +
+        s"ts:${cpuUtilization.totalSystemUtilization}"
+    }.getOrElse("")
+    val networkUtilizationMetrics = taskMetrics.networkUtilization.map { networkUtilization =>
+      s" NETWORK_UTILIZATION=brps:${networkUtilization.bytesReceivedPerSecond}," +
+      s"btps:${networkUtilization.bytesTransmittedPerSecond}," +
+      s"prps:${networkUtilization.packetsReceivedPerSecond}," +
+      s"ptps:${networkUtilization.packetsTransmittedPerSecond}"
+    }.getOrElse("")
     stageLogInfo(stageId, status + info + executorRunTime + gcTime + executorDeserializeTime +
-      inputMetrics + outputMetrics + shuffleReadMetrics + writeMetrics)
+      inputMetrics + outputMetrics + shuffleReadMetrics + writeMetrics + diskUtilizationMetrics +
+      cpuUtilizationMetrics + networkUtilizationMetrics)
   }
 
   /**
