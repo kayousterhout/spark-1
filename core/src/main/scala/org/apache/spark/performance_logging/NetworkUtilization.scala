@@ -17,7 +17,8 @@
 
 package org.apache.spark.performance_logging
 
-class NetworkUtilization(startCounters: NetworkCounters, endCounters: NetworkCounters) {
+class NetworkUtilization(startCounters: NetworkCounters, endCounters: NetworkCounters)
+    extends Serializable {
   val elapsedMillis = endCounters.timeMillis - startCounters.timeMillis
 
   val bytesReceivedPerSecond =

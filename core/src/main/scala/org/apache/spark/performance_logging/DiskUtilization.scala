@@ -23,7 +23,7 @@ import scala.collection.mutable.HashMap
 class BlockDeviceUtilization(
     startCounters: BlockDeviceCounters,
     endCounters: BlockDeviceCounters,
-    elapsedMillis: Long) {
+    elapsedMillis: Long) extends Serializable {
   val diskUtilization = ((endCounters.millisTotal - startCounters.millisTotal).toFloat /
     elapsedMillis)
   val readThroughput = ((endCounters.sectorsRead - startCounters.sectorsRead).toFloat *
@@ -32,7 +32,7 @@ class BlockDeviceUtilization(
     DiskUtilization.SECTOR_SIZE_BYTES * 1000 / elapsedMillis)
 }
 
-class DiskUtilization(startCounters: DiskCounters, endCounters: DiskCounters) {
+class DiskUtilization(startCounters: DiskCounters, endCounters: DiskCounters) extends Serializable {
   val deviceNameToUtilization = HashMap[String, BlockDeviceUtilization]()
   val elapsedMillis = endCounters.timeMillis - startCounters.timeMillis
   endCounters.deviceNameToCounters.foreach {
