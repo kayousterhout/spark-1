@@ -262,12 +262,12 @@ class JobLogger(val user: String, val logDirName: String)
     }
   }
 
-  private def diskUtilizationToString(diskUtilization: DiskUtilization) {
-    var output = "DISK_UTILIZATION="
+  private def diskUtilizationToString(diskUtilization: DiskUtilization): String = {
+    var output = " DISK_UTILIZATION="
     diskUtilization.deviceNameToUtilization.foreach {
       case (deviceName: String, deviceUtilization: BlockDeviceUtilization) =>
         output += s"$deviceName:${deviceUtilization.diskUtilization}," +
-          s"${deviceUtilization.readThroughput},${deviceUtilization.writeThroughput}"
+          s"${deviceUtilization.readThroughput},${deviceUtilization.writeThroughput};"
     }
     output
   }
@@ -346,7 +346,7 @@ class JobLogger(val user: String, val logDirName: String)
       s"prps:${networkUtilization.packetsReceivedPerSecond}," +
       s"ptps:${networkUtilization.packetsTransmittedPerSecond}"
     }.getOrElse("")
-    stageLogInfo(stageID, status + info + executorRunTime + inputMetrics + "AAA" + shuffleReadMetrics + "BBBBB" +
+    stageLogInfo(stageID, status + info + executorRunTime + inputMetrics + shuffleReadMetrics +
       writeMetrics + diskUtilizationMetrics + cpuUtilizationMetrics + networkUtilizationMetrics)
   }
 
