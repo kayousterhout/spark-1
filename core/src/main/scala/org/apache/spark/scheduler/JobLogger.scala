@@ -338,7 +338,7 @@ class JobLogger(val user: String, val logDirName: String)
       s" CPU_UTILIZATION=pu:${cpuUtilization.processUserUtilization}," +
         s"ps:${cpuUtilization.processSystemUtilization}," +
         s"tu:${cpuUtilization.totalUserUtilization}" +
-        s"tp:${cpuUtilization.totalUserUtilization}"
+        s"ts:${cpuUtilization.totalSystemUtilization}"
     }.getOrElse("")
     val networkUtilizationMetrics = taskMetrics.networkUtilization.map { networkUtilization =>
       s" NETWORK_UTILIZATION=brps:${networkUtilization.bytesReceivedPerSecond}," +
@@ -346,7 +346,7 @@ class JobLogger(val user: String, val logDirName: String)
       s"prps:${networkUtilization.packetsReceivedPerSecond}," +
       s"ptps:${networkUtilization.packetsTransmittedPerSecond}"
     }.getOrElse("")
-    stageLogInfo(stageID, status + info + executorRunTime + inputMetrics + shuffleReadMetrics +
+    stageLogInfo(stageID, status + info + executorRunTime + inputMetrics + "AAA" + shuffleReadMetrics + "BBBBB" +
       writeMetrics + diskUtilizationMetrics + cpuUtilizationMetrics + networkUtilizationMetrics)
   }
 
