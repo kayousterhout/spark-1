@@ -22,6 +22,11 @@ object CpuUtilization {
   val JIFFIES_PER_SECOND = 100
 }
 
+/**
+ * CPU utilization measures the average number of cores in use, so when the CPUs are fully
+ * utilized, the CPU utilization will be equal to the number of cores (i.e., it will typically
+ * be greater than 1).
+ */
 class CpuUtilization(startCounters: CpuCounters, endCounters: CpuCounters) extends Serializable {
   val elapsedMillis = endCounters.timeMillis - startCounters.timeMillis
   val elapsedJiffies = CpuUtilization.JIFFIES_PER_SECOND * (elapsedMillis * 1.0 / 1000)
