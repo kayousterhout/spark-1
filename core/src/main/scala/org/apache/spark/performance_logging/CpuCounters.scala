@@ -19,7 +19,7 @@ package org.apache.spark.performance_logging
 
 import scala.io.Source
 
-class CpuCounters() {
+class CpuCounters() extends Serializable {
   val timeMillis = System.currentTimeMillis()
 
   // Total times used by the Spark process.
