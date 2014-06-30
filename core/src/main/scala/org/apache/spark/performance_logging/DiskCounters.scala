@@ -21,7 +21,7 @@ import scala.collection.mutable.HashMap
 import scala.io.Source
 
 /** Stores counters for a particular block device. */
-case class BlockDeviceCounters(val countersLine: String) {
+case class BlockDeviceCounters(val countersLine: String) extends Serializable {
   val items = countersLine.split(" ").filter(!_.isEmpty())
   val deviceName = items(2)
 
@@ -36,7 +36,7 @@ case class BlockDeviceCounters(val countersLine: String) {
 /** Counters across all block devices. */
 class DiskCounters(
   val timeMillis: Long,
-  val deviceNameToCounters: HashMap[String, BlockDeviceCounters]) {
+  val deviceNameToCounters: HashMap[String, BlockDeviceCounters]) extends Serializable {
 
   def this() = {
     this(System.currentTimeMillis(), new HashMap[String, BlockDeviceCounters]())

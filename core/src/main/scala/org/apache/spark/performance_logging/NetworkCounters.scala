@@ -19,7 +19,7 @@ package org.apache.spark.performance_logging
 
 import scala.io.Source
 
-case class NetworkCounters() {
+case class NetworkCounters() extends Serializable {
   val timeMillis = System.currentTimeMillis()
   var receivedBytes = 0L
   var receivedPackets = 0L
