@@ -207,8 +207,8 @@ class JobLogger(val user: String, val logDirName: String) extends SparkListener 
     val cpuUtilizationMetrics = taskMetrics.cpuUtilization.map { cpuUtilization =>
       s" CPU_UTILIZATION=pu:${cpuUtilization.processUserUtilization}," +
         s"ps:${cpuUtilization.processSystemUtilization}," +
-        s"tu:${cpuUtilization.totalUserUtilization}" +
-        s"tp:${cpuUtilization.totalUserUtilization}"
+        s"tu:${cpuUtilization.totalUserUtilization}," +
+        s"ts:${cpuUtilization.totalSystemUtilization}"
     }.getOrElse("")
     val networkUtilizationMetrics = taskMetrics.networkUtilization.map { networkUtilization =>
       s" NETWORK_UTILIZATION=brps:${networkUtilization.bytesReceivedPerSecond}," +
