@@ -20,7 +20,7 @@ package org.apache.spark
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.mutable.HashMap
 
-import org.apache.spark.executor.{SerializationMetrics, ShuffleReadMetrics, TaskMetrics}
+import org.apache.spark.executor.{ShuffleReadMetrics, TaskMetrics}
 import org.apache.spark.serializer.Serializer
 import org.apache.spark.storage.{BlockId, BlockManagerId, ShuffleBlockId}
 import org.apache.spark.util.CompletionIterator
@@ -74,9 +74,7 @@ private[spark] class BlockStoreShuffleFetcher extends ShuffleFetcher with Loggin
       }
     }
 
-    val deserializationMetrics = new SerializationMetrics()
-    val blockFetcherItr = blockManager.getMultiple(blocksByAddress, serializer,
-      deserializationMetrics)
+    val blockFetcherItr = blockManager.getMultiple(blocksByAddress, serializer)
     val itr = blockFetcherItr.flatMap(unpackBlock)
 
     val completionIter = CompletionIterator[T, Iterator[T]](itr, {
@@ -91,7 +89,6 @@ private[spark] class BlockStoreShuffleFetcher extends ShuffleFetcher with Loggin
       shuffleMetrics.totalBlocksFetched = blockFetcherItr.totalBlocks
       shuffleMetrics.localBlocksFetched = blockFetcherItr.numLocalBlocks
       shuffleMetrics.remoteBlocksFetched = blockFetcherItr.numRemoteBlocks
-      shuffleMetrics.deserializationMetrics = Some(deserializationMetrics)
       context.taskMetrics.shuffleReadMetrics = Some(shuffleMetrics)
     })
 

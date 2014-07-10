@@ -17,14 +17,11 @@
 
 package org.apache.spark.serializer
 
-import scala.util.Random
-
 import java.io.{EOFException, InputStream, OutputStream}
 import java.nio.ByteBuffer
 
 import it.unimi.dsi.fastutil.io.FastByteArrayOutputStream
 
-import org.apache.spark.executor.{TaskMetrics, SerializationMetrics}
 import org.apache.spark.util.{NextIterator, ByteBufferInputStream}
 
 
@@ -105,37 +102,6 @@ trait DeserializationStream {
     override protected def getNext() = {
       try {
         readObject[Any]()
-      } catch {
-        case eof: EOFException =>
-          finished = true
-      }
-    }
-
-    override protected def close() {
-      DeserializationStream.this.close()
-    }
-  }
-
-  /**
-   * Read the elements of this stream through an iterator, where deserialization information is
-   * recorded in the given DeserializationMetrics.  This can only be called once, as
-   * reading each element will consume data from the input source.
-   */
-  def asIteratorWithMetrics(metrics: SerializationMetrics)
-    : Iterator[Any] = new NextIterator[Any] {
-    val sampleProbability = TaskMetrics.getSerializeSampleProbability()
-
-    override protected def getNext() = {
-      try {
-        metrics.itemsSerialized += 1
-        if (Random.nextDouble() < sampleProbability) {
-          val startTime = System.nanoTime()
-          val ret = readObject[Any]()
-          metrics.serializationSamples += System.nanoTime() - startTime
-          ret
-        } else {
-          readObject[Any]()
-        }
       } catch {
         case eof: EOFException =>
           finished = true

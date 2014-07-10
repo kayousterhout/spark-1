@@ -32,7 +32,7 @@ import scala.concurrent.duration._
 import it.unimi.dsi.fastutil.io.{FastBufferedOutputStream, FastByteArrayOutputStream}
 
 import org.apache.spark.{Logging, SparkConf, SparkEnv, SparkException}
-import org.apache.spark.executor.{DataReadMethod, InputMetrics, SerializationMetrics}
+import org.apache.spark.executor.{DataReadMethod, InputMetrics}
 import org.apache.spark.io.CompressionCodec
 import org.apache.spark.network._
 import org.apache.spark.serializer.Serializer
@@ -42,10 +42,9 @@ import sun.nio.ch.DirectBuffer
 
 /* Class for returning a fetched block and associated metrics. */
 private[spark] class BlockResult(val data: Iterator[Any], readMethod: DataReadMethod.Value,
-    bytes: Long, deserializationMetrics: Option[SerializationMetrics]) {
+    bytes: Long) {
   val inputMetrics = new InputMetrics(readMethod)
   inputMetrics.bytesRead = bytes
-  inputMetrics.deserializationMetrics = deserializationMetrics
 }
 
 private[spark] class BlockManager(
@@ -272,9 +271,8 @@ private[spark] class BlockManager(
    * shuffle blocks. It is safe to do so without a lock on block info since disk store
    * never deletes (recent) items.
    */
-  def getLocalFromDisk(blockId: BlockId, serializer: Serializer,
-                       deserializationMetrics: SerializationMetrics): Option[Iterator[Any]] = {
-    diskStore.getValues(blockId, serializer, deserializationMetrics).orElse(
+  def getLocalFromDisk(blockId: BlockId, serializer: Serializer): Option[Iterator[Any]] = {
+    diskStore.getValues(blockId, serializer).orElse(
       sys.error("Block " + blockId + " not found on disk, though it should be"))
   }
 
@@ -323,8 +321,7 @@ private[spark] class BlockManager(
         if (level.useMemory) {
           logDebug("Getting block " + blockId + " from memory")
           val result = if (asBlockResult) {
-            memoryStore.getValues(blockId).map(new BlockResult(_, DataReadMethod.Memory, info.size,
-              None))
+            memoryStore.getValues(blockId).map(new BlockResult(_, DataReadMethod.Memory, info.size))
           } else {
             memoryStore.getBytes(blockId)
           }
@@ -349,12 +346,8 @@ private[spark] class BlockManager(
           if (!level.useMemory) {
             // If the block shouldn't be stored in memory, we can just return it:
             if (asBlockResult) {
-              val deserializationMetrics = new SerializationMetrics()
-              return Some(new BlockResult(
-                dataDeserialize(blockId, bytes, Some(deserializationMetrics)),
-                DataReadMethod.Disk,
-                info.size,
-                Some(deserializationMetrics)))
+              return Some(new BlockResult(dataDeserialize(blockId, bytes), DataReadMethod.Disk,
+                info.size))
             } else {
               return Some(bytes)
             }
@@ -372,8 +365,7 @@ private[spark] class BlockManager(
             if (!asBlockResult) {
               return Some(bytes)
             } else {
-              val deserializationMetrics = new SerializationMetrics()
-              val values = dataDeserialize(blockId, bytes, Some(deserializationMetrics))
+              val values = dataDeserialize(blockId, bytes)
               if (level.deserialized) {
                 // Cache the values before returning them:
                 // TODO: Consider creating a putValues that also takes in a iterator?
@@ -381,17 +373,12 @@ private[spark] class BlockManager(
                 valuesBuffer ++= values
                 memoryStore.putValues(blockId, valuesBuffer, level, true).data match {
                   case Left(values2) =>
-                    return Some(new BlockResult(
-                      values2,
-                      DataReadMethod.Disk,
-                      info.size,
-                      Some(deserializationMetrics)))
+                    return Some(new BlockResult(values2, DataReadMethod.Disk, info.size))
                   case _ =>
                     throw new Exception("Memory store did not return back an iterator")
                 }
               } else {
-                return Some(new BlockResult(
-                  values, DataReadMethod.Disk, info.size, Some(deserializationMetrics)))
+                return Some(new BlockResult(values, DataReadMethod.Disk, info.size))
               }
             }
           }
@@ -428,12 +415,10 @@ private[spark] class BlockManager(
         GetBlock(blockId), ConnectionManagerId(loc.host, loc.port))
       if (data != null) {
         if (asBlockResult) {
-          val deserializationMetrics = new SerializationMetrics()
           return Some(new BlockResult(
-            dataDeserialize(blockId, data, Some(deserializationMetrics)),
+            dataDeserialize(blockId, data),
             DataReadMethod.Network,
-            data.limit(),
-            Some(deserializationMetrics)))
+            data.limit()))
         } else {
           return Some(data)
         }
@@ -468,17 +453,14 @@ private[spark] class BlockManager(
    * so that we can control the maxMegabytesInFlight for the fetch.
    */
   def getMultiple(
-    blocksByAddress: Seq[(BlockManagerId, Seq[(BlockId, Long)])], serializer: Serializer,
-    deserializationMetrics: SerializationMetrics)
+    blocksByAddress: Seq[(BlockManagerId, Seq[(BlockId, Long)])], serializer: Serializer)
       : BlockFetcherIterator = {
 
     val iter =
       if (conf.getBoolean("spark.shuffle.use.netty", false)) {
-        new BlockFetcherIterator.NettyBlockFetcherIterator(this, blocksByAddress, serializer,
-          deserializationMetrics)
+        new BlockFetcherIterator.NettyBlockFetcherIterator(this, blocksByAddress, serializer)
       } else {
-        new BlockFetcherIterator.BasicBlockFetcherIterator(this, blocksByAddress, serializer,
-          deserializationMetrics)
+        new BlockFetcherIterator.BasicBlockFetcherIterator(this, blocksByAddress, serializer)
       }
 
     iter.initialize()
@@ -871,19 +853,12 @@ private[spark] class BlockManager(
   def dataDeserialize(
       blockId: BlockId,
       bytes: ByteBuffer,
-      deserializationMetrics: Option[SerializationMetrics] = None,
       serializer: Serializer = defaultSerializer): Iterator[Any] = {
     bytes.rewind()
 
     def getIterator = {
       val stream = wrapForCompression(blockId, new ByteBufferInputStream(bytes, true))
-
-      val deserializedStream = serializer.newInstance().deserializeStream(stream)
-      if (deserializationMetrics.isDefined) {
-        deserializedStream.asIteratorWithMetrics(deserializationMetrics.get)
-      } else {
-        deserializedStream.asIterator
-      }
+      serializer.newInstance().deserializeStream(stream).asIterator
     }
 
     if (blockId.isShuffle) {
