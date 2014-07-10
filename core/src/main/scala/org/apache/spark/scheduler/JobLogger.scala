@@ -311,7 +311,7 @@ class JobLogger(val user: String, val logDirName: String)
           " LOCAL_READ_BYTES=" + metrics.localReadBytes)
         if (metrics.deserializationMetrics.isDefined) {
           val deserializationMetrics = metrics.deserializationMetrics.get
-          metricsStr += (" DESERIALIZATION_TIME_NANOS=" +
+          metricsStr += (" DESERIALIZATION_SAMPLES=" +
             deserializationMetrics.serializationSamples.mkString(",") +
             " DESERIALIZED_ITEMS=" + deserializationMetrics.itemsSerialized)
         }
