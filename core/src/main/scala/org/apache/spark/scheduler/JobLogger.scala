@@ -324,7 +324,7 @@ class JobLogger(val user: String, val logDirName: String)
           " SHUFFLE_WRITE_TIME=" + metrics.shuffleWriteTime)
         if (metrics.serializationMetrics.isDefined) {
           metricsStr += (
-            " SERIALIZATED_ITEMS=" + metrics.serializationMetrics.get.itemsSerialized +
+            " SERIALIZED_ITEMS=" + metrics.serializationMetrics.get.itemsSerialized +
             " SERIALIZED_SAMPLES=" +
             metrics.serializationMetrics.get.serializationSamples.mkString(","))
         }
