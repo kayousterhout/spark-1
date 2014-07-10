@@ -20,10 +20,10 @@ package org.apache.spark.scheduler
 import java.io._
 import java.util.zip.{GZIPInputStream, GZIPOutputStream}
 
-import scala.collection.mutable.{ArrayBuffer, HashMap}
+import scala.collection.mutable.HashMap
 
 import org.apache.spark._
-import org.apache.spark.executor.{SerializationMetrics, ShuffleWriteMetrics}
+import org.apache.spark.executor.ShuffleWriteMetrics
 import org.apache.spark.storage._
 import org.apache.spark.util.{MetadataCleanerType, TimeStampedHashMap, MetadataCleaner}
 import org.apache.spark.rdd.RDD
@@ -167,16 +167,12 @@ private[spark] class ShuffleMapTask(
       // Commit the writes. Get the size of each bucket block (total block size).
       var totalBytes = 0L
       var totalTime = 0L
-      var totalItemsSerialized = 0L
-      var serializationSamples = new ArrayBuffer[Long]
       val compressedSizes: Array[Byte] = shuffle.writers.map { writer: BlockObjectWriter =>
         writer.commit()
         writer.close()
         val size = writer.fileSegment().length
         totalBytes += size
         totalTime += writer.timeWriting()
-        serializationSamples ++= writer.serializationSamples()
-        totalItemsSerialized = totalItemsSerialized + writer.itemsSerialized()
         MapOutputTracker.compressSize(size)
       }
 
@@ -184,10 +180,6 @@ private[spark] class ShuffleMapTask(
       val shuffleMetrics = new ShuffleWriteMetrics
       shuffleMetrics.shuffleBytesWritten = totalBytes
       shuffleMetrics.shuffleWriteTime = totalTime
-      val serializationMetrics = new SerializationMetrics
-      serializationMetrics.serializationSamples = serializationSamples
-      serializationMetrics.itemsSerialized = totalItemsSerialized
-      shuffleMetrics.serializationMetrics = Some(serializationMetrics)
       metrics.get.shuffleWriteMetrics = Some(shuffleMetrics)
 
       success = true

@@ -17,18 +17,13 @@
 
 package org.apache.spark.storage
 
-import util.Random
-
-import scala.collection.mutable.ArrayBuffer
-
 import java.io.{FileOutputStream, File, OutputStream}
 import java.nio.channels.FileChannel
 
 import it.unimi.dsi.fastutil.io.FastBufferedOutputStream
 
-import org.apache.spark.{Logging}
+import org.apache.spark.Logging
 import org.apache.spark.serializer.{SerializationStream, Serializer}
-import org.apache.spark.executor.TaskMetrics
 
 /**
  * An interface for writing JVM objects to some underlying storage. This interface allows
@@ -71,16 +66,6 @@ private[spark] abstract class BlockObjectWriter(val blockId: BlockId) {
    * Cumulative time spent performing blocking writes, in ns.
    */
   def timeWriting(): Long
-
-  /**
-   * Total values serialized.
-   */
-  def itemsSerialized(): Int
-
-  /**
-   * Sampled times to serialize.
-   */
-  def serializationSamples(): ArrayBuffer[Long]
 
   /**
    * Number of bytes written so far
@@ -128,9 +113,6 @@ private[spark] class DiskBlockObjectWriter(
   private var lastValidPosition = initialPosition
   private var initialized = false
   private var _timeWriting = 0L
-  private var totalValuesSerialized = 0
-  private var _serializationSamples = new ArrayBuffer[Long]
-  private var sampleProbability = TaskMetrics.getSerializeSampleProbability()
 
   override def open(): BlockObjectWriter = {
     fos = new FileOutputStream(file, true)
@@ -196,21 +178,7 @@ private[spark] class DiskBlockObjectWriter(
     if (!initialized) {
       open()
     }
-
-    totalValuesSerialized += 1
-
-    if (Random.nextDouble() < sampleProbability) {
-      // Read the object and track how long it takes.
-      val start = System.nanoTime()
-      val startTimeWriting = ts.timeWriting
-      objOut.writeObject(value)
-      val totalTimeElapsed = System.nanoTime() - start
-      // To get the serialization time, need to deduct time spent writing output to disk.
-      val serializationTime = totalTimeElapsed - (ts.timeWriting - startTimeWriting)
-      _serializationSamples += serializationTime
-    } else {
-      objOut.writeObject(value)
-    }
+    objOut.writeObject(value)
   }
 
   override def fileSegment(): FileSegment = {
@@ -219,10 +187,6 @@ private[spark] class DiskBlockObjectWriter(
 
   // Only valid if called after close()
   override def timeWriting() = _timeWriting
-
-  override def serializationSamples() = _serializationSamples
-
-  override def itemsSerialized() = totalValuesSerialized
 
   // Only valid if called after commit()
   override def bytesWritten: Long = {
