@@ -69,7 +69,7 @@ class JobProgressListenerSuite extends FunSuite with LocalSparkContext with Shou
 
     // finish this task, should get updated shuffleRead
     shuffleReadMetrics.remoteBytesRead = 1000
-    taskMetrics.shuffleReadMetrics = Some(shuffleReadMetrics)
+    taskMetrics.updateShuffleReadMetrics(shuffleReadMetrics)
     var taskInfo = new TaskInfo(1234L, 0, 0L, "exe-1", "host1", TaskLocality.NODE_LOCAL)
     taskInfo.finishTime = 1
     listener.onTaskEnd(new SparkListenerTaskEnd(
@@ -85,8 +85,6 @@ class JobProgressListenerSuite extends FunSuite with LocalSparkContext with Shou
     assert(listener.stageIdToExecutorSummaries.size == 1)
 
     // finish this task, should get updated duration
-    shuffleReadMetrics.remoteBytesRead = 1000
-    taskMetrics.shuffleReadMetrics = Some(shuffleReadMetrics)
     taskInfo = new TaskInfo(1235L, 0, 0L, "exe-1", "host1", TaskLocality.NODE_LOCAL)
     taskInfo.finishTime = 1
     listener.onTaskEnd(new SparkListenerTaskEnd(
@@ -95,9 +93,19 @@ class JobProgressListenerSuite extends FunSuite with LocalSparkContext with Shou
       .shuffleRead == 2000)
 
     // finish this task, should get updated duration
-    shuffleReadMetrics.remoteBytesRead = 1000
-    taskMetrics.shuffleReadMetrics = Some(shuffleReadMetrics)
     taskInfo = new TaskInfo(1236L, 0, 0L, "exe-2", "host1", TaskLocality.NODE_LOCAL)
+    taskInfo.finishTime = 1
+    task = new ShuffleMapTask(0, null, null, 0, null)
+    listener.onTaskEnd(SparkListenerTaskEnd(task.stageId, taskType, Success, taskInfo, taskMetrics))
+    assert(listener.stageIdToData.getOrElse(0, fail()).executorSummary.getOrElse("exe-2", fail())
+      .shuffleRead === 1000)
+  }
+
+  test("test task success vs failure counting for different task end reasons") {
+    val conf = new SparkConf()
+    val listener = new JobProgressListener(conf)
+    val metrics = new TaskMetrics()
+    val taskInfo = new TaskInfo(1234L, 0, 3, 0L, "exe-1", "host1", TaskLocality.NODE_LOCAL, false)
     taskInfo.finishTime = 1
     listener.onTaskEnd(new SparkListenerTaskEnd(
       new ShuffleMapTask(0, null, null, 0, null), Success, taskInfo, taskMetrics))

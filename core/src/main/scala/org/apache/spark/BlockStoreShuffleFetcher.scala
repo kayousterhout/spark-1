@@ -89,7 +89,7 @@ private[spark] class BlockStoreShuffleFetcher extends ShuffleFetcher with Loggin
       shuffleMetrics.totalBlocksFetched = blockFetcherItr.totalBlocks
       shuffleMetrics.localBlocksFetched = blockFetcherItr.numLocalBlocks
       shuffleMetrics.remoteBlocksFetched = blockFetcherItr.numRemoteBlocks
-      context.taskMetrics.shuffleReadMetrics = Some(shuffleMetrics)
+      context.taskMetrics.updateShuffleReadMetrics(shuffleMetrics)
     })
 
     new InterruptibleIterator[T](context, completionIter)
