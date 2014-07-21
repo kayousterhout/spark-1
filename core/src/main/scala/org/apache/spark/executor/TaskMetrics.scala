@@ -87,6 +87,11 @@ class TaskMetrics extends Serializable {
   var outputWriteBlockedNanos: Long = _
 
   /**
+   * Bytes written to HDFS.
+   */
+  var outputBytes: Long = _
+
+  /**
    * Metrics about machine utilization while the task was running.
    */
   var cpuUtilization: Option[CpuUtilization] = None

@@ -287,7 +287,8 @@ class JobLogger(val user: String, val logDirName: String)
                " GC_TIME=" + taskMetrics.jvmGCTime +
                " EXECUTOR_DESERIALIZE_TIME=" + taskMetrics.executorDeserializeTime +
                " LOCALITY=" + taskInfo.taskLocality.toString +
-               " OUTPUT_WRITE_BLOCKED_NANOS=" + taskMetrics.outputWriteBlockedNanos
+               " OUTPUT_WRITE_BLOCKED_NANOS=" + taskMetrics.outputWriteBlockedNanos +
+               " OUTPUT_BYTES=" + taskMetrics.outputBytes
     val executorRunTime = " EXECUTOR_RUN_TIME=" + taskMetrics.executorRunTime
     val inputMetrics = taskMetrics.inputMetrics match {
       case Some(metrics) =>

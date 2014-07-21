@@ -216,6 +216,7 @@ private[spark] class Executor(
         // because tasks are run from a thread pool, so we need to clear earlier values that
         // may have been set in tasks that ran in the same thread.
         org.apache.hadoop.hdfs.DFSOutputStream.writeTimeNanos.set(0L)
+        org.apache.hadoop.hdfs.DFSOutputStream.bytesWritten.set(0L)
         org.apache.hadoop.hdfs.RemoteBlockReader2.readTimeNanos.set(0L)
 
         val startCpuCounters = new CpuCounters()
@@ -250,6 +251,7 @@ private[spark] class Executor(
           // data. If tasks did not write output data, DFSOutputStream.writeTimeNanos will just be
           // equal to 0.
           m.outputWriteBlockedNanos = org.apache.hadoop.hdfs.DFSOutputStream.writeTimeNanos.get()
+          m.outputBytes = org.apache.hadoop.hdfs.DFSOutputStream.bytesWritten.get()
           m.cpuUtilization = Some(cpuUtilization)
           m.networkUtilization = Some(networkUtilization)
           m.diskUtilization = Some(diskUtilization)
