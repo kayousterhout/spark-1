@@ -117,6 +117,11 @@ class TaskMetrics extends Serializable {
   var updatedBlocks: Option[Seq[(BlockId, BlockStatus)]] = None
 
   /**
+   * Bytes written to HDFS.
+   */
+  var outputBytes: Long = _
+
+  /**
    * Metrics about machine utilization while the task was running.
    */
   var cpuUtilization: Option[CpuUtilization] = None
@@ -151,6 +156,11 @@ class TaskMetrics extends Serializable {
     }
     _shuffleReadMetrics = Some(merged)
   }
+
+  /**
+   * Nanoseconds spent blocked waiting to write output data to HDFS.
+   */
+  var outputWriteBlockedNanos: Long = _
 }
 
 private[spark] object TaskMetrics {
@@ -178,6 +188,16 @@ case class InputMetrics(readMethod: DataReadMethod.Value) {
    * Total bytes read.
    */
   var bytesRead: Long = 0L
+
+  /**
+   * Read time.
+   */
+  var readTimeNanos: Long = 0L
+
+  /**
+   * Packets (just for debugging).
+   */
+  var numPackets: Int = 0
 }
 
 

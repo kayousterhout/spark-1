@@ -261,7 +261,9 @@ private[spark] object JsonProtocol {
     ("Updated Blocks" -> updatedBlocks) ~
     ("Cpu Utilization" -> cpuUtilization) ~
     ("Disk Utilization" -> diskUtilization) ~
-    ("Network Utilization" -> networkUtilization)
+    ("Network Utilization" -> networkUtilization) ~
+    ("Output Write Blocked Nanos" -> taskMetrics.outputWriteBlockedNanos) ~
+    ("Output Bytes" -> taskMetrics.outputBytes)
   }
 
   def cpuUtilizationToJson(cpuUtilization: CpuUtilization): JValue = {
@@ -307,7 +309,9 @@ private[spark] object JsonProtocol {
 
   def inputMetricsToJson(inputMetrics: InputMetrics): JValue = {
     ("Data Read Method" -> inputMetrics.readMethod.toString) ~
-    ("Bytes Read" -> inputMetrics.bytesRead)
+    ("Bytes Read" -> inputMetrics.bytesRead) ~
+    ("Packets Read" -> inputMetrics.numPackets) ~
+    ("Read Time Nanos" -> inputMetrics.readTimeNanos)
   }
 
   def taskEndReasonToJson(taskEndReason: TaskEndReason): JValue = {

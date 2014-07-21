@@ -180,6 +180,13 @@ private[spark] class Executor(
         // Run the actual task and measure its runtime.
         taskStart = System.currentTimeMillis()
 
+        // These thread-local variables describing the read and write time need to be set to 0
+        // because tasks are run from a thread pool, so we need to clear earlier values that
+        // may have been set in tasks that ran in the same thread.
+        org.apache.hadoop.hdfs.DFSOutputStream.writeTimeNanos.set(0L)
+        org.apache.hadoop.hdfs.DFSOutputStream.bytesWritten.set(0L)
+        org.apache.hadoop.hdfs.RemoteBlockReader2.readTimeNanos.set(0L)
+
         val startCpuCounters = new CpuCounters()
         val startNetworkCounters = new NetworkCounters()
         val startDiskCounters = new DiskCounters()
@@ -206,6 +213,11 @@ private[spark] class Executor(
           m.executorRunTime = taskFinish - taskStart
           m.jvmGCTime = gcTime - startGCTime
           m.resultSerializationTime = afterSerialization - beforeSerialization
+          // Read the output write time for all tasks, even though they may not have written output
+          // data. If tasks did not write output data, DFSOutputStream.writeTimeNanos will just be
+          // equal to 0.
+          m.outputWriteBlockedNanos = org.apache.hadoop.hdfs.DFSOutputStream.writeTimeNanos.get()
+          m.outputBytes = org.apache.hadoop.hdfs.DFSOutputStream.bytesWritten.get()
           m.cpuUtilization = Some(cpuUtilization)
           m.networkUtilization = Some(networkUtilization)
           m.diskUtilization = Some(diskUtilization)
