@@ -105,10 +105,14 @@ class TaskMetrics extends Serializable {
         existingMetrics.shuffleFinishTime = math.max(
           existingMetrics.shuffleFinishTime, newMetrics.shuffleFinishTime)
         existingMetrics.fetchWaitTime += newMetrics.fetchWaitTime
+        existingMetrics.remoteFetchTime += newMetrics.remoteFetchTime
+        existingMetrics.remoteDiskReadTime += newMetrics.remoteDiskReadTime
         existingMetrics.localBlocksFetched += newMetrics.localBlocksFetched
         existingMetrics.remoteBlocksFetched += newMetrics.remoteBlocksFetched
         existingMetrics.totalBlocksFetched += newMetrics.totalBlocksFetched
         existingMetrics.remoteBytesRead += newMetrics.remoteBytesRead
+        existingMetrics.localReadTime += newMetrics.localReadTime
+        existingMetrics.localReadBytes += newMetrics.localReadBytes
       case None =>
         _shuffleReadMetrics = Some(newMetrics)
     }
