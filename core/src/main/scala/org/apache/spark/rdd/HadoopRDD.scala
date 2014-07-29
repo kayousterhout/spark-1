@@ -186,7 +186,16 @@ class HadoopRDD[K, V](
         }
       }
     }
-    new InterruptibleIterator[(K, V)](context, iter)
+    val interruptibleIter = new InterruptibleIterator[(K, V)](context, iter)
+    if (conf.getBoolean("spark.pipeline", true)) {
+      interruptibleIter
+    } else {
+      val startTime = System.currentTimeMillis()
+      // Convert the iterator to an array, to force all of the data to be read from disk.
+      val iterAsArray = interruptibleIter.toArray
+      logInfo(s"Total time to read data from disk: ${System.currentTimeMillis - startTime}ms")
+      iterAsArray.toIterator
+    }
   }
 
   override def getPreferredLocations(split: Partition): Seq[String] = {
