@@ -20,7 +20,6 @@ package org.apache.spark
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.mutable.HashMap
 
-import org.apache.spark.SparkEnv
 import org.apache.spark.executor.{ShuffleReadMetrics, TaskMetrics}
 import org.apache.spark.serializer.Serializer
 import org.apache.spark.storage.{BlockId, BlockManagerId, ShuffleBlockId}
@@ -90,15 +89,15 @@ private[spark] class BlockStoreShuffleFetcher extends ShuffleFetcher with Loggin
     val completionIter = CompletionIterator[T, Iterator[T]](itr, {
       val shuffleMetrics = new ShuffleReadMetrics
       shuffleMetrics.shuffleFinishTime = System.currentTimeMillis
-      shuffleMetrics.remoteDiskReadTime = blockFetcherItr.remoteDiskReadTime
-      shuffleMetrics.remoteFetchTime = blockFetcherItr.remoteFetchTime
-      shuffleMetrics.fetchWaitTime = blockFetcherItr.fetchWaitTime
-      shuffleMetrics.localReadTime = blockFetcherItr.localReadTime
-      shuffleMetrics.localReadBytes = blockFetcherItr.localReadBytes
-      shuffleMetrics.remoteBytesRead = blockFetcherItr.remoteBytesRead
-      shuffleMetrics.totalBlocksFetched = blockFetcherItr.totalBlocks
-      shuffleMetrics.localBlocksFetched = blockFetcherItr.numLocalBlocks
-      shuffleMetrics.remoteBlocksFetched = blockFetcherItr.numRemoteBlocks
+      shuffleMetrics.remoteDiskReadTime = rawBlockFetcherItr.remoteDiskReadTime
+      shuffleMetrics.remoteFetchTime = rawBlockFetcherItr.remoteFetchTime
+      shuffleMetrics.fetchWaitTime = rawBlockFetcherItr.fetchWaitTime
+      shuffleMetrics.localReadTime = rawBlockFetcherItr.localReadTime
+      shuffleMetrics.localReadBytes = rawBlockFetcherItr.localReadBytes
+      shuffleMetrics.remoteBytesRead = rawBlockFetcherItr.remoteBytesRead
+      shuffleMetrics.totalBlocksFetched = rawBlockFetcherItr.totalBlocks
+      shuffleMetrics.localBlocksFetched = rawBlockFetcherItr.numLocalBlocks
+      shuffleMetrics.remoteBlocksFetched = rawBlockFetcherItr.numRemoteBlocks
       context.taskMetrics.updateShuffleReadMetrics(shuffleMetrics)
     })
 
