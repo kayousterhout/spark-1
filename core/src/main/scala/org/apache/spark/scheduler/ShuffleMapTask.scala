@@ -155,8 +155,18 @@ private[spark] class ShuffleMapTask(
       val ser = SparkEnv.get.serializerManager.get(dep.serializerClass, SparkEnv.get.conf)
       shuffle = shuffleBlockManager.forMapTask(dep.shuffleId, partitionId, numOutputSplits, ser)
 
+      val rawRddIterator = rdd.iterator(split, context)
+      val rddIterator = {
+        if (SparkEnv.get.conf.getBoolean("spark.pipeline", true)) {
+          // Unroll the iterator into an array to force the entire network fetch to happen before
+          // computation begins.
+          rawRddIterator.toArray.toIterator
+        } else {
+          rawRddIterator
+        }
+      }
       // Write the map output to its associated buckets.
-      for (elem <- rdd.iterator(split, context)) {
+      for (elem <- rddIterator) {
         val pair = elem.asInstanceOf[Product2[Any, Any]]
         val bucketId = dep.partitioner.getPartition(pair._1)
         shuffle.writers(bucketId).write(pair)

@@ -20,6 +20,7 @@ package org.apache.spark
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.mutable.HashMap
 
+import org.apache.spark.SparkEnv
 import org.apache.spark.executor.{ShuffleReadMetrics, TaskMetrics}
 import org.apache.spark.serializer.Serializer
 import org.apache.spark.storage.{BlockId, BlockManagerId, ShuffleBlockId}
@@ -74,7 +75,16 @@ private[spark] class BlockStoreShuffleFetcher extends ShuffleFetcher with Loggin
       }
     }
 
-    val blockFetcherItr = blockManager.getMultiple(blocksByAddress, serializer)
+    val rawBlockFetcherItr = blockManager.getMultiple(blocksByAddress, serializer)
+    val blockFetcherItr = {
+      if (SparkEnv.get.conf.getBoolean("spark.pipeline", true)) {
+        // Unroll the iterator into an array to force the entire network fetch to happen before
+        // computation begins.
+        rawBlockFetcherItr.toArray.toIterator
+      } else {
+        rawBlockFetcherItr
+      }
+    }
     val itr = blockFetcherItr.flatMap(unpackBlock)
 
     val completionIter = CompletionIterator[T, Iterator[T]](itr, {
