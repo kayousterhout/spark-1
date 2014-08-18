@@ -363,11 +363,11 @@ object BlockFetcherIterator {
       logDebug("Got local blocks in " + Utils.getUsedTimeMs(startTime) + " ms")
     }
 
-    override def next(): (BlockId, Option[Iterator[Any]]) = {
+    override def next(): (BlockId, Option[() => Iterator[Any]]) = {
       resultsGotten += 1
       val result = results.take()
       // If all the results has been retrieved, copiers will exit automatically
-      (result.blockId, if (result.failed) None else Some(result.deserialize()))
+      (result.blockId, if (result.failed) None else Some(result.deserialize))
     }
   }
   // End of NettyBlockFetcherIterator
