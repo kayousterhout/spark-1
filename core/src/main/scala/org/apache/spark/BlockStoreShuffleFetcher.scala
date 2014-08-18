@@ -54,12 +54,12 @@ private[spark] class BlockStoreShuffleFetcher extends ShuffleFetcher with Loggin
         (address, splits.map(s => (ShuffleBlockId(shuffleId, s._1, reduceId), s._2)))
     }
 
-    def unpackBlock(blockPair: (BlockId, Option[Iterator[Any]])) : Iterator[T] = {
+    def unpackBlock(blockPair: (BlockId, Option[() => Iterator[Any]])) : Iterator[T] = {
       val blockId = blockPair._1
       val blockOption = blockPair._2
       blockOption match {
-        case Some(block) => {
-          block.asInstanceOf[Iterator[T]]
+        case Some(deserialize) => {
+          deserialize().asInstanceOf[Iterator[T]]
         }
         case None => {
           blockId match {

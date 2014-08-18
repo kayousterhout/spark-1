@@ -158,8 +158,8 @@ private[spark] class ShuffleMapTask(
       val rawRddIterator = rdd.iterator(split, context)
       val rddIterator = {
         if (SparkEnv.get.conf.getBoolean("spark.pipeline", true)) {
-          // Unroll the iterator into an array to force the entire network fetch to happen before
-          // computation begins.
+          // Unroll the iterator into an array to force the entire computation to occur before
+          // data is written to disk.
           rawRddIterator.toArray.toIterator
         } else {
           rawRddIterator

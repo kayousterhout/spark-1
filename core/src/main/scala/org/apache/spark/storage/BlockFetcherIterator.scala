@@ -45,11 +45,17 @@ import org.apache.spark.util.Utils
  * Eventually we would like the two to converge and use a single NIO-based communication layer,
  * but extensive tests show that under some circumstances (e.g. large shuffles with lots of cores),
  * NIO would perform poorly and thus the need for the Netty OIO one.
+ *
+ * The iterator's next() method returns (blockId, deserialize) tuplies, where deserialize() is
+ * a function that, when called, returns a iterator over the deserialized results.
+ * BlockFetcherIterator does not do the deserialization to give the caller control over when
+ * deserialization occurs (to enable pipelining or not pipelining the computation with the network
+ * fetch).
  */
 
 
 private[storage]
-trait BlockFetcherIterator extends Iterator[(BlockId, Option[Iterator[Any]])]
+trait BlockFetcherIterator extends Iterator[(BlockId, Option[() => Iterator[Any]])]
   with Logging with BlockFetchTracker {
   def initialize()
 }
@@ -257,7 +263,7 @@ object BlockFetcherIterator {
 
     override def hasNext: Boolean = resultsGotten < _numBlocksToFetch
 
-    override def next(): (BlockId, Option[Iterator[Any]]) = {
+    override def next(): (BlockId, Option[() => Iterator[Any]]) = {
       resultsGotten += 1
       val startFetchWait = System.currentTimeMillis()
       val result = results.take()
@@ -268,7 +274,7 @@ object BlockFetcherIterator {
         (bytesInFlight == 0 || bytesInFlight + fetchRequests.front.size <= maxBytesInFlight)) {
         sendRequest(fetchRequests.dequeue())
       }
-      (result.blockId, if (result.failed) None else Some(result.deserialize()))
+      (result.blockId, if (result.failed) None else Some(result.deserialize))
     }
 
     // Implementing BlockFetchTracker trait.
