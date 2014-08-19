@@ -76,10 +76,14 @@ private[spark] class BlockStoreShuffleFetcher extends ShuffleFetcher with Loggin
 
     val rawBlockFetcherItr = blockManager.getMultiple(blocksByAddress, serializer)
     val blockFetcherItr = {
-      if (SparkEnv.get.conf.getBoolean("spark.pipeline", true)) {
+      if (!SparkEnv.get.conf.getBoolean("spark.pipeline", true)) {
         // Unroll the iterator into an array to force the entire network fetch to happen before
         // computation begins.
-        rawBlockFetcherItr.toArray.toIterator
+        val fetchedBlocks = new ArrayBuffer[(BlockId, Option[() => Iterator[Any]])]
+        while (rawBlockFetcherItr.hasNext) {
+          fetchedBlocks += rawBlockFetcherItr.next()
+        }
+        fetchedBlocks.toIterator
       } else {
         rawBlockFetcherItr
       }
