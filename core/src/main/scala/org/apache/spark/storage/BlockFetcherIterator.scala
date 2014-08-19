@@ -139,7 +139,6 @@ object BlockFetcherIterator {
       future.onSuccess {
         case Some(message) => {
           val fetchDone = System.currentTimeMillis()
-          _remoteFetchTime += fetchDone - fetchStart
           val bufferMessage = message.asInstanceOf[BufferMessage]
           val blockMessageArray = BlockMessageArray.fromBufferMessage(bufferMessage)
           for (blockMessage <- blockMessageArray) {
@@ -261,7 +260,14 @@ object BlockFetcherIterator {
     //an iterator that will read fetched blocks off the queue as they arrive.
     @volatile protected var resultsGotten = 0
 
-    override def hasNext: Boolean = resultsGotten < _numBlocksToFetch
+    override def hasNext: Boolean = {
+      val hasNext = resultsGotten < _numBlocksToFetch
+      if (!hasNext) {
+        logInfo("Finished fetching all remote blocks")
+        _remoteFetchTime = System.currentTimeMillis - startTime
+      }
+      hasNext
+    }
 
     override def next(): (BlockId, Option[() => Iterator[Any]]) = {
       resultsGotten += 1
