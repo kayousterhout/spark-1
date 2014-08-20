@@ -72,6 +72,7 @@ class JobLogger(val user: String, val logDirName: String)
   /** Create a folder for log files, the folder's name is the creation time of jobLogger */
   protected def createLogDir(): Boolean = {
     val dir = new File(logDir + "/" + logDirName + "/")
+    logInfo(s"JobLogger writing to log directory $dir")
     if (dir.exists()) {
       return true
     }
