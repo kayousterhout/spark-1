@@ -94,10 +94,6 @@ class HadoopRDD[K, V](
 
   protected val inputFormatCacheKey = "rdd_%d_input_format".format(id)
 
-  // Need to read this as part of the constructor, because the Spark Context doesn't get
-  // serialized.
-  private val pipeline = conf.getBoolean("spark.pipeline", true)
-
   // Returns a JobConf that will be used on slaves to obtain input splits for Hadoop reads.
   protected def getJobConf(): JobConf = {
     val conf: Configuration = broadcastedConf.value.value
