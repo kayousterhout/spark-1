@@ -439,7 +439,7 @@ def setup_cluster(conn, master_nodes, slave_nodes, opts, deploy_ssh_key):
 
   # NOTE: We should clone the repository before running deploy_files to
   # prevent ec2-variables.sh from being overwritten
-  ssh(master, opts, "rm -rf spark-ec2 && git clone https://github.com/kayousterhout/spark-ec2.git -b tpc-ds")
+  ssh(master, opts, "rm -rf spark-ec2 && git clone https://github.com/kayousterhout/spark-ec2.git -b memory_hdfs")
 
   print "Deploying files to master..."
   deploy_files(conn, "deploy.generic", opts, master_nodes, slave_nodes, modules)
@@ -526,12 +526,12 @@ def deploy_files(conn, root_dir, opts, master_nodes, slave_nodes, modules):
   active_master = master_nodes[0].public_dns_name
 
   num_disks = get_num_disks(opts.instance_type)
-  hdfs_data_dirs = "/mnt/ephemeral-hdfs/data"
+  hdfs_data_dirs = "/inmem-hadoop" #"/mnt/ephemeral-hdfs/data"
   mapred_local_dirs = "/mnt/hadoop/mrlocal"
   spark_local_dirs = "/mnt/spark"
   if num_disks > 1:
     for i in range(2, num_disks + 1):
-      hdfs_data_dirs += ",/mnt%d/ephemeral-hdfs/data" % i
+      # hdfs_data_dirs += ",/mnt%d/ephemeral-hdfs/data" % i
       mapred_local_dirs += ",/mnt%d/hadoop/mrlocal" % i
       spark_local_dirs += ",/mnt%d/spark" % i
 
