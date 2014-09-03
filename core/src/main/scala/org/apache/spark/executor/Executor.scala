@@ -26,6 +26,7 @@ import scala.collection.JavaConversions._
 import scala.collection.mutable.{ArrayBuffer, HashMap}
 
 import org.apache.spark._
+import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.deploy.SparkHadoopUtil
 import org.apache.spark.performance_logging._
 import org.apache.spark.scheduler._
@@ -156,6 +157,9 @@ private[spark] class Executor(
       def gcTime = ManagementFactory.getGarbageCollectorMXBeans.map(_.getCollectionTime).sum
       val startGCTime = gcTime
 
+      // Reset broadcast time before doing any task deserialization.
+      Broadcast.blockedNanos.set(0L)
+
       try {
         SparkEnv.set(env)
         Accumulators.clear()
@@ -211,6 +215,7 @@ private[spark] class Executor(
         for (m <- task.metrics) {
           m.executorDeserializeTime = taskStart - startTime
           m.executorRunTime = taskFinish - taskStart
+          m.broadcastBlockedNanos = Broadcast.blockedNanos.get()
           m.jvmGCTime = gcTime - startGCTime
           m.resultSerializationTime = afterSerialization - beforeSerialization
           // Read the output write time for all tasks, even though they may not have written output
