@@ -172,8 +172,11 @@ private[spark] class TorrentBroadcast[T: ClassTag](obj: T, id: Long)
         case None =>
           logInfo("Started reading broadcast variable " + id)
           val startTimeMs = System.currentTimeMillis()
+          val startTimeNanos = System.nanoTime()
           val blocks = readBlocks()
           logInfo("Reading broadcast variable " + id + " took" + Utils.getUsedTimeMs(startTimeMs))
+          val elapsedNanos = System.nanoTime() - startTimeNanos
+          Broadcast.blockedNanos.set(Broadcast.blockedNanos.get() + elapsedNanos)
 
           val obj = TorrentBroadcast.unBlockifyObject[T](
             blocks, SparkEnv.get.serializer, compressionCodec)

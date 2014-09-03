@@ -64,6 +64,11 @@ class TaskMetrics extends Serializable {
   private[spark] def setExecutorRunTime(value: Long) = _executorRunTime = value
 
   /**
+   * Nanoseconds spent blocked waiting on broadcast variables.
+   */
+  var broadcastBlockedNanos: Long = _
+
+  /**
    * The number of bytes this task transmitted back to the driver as the TaskResult
    */
   private var _resultSize: Long = _

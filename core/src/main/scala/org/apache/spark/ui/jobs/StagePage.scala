@@ -194,6 +194,13 @@ private[ui] class StagePage(parent: StagesTab) extends WebUIPage("stage") {
                   <span class="additional-metric-title">Task Deserialization Time</span>
                 </span>
               </li>
+              <li>
+                <span data-toggle="tooltip"
+                      title={ToolTips.BROADCAST_BLOCKED_TIME} data-placement="right">
+                  <input type="checkbox" name={TaskDetailsClassNames.BROADCAST_BLOCKED_TIME}/>
+                  <span class="additional-metric-title">Broadcast Blocked Time</span>
+                </span>
+              </li>
               {if (stageData.hasShuffleRead) {
               <li>
                 <span data-toggle="tooltip"
@@ -334,6 +341,17 @@ private[ui] class StagePage(parent: StagesTab) extends WebUIPage("stage") {
                 Task Deserialization Time
               </span>
             </td> +: getFormattedTimeQuantiles(deserializationTimes)
+
+          val broadcastBlockedTimes = validTasks.map { case TaskUIData(_, metrics, _) =>
+            metrics.get.broadcastBlockedNanos.toDouble / 1.0e6
+          }
+          val broadcastBlockedQuantiles =
+            <td>
+              <span data-toggle="tooltip" title={ToolTips.BROADCAST_BLOCKED_TIME}
+                    data-placement="right">
+                Broadcast Blocked Time
+              </span>
+            </td> +: getFormattedTimeQuantiles(broadcastBlockedTimes)
 
           val serviceTimes = validTasks.map { case TaskUIData(_, metrics, _) =>
             metrics.get.executorRunTime.toDouble
@@ -509,6 +527,9 @@ private[ui] class StagePage(parent: StagesTab) extends WebUIPage("stage") {
             <tr class={TaskDetailsClassNames.SCHEDULER_DELAY}>{schedulerDelayQuantiles}</tr>,
             <tr class={TaskDetailsClassNames.TASK_DESERIALIZATION_TIME}>
               {deserializationQuantiles}
+            </tr>
+            <tr class={TaskDetailsClassNames.BROADCAST_BLOCKED_TIME}>
+              {broadcastBlockedQuantiles}
             </tr>
             <tr>{gcQuantiles}</tr>,
             <tr class={TaskDetailsClassNames.RESULT_SERIALIZATION_TIME}>

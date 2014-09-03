@@ -27,6 +27,7 @@ package org.apache.spark.ui.jobs
 private[spark] object TaskDetailsClassNames {
   val SCHEDULER_DELAY = "scheduler_delay"
   val TASK_DESERIALIZATION_TIME = "deserialization_time"
+  val BROADCAST_BLOCKED_TIME = "broadcast_blocked_time"
   val MAP_OUTPUT_LOCATIONS_FETCH_TIME = "map_output_locations_fetch_time"
   val SHUFFLE_READ_BLOCKED_TIME = "fetch_wait_time"
   val SHUFFLE_READ_REMOTE_SIZE = "shuffle_read_remote"

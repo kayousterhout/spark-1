@@ -28,6 +28,7 @@ import scala.collection.mutable.{ArrayBuffer, HashMap}
 import scala.util.control.NonFatal
 
 import org.apache.spark._
+import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.deploy.SparkHadoopUtil
 import org.apache.spark.scheduler.{DirectTaskResult, IndirectTaskResult, Task}
 import org.apache.spark.shuffle.FetchFailedException
@@ -188,6 +189,9 @@ private[spark] class Executor(
       var taskStart: Long = 0
       startGCTime = computeTotalGcTime()
 
+      // Reset broadcast time before doing any task deserialization.
+      Broadcast.blockedNanos.set(0L)
+
       try {
         val (taskFiles, taskJars, taskBytes) = Task.deserializeWithDependencies(serializedTask)
         updateDependencies(taskFiles, taskJars)
@@ -245,6 +249,7 @@ private[spark] class Executor(
           // includes the Partition. Second, Task.run() deserializes the RDD and function to be run.
           m.setExecutorDeserializeTime(
             (taskStart - deserializeStartTime) + task.executorDeserializeTime)
+          m.broadcastBlockedNanos = Broadcast.blockedNanos.get()
           // We need to subtract Task.run()'s deserialization time to avoid double-counting
           m.setExecutorRunTime((taskFinish - taskStart) - task.executorDeserializeTime)
           m.setJvmGCTime(computeTotalGcTime() - startGCTime)
