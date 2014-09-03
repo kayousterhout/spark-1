@@ -102,7 +102,10 @@ extends Broadcast[T](id) with Logging with Serializable {
             logError("Reading broadcast variable " + id + " failed")
           }
 
-          val time = (System.nanoTime - start) / 1e9
+          val elapsedNanos = System.nanoTime - start
+          // Assumes deserialization is single threaded.
+          Broadcast.blockedNanos.set(Broadcast.blockedNanos.get() + elapsedNanos)
+          val time = elapsedNanos / 1e9
           logInfo("Reading broadcast variable " + id + " took " + time + " s")
       }
     }
