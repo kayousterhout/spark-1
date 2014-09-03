@@ -163,7 +163,10 @@ private[spark] class TorrentBroadcast[T: ClassTag](
           logInfo("Started reading broadcast variable " + id)
           val start = System.nanoTime()
           val blocks = readBlocks()
-          val time = (System.nanoTime() - start) / 1e9
+          val elapsedNanos = System.nanoTime - start
+          // Assumes deserialization is single threaded.
+          Broadcast.blockedNanos.set(Broadcast.blockedNanos.get() + elapsedNanos)
+          val time = elapsedNanos / 1e9
           logInfo("Reading broadcast variable " + id + " took " + time + " s")
 
           _value = TorrentBroadcast.unBlockifyObject[T](blocks)
