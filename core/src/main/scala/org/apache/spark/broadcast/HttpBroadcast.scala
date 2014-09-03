@@ -55,7 +55,11 @@ private[spark] class HttpBroadcast[T](@transient var value_ : T, isLocal: Boolea
           val start = System.nanoTime
           value_ = HttpBroadcast.read[T](id)
           SparkEnv.get.blockManager.putSingle(blockId, value_, StorageLevel.MEMORY_AND_DISK, false)
-          val time = (System.nanoTime - start) / 1e9
+
+          val elapsedNanos = System.nanoTime - start
+          // Assumes deserialization is single threaded.
+          Broadcast.blockedNanos.set(Broadcast.blockedNanos.get() + elapsedNanos)
+          val time = elapsedNanos / 1e9
           logInfo("Reading broadcast variable " + id + " took " + time + " s")
         }
       }

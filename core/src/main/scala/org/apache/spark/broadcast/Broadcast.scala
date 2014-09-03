@@ -59,6 +59,11 @@ abstract class Broadcast[T](val id: Long) extends Serializable {
   override def toString = "Broadcast(" + id + ")"
 }
 
+private[spark] object Broadcast {
+  // Records the number of nanoseconds spent waiting to receive broadcast variables.
+  val blockedNanos = new ThreadLocal[Long]
+}
+
 private[spark]
 class BroadcastManager(val _isDriver: Boolean, conf: SparkConf) extends Logging with Serializable {
 
