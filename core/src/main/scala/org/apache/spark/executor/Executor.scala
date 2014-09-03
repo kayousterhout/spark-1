@@ -29,6 +29,7 @@ import scala.util.control.NonFatal
 import akka.actor.{Props, ActorSystem}
 
 import org.apache.spark._
+import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.deploy.SparkHadoopUtil
 import org.apache.spark.performance_logging._
 import org.apache.spark.scheduler._
@@ -177,6 +178,9 @@ private[spark] class Executor(
       var taskStart: Long = 0
       startGCTime = gcTime
 
+      // Reset broadcast time before doing any task deserialization.
+      Broadcast.blockedNanos.set(0L)
+
       try {
         val (taskFiles, taskJars, taskBytes) = Task.deserializeWithDependencies(serializedTask)
         updateDependencies(taskFiles, taskJars)
@@ -230,6 +234,7 @@ private[spark] class Executor(
         for (m <- task.metrics) {
           m.executorDeserializeTime = taskStart - deserializeStartTime
           m.executorRunTime = taskFinish - taskStart
+          m.broadcastBlockedNanos = Broadcast.blockedNanos.get()
           m.jvmGCTime = gcTime - startGCTime
           m.resultSerializationTime = afterSerialization - beforeSerialization
           // Read the output write time for all tasks, even though they may not have written output

@@ -94,7 +94,10 @@ private[spark] class HttpBroadcast[T: ClassTag](
            */
           SparkEnv.get.blockManager.putSingle(
             blockId, value_, StorageLevel.MEMORY_AND_DISK, tellMaster = false)
-          val time = (System.nanoTime - start) / 1e9
+          val elapsedNanos = System.nanoTime - start
+          // Assumes deserialization is single threaded.
+          Broadcast.blockedNanos.set(Broadcast.blockedNanos.get() + elapsedNanos)
+          val time = elapsedNanos / 1e9
           logInfo("Reading broadcast variable " + id + " took " + time + " s")
         }
       }
