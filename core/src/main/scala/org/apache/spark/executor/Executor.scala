@@ -190,6 +190,9 @@ private[spark] class Executor(
       def gcTime = ManagementFactory.getGarbageCollectorMXBeans.map(_.getCollectionTime).sum
       val startGCTime = gcTime
 
+      // Reset broadcast time before doing any task deserialization.
+      Broadcast.blockedNanos.set(0L)
+
       try {
         SparkEnv.set(env)
         Accumulators.clear()
@@ -219,7 +222,6 @@ private[spark] class Executor(
         org.apache.hadoop.hdfs.DFSOutputStream.writeTimeNanos.set(0L)
         org.apache.hadoop.hdfs.DFSOutputStream.bytesWritten.set(0L)
         org.apache.hadoop.hdfs.RemoteBlockReader2.readTimeNanos.set(0L)
-        Broadcast.blockedNanos.set(0L)
 
         val startCpuCounters = new CpuCounters()
         val startNetworkCounters = new NetworkCounters()
