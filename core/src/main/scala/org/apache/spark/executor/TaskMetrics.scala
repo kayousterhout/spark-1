@@ -20,6 +20,7 @@ package org.apache.spark.executor
 import scala.collection.mutable.ArrayBuffer
 
 import org.apache.spark.annotation.DeveloperApi
+import org.apache.spark.performance_logging.{CpuUtilization, DiskUtilization, NetworkUtilization}
 import org.apache.spark.storage.{BlockId, BlockStatus}
 
 /**
@@ -50,6 +51,11 @@ class TaskMetrics extends Serializable {
    * Time the executor spends actually running the task (including fetching shuffle data)
    */
   var executorRunTime: Long = _
+
+  /**
+   * Nanoseconds spent blocked waiting on broadcast variables.
+   */
+  var broadcastBlockedNanos: Long = _
 
   /**
    * The number of bytes this task transmitted back to the driver as the TaskResult
@@ -116,6 +122,18 @@ class TaskMetrics extends Serializable {
   var updatedBlocks: Option[Seq[(BlockId, BlockStatus)]] = None
 
   /**
+   * Bytes written to HDFS.
+   */
+  var outputBytes: Long = _
+
+  /**
+   * Metrics about machine utilization while the task was running.
+   */
+  var cpuUtilization: Option[CpuUtilization] = None
+  var networkUtilization: Option[NetworkUtilization] = None
+  var diskUtilization: Option[DiskUtilization] = None
+
+  /**
    * A task may have multiple shuffle readers for multiple dependencies. To avoid synchronization
    * issues from readers in different threads, in-progress tasks use a ShuffleReadMetrics for each
    * dependency, and merge these metrics before reporting them to the driver. This method returns
@@ -137,10 +155,17 @@ class TaskMetrics extends Serializable {
       merged.localBlocksFetched += depMetrics.localBlocksFetched
       merged.remoteBlocksFetched += depMetrics.remoteBlocksFetched
       merged.remoteBytesRead += depMetrics.remoteBytesRead
+      merged.localReadBytes += depMetrics.localReadBytes
+      merged.localReadTime += depMetrics.localReadTime
       merged.shuffleFinishTime = math.max(merged.shuffleFinishTime, depMetrics.shuffleFinishTime)
     }
     _shuffleReadMetrics = Some(merged)
   }
+
+  /**
+   * Nanoseconds spent blocked waiting to write output data to HDFS.
+   */
+  var outputWriteBlockedNanos: Long = _
 }
 
 private[spark] object TaskMetrics {
@@ -168,6 +193,23 @@ case class InputMetrics(readMethod: DataReadMethod.Value) {
    * Total bytes read.
    */
   var bytesRead: Long = 0L
+
+  /**
+   * Read time.
+   */
+  var readTimeNanos: Long = 0L
+
+  /**
+   * Packets (just for debugging).
+   */
+  var numPackets: Int = 0
+
+  /**
+   * Time Hadoop spent opening the file for reading.
+   *
+   * Includes in readTimeNanos.
+   */
+  var openTimeNanos: Long = 0L
 }
 
 
@@ -208,6 +250,16 @@ class ShuffleReadMetrics extends Serializable {
    * Total number of remote bytes read from the shuffle by this task
    */
   var remoteBytesRead: Long = _
+
+  /**
+    * Time taken (in milliseconds) to fetch blocks stored locally.
+   */
+   var localReadTime: Long = _
+
+    /**
+     * Shuffle bytes read locally.
+    */
+    var localReadBytes: Long = _
 }
 
 /**
@@ -225,4 +277,11 @@ class ShuffleWriteMetrics extends Serializable {
    * Time the task spent blocking on writes to disk or buffer cache, in nanoseconds
    */
   @volatile var shuffleWriteTime: Long = _
+
+  /**
+   * Time spent opening shuffle files for writing to them.
+   *
+   * Included in shuffleWriteTime.
+   */
+  var shuffleOpenTimeNanos: Long = _
 }

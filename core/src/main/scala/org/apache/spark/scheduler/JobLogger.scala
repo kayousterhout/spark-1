@@ -27,6 +27,7 @@ import scala.collection.mutable.HashMap
 import org.apache.spark._
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.executor.{DataReadMethod, TaskMetrics}
+import org.apache.spark.performance_logging.{BlockDeviceUtilization, DiskUtilization}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
 
@@ -149,6 +150,16 @@ class JobLogger(val user: String, val logDirName: String) extends SparkListener 
     stageIdToJobId.get(stageId).foreach(jobId => jobLogInfo(jobId, info, withTime))
   }
 
+  private def diskUtilizationToString(diskUtilization: DiskUtilization): String = {
+    var output = " DISK_UTILIZATION="
+    diskUtilization.deviceNameToUtilization.foreach {
+      case (deviceName: String, deviceUtilization: BlockDeviceUtilization) =>
+        output += s"$deviceName:${deviceUtilization.diskUtilization}," +
+          s"${deviceUtilization.readThroughput},${deviceUtilization.writeThroughput};"
+    }
+    output
+  }
+
   /**
    * Record task metrics into job log files, including execution info and shuffle metrics
    * @param stageId Stage ID of the task
@@ -160,13 +171,22 @@ class JobLogger(val user: String, val logDirName: String) extends SparkListener 
                                 taskInfo: TaskInfo, taskMetrics: TaskMetrics) {
     val info = " TID=" + taskInfo.taskId + " STAGE_ID=" + stageId +
                " START_TIME=" + taskInfo.launchTime + " FINISH_TIME=" + taskInfo.finishTime +
-               " EXECUTOR_ID=" + taskInfo.executorId +  " HOST=" + taskMetrics.hostname
+               " EXECUTOR_ID=" + taskInfo.executorId +  " HOST=" + taskMetrics.hostname +
+               " LOCALITY=" + taskInfo.taskLocality.toString +
+               " OUTPUT_WRITE_BLOCKED_NANOS=" + taskMetrics.outputWriteBlockedNanos +
+               " OUTPUT_BYTES=" + taskMetrics.outputBytes +
+               " BROADCAST_BLOCKED_NANOS=" + taskMetrics.broadcastBlockedNanos
     val executorRunTime = " EXECUTOR_RUN_TIME=" + taskMetrics.executorRunTime
     val gcTime = " GC_TIME=" + taskMetrics.jvmGCTime
+    val executorDeserializeTime = (" EXECUTOR_DESERIALIZE_TIME=" +
+      taskMetrics.executorDeserializeTime)
     val inputMetrics = taskMetrics.inputMetrics match {
       case Some(metrics) =>
         " READ_METHOD=" + metrics.readMethod.toString +
-        " INPUT_BYTES=" + metrics.bytesRead
+        " INPUT_BYTES=" + metrics.bytesRead +
+        " PACKETS_READ=" + metrics.numPackets +
+        " READ_TIME_NANOS=" + metrics.readTimeNanos +
+        " HDFS_OPEN_TIME_NANOS=" + metrics.openTimeNanos
       case None => ""
     }
     val shuffleReadMetrics = taskMetrics.shuffleReadMetrics match {
@@ -176,17 +196,36 @@ class JobLogger(val user: String, val logDirName: String) extends SparkListener 
         " BLOCK_FETCHED_LOCAL=" + metrics.localBlocksFetched +
         " BLOCK_FETCHED_REMOTE=" + metrics.remoteBlocksFetched +
         " REMOTE_FETCH_WAIT_TIME=" + metrics.fetchWaitTime +
-        " REMOTE_BYTES_READ=" + metrics.remoteBytesRead
+        " REMOTE_BYTES_READ=" + metrics.remoteBytesRead +
+        " LOCAL_READ_TIME=" + metrics.localReadTime +
+        " LOCAL_READ_BYTES=" + metrics.localReadBytes
       case None => ""
     }
     val writeMetrics = taskMetrics.shuffleWriteMetrics match {
       case Some(metrics) =>
         " SHUFFLE_BYTES_WRITTEN=" + metrics.shuffleBytesWritten +
-        " SHUFFLE_WRITE_TIME=" + metrics.shuffleWriteTime
+        " SHUFFLE_WRITE_TIME=" + metrics.shuffleWriteTime +
+        " SHUFFLE_OPEN_TIME_NANOS=" + metrics.shuffleOpenTimeNanos
       case None => ""
     }
-    stageLogInfo(stageId, status + info + executorRunTime + gcTime + inputMetrics +
-      shuffleReadMetrics + writeMetrics)
+
+    val diskUtilizationMetrics = taskMetrics.diskUtilization.map(diskUtilizationToString(_))
+      .getOrElse("")
+    val cpuUtilizationMetrics = taskMetrics.cpuUtilization.map { cpuUtilization =>
+      s" CPU_UTILIZATION=pu:${cpuUtilization.processUserUtilization}," +
+        s"ps:${cpuUtilization.processSystemUtilization}," +
+        s"tu:${cpuUtilization.totalUserUtilization}," +
+        s"ts:${cpuUtilization.totalSystemUtilization}"
+    }.getOrElse("")
+    val networkUtilizationMetrics = taskMetrics.networkUtilization.map { networkUtilization =>
+      s" NETWORK_UTILIZATION=brps:${networkUtilization.bytesReceivedPerSecond}," +
+      s"btps:${networkUtilization.bytesTransmittedPerSecond}," +
+      s"prps:${networkUtilization.packetsReceivedPerSecond}," +
+      s"ptps:${networkUtilization.packetsTransmittedPerSecond}"
+    }.getOrElse("")
+    stageLogInfo(stageId, status + info + executorRunTime + gcTime + executorDeserializeTime +
+      inputMetrics + shuffleReadMetrics + writeMetrics + diskUtilizationMetrics +
+      cpuUtilizationMetrics + networkUtilizationMetrics)
   }
 
   /**

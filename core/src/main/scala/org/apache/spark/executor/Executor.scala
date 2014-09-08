@@ -26,7 +26,9 @@ import scala.collection.JavaConversions._
 import scala.collection.mutable.{ArrayBuffer, HashMap}
 
 import org.apache.spark._
+import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.deploy.SparkHadoopUtil
+import org.apache.spark.performance_logging._
 import org.apache.spark.scheduler._
 import org.apache.spark.shuffle.FetchFailedException
 import org.apache.spark.storage.{StorageLevel, TaskResultBlockId}
@@ -155,6 +157,9 @@ private[spark] class Executor(
       def gcTime = ManagementFactory.getGarbageCollectorMXBeans.map(_.getCollectionTime).sum
       val startGCTime = gcTime
 
+      // Reset broadcast time before doing any task deserialization.
+      Broadcast.blockedNanos.set(0L)
+
       try {
         SparkEnv.set(env)
         Accumulators.clear()
@@ -178,8 +183,25 @@ private[spark] class Executor(
 
         // Run the actual task and measure its runtime.
         taskStart = System.currentTimeMillis()
+
+        // These thread-local variables describing the read and write time need to be set to 0
+        // because tasks are run from a thread pool, so we need to clear earlier values that
+        // may have been set in tasks that ran in the same thread.
+        org.apache.hadoop.hdfs.DFSOutputStream.writeTimeNanos.set(0L)
+        org.apache.hadoop.hdfs.DFSOutputStream.bytesWritten.set(0L)
+        org.apache.hadoop.hdfs.RemoteBlockReader2.readTimeNanos.set(0L)
+        org.apache.hadoop.hdfs.RemoteBlockReader2.openTimeNanos.set(0L)
+
+        val startCpuCounters = new CpuCounters()
+        val startNetworkCounters = new NetworkCounters()
+        val startDiskCounters = new DiskCounters()
+
         val value = task.run(taskId.toInt)
         val taskFinish = System.currentTimeMillis()
+
+        val cpuUtilization = new CpuUtilization(startCpuCounters)
+        val networkUtilization = new NetworkUtilization(startNetworkCounters)
+        val diskUtilization = new DiskUtilization(startDiskCounters)
 
         // If the task has been killed, let's fail it.
         if (task.killed) {
@@ -194,8 +216,17 @@ private[spark] class Executor(
         for (m <- task.metrics) {
           m.executorDeserializeTime = taskStart - startTime
           m.executorRunTime = taskFinish - taskStart
+          m.broadcastBlockedNanos = Broadcast.blockedNanos.get()
           m.jvmGCTime = gcTime - startGCTime
           m.resultSerializationTime = afterSerialization - beforeSerialization
+          // Read the output write time for all tasks, even though they may not have written output
+          // data. If tasks did not write output data, DFSOutputStream.writeTimeNanos will just be
+          // equal to 0.
+          m.outputWriteBlockedNanos = org.apache.hadoop.hdfs.DFSOutputStream.writeTimeNanos.get()
+          m.outputBytes = org.apache.hadoop.hdfs.DFSOutputStream.bytesWritten.get()
+          m.cpuUtilization = Some(cpuUtilization)
+          m.networkUtilization = Some(networkUtilization)
+          m.diskUtilization = Some(diskUtilization)
         }
 
         val accumUpdates = Accumulators.values
