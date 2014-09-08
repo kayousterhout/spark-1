@@ -137,6 +137,8 @@ class TaskMetrics extends Serializable {
       merged.localBlocksFetched += depMetrics.localBlocksFetched
       merged.remoteBlocksFetched += depMetrics.remoteBlocksFetched
       merged.remoteBytesRead += depMetrics.remoteBytesRead
+      merged.localReadBytes += depMetrics.localReadBytes
+      merged.localReadTime += depMetrics.localReadTime
       merged.shuffleFinishTime = math.max(merged.shuffleFinishTime, depMetrics.shuffleFinishTime)
     }
     _shuffleReadMetrics = Some(merged)
@@ -208,6 +210,16 @@ class ShuffleReadMetrics extends Serializable {
    * Total number of remote bytes read from the shuffle by this task
    */
   var remoteBytesRead: Long = _
+
+  /**
+    * Time taken (in milliseconds) to fetch blocks stored locally.
+   */
+   var localReadTime: Long = _
+
+    /**
+     * Shuffle bytes read locally.
+    */
+    var localReadBytes: Long = _
 }
 
 /**
