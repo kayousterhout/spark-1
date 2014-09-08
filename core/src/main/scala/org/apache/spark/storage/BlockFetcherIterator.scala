@@ -156,6 +156,7 @@ object BlockFetcherIterator {
           // Filter out zero-sized blocks
           localBlocksToFetch ++= blockInfos.filter(_._2 != 0).map(_._1)
           _numBlocksToFetch += localBlocksToFetch.size
+          readMetrics.localReadBytes = blockInfos.map(_._2).sum
         } else {
           val iterator = blockInfos.iterator
           var curRequestSize = 0L
@@ -194,6 +195,7 @@ object BlockFetcherIterator {
       // Get the local blocks while remote blocks are being fetched. Note that it's okay to do
       // these all at once because they will just memory-map some files, so they won't consume
       // any memory that might exceed our maxBytesInFlight
+      val startTime = System.currentTimeMillis()
       for (id <- localBlocksToFetch) {
         try {
           readMetrics.localBlocksFetched += 1
@@ -207,6 +209,7 @@ object BlockFetcherIterator {
           }
         }
       }
+      readMetrics.localReadTime = System.currentTimeMillis() - startTime
     }
 
     override def initialize() {
