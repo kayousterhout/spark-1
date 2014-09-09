@@ -160,7 +160,8 @@ class JobLogger(val user: String, val logDirName: String) extends SparkListener 
                                 taskInfo: TaskInfo, taskMetrics: TaskMetrics) {
     val info = " TID=" + taskInfo.taskId + " STAGE_ID=" + stageId +
                " START_TIME=" + taskInfo.launchTime + " FINISH_TIME=" + taskInfo.finishTime +
-               " EXECUTOR_ID=" + taskInfo.executorId +  " HOST=" + taskMetrics.hostname
+               " EXECUTOR_ID=" + taskInfo.executorId +  " HOST=" + taskMetrics.hostname +
+               " LOCALITY=" + taskInfo.taskLocality.toString
     val executorRunTime = " EXECUTOR_RUN_TIME=" + taskMetrics.executorRunTime
     val gcTime = " GC_TIME=" + taskMetrics.jvmGCTime
     val executorDeserializeTime = (" EXECUTOR_DESERIALIZE_TIME=" +
