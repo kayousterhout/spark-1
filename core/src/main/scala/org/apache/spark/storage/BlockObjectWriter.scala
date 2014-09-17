@@ -99,8 +99,8 @@ private[spark] class DiskBlockObjectWriter(
     def write(i: Int): Unit = callWithTiming(out.write(i))
     override def write(b: Array[Byte]) = callWithTiming(out.write(b))
     override def write(b: Array[Byte], off: Int, len: Int) = callWithTiming(out.write(b, off, len))
-    override def close() = callWithTiming(out.close())
-    override def flush() = callWithTiming(out.flush())
+    override def close() = out.close()
+    override def flush() = out.flush()
   }
 
   /** The file channel, used for repositioning / truncating the file. */
