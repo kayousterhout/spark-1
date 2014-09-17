@@ -305,14 +305,16 @@ private[spark] object JsonProtocol {
 
   def shuffleWriteMetricsToJson(shuffleWriteMetrics: ShuffleWriteMetrics): JValue = {
     ("Shuffle Bytes Written" -> shuffleWriteMetrics.shuffleBytesWritten) ~
-    ("Shuffle Write Time" -> shuffleWriteMetrics.shuffleWriteTime)
+    ("Shuffle Write Time" -> shuffleWriteMetrics.shuffleWriteTime) ~
+    ("Shuffle Open Time" -> shuffleWriteMetrics.shuffleOpenTimeNanos)
   }
 
   def inputMetricsToJson(inputMetrics: InputMetrics): JValue = {
     ("Data Read Method" -> inputMetrics.readMethod.toString) ~
     ("Bytes Read" -> inputMetrics.bytesRead) ~
     ("Packets Read" -> inputMetrics.numPackets) ~
-    ("Read Time Nanos" -> inputMetrics.readTimeNanos)
+    ("Read Time Nanos" -> inputMetrics.readTimeNanos) ~
+    ("Hdfs Open Time Nanos" -> inputMetrics.openTimeNanos)
   }
 
   def taskEndReasonToJson(taskEndReason: TaskEndReason): JValue = {
