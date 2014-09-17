@@ -185,7 +185,8 @@ class JobLogger(val user: String, val logDirName: String) extends SparkListener 
         " READ_METHOD=" + metrics.readMethod.toString +
         " INPUT_BYTES=" + metrics.bytesRead +
         " PACKETS_READ=" + metrics.numPackets +
-        " READ_TIME_NANOS=" + metrics.readTimeNanos
+        " READ_TIME_NANOS=" + metrics.readTimeNanos +
+        " HDFS_OPEN_TIME_NANOS=" + metrics.openTimeNanos
       case None => ""
     }
     val shuffleReadMetrics = taskMetrics.shuffleReadMetrics match {
@@ -201,7 +202,10 @@ class JobLogger(val user: String, val logDirName: String) extends SparkListener 
       case None => ""
     }
     val writeMetrics = taskMetrics.shuffleWriteMetrics match {
-      case Some(metrics) => " SHUFFLE_BYTES_WRITTEN=" + metrics.shuffleBytesWritten
+      case Some(metrics) =>
+        " SHUFFLE_BYTES_WRITTEN=" + metrics.shuffleBytesWritten +
+        " SHUFFLE_WRITE_TIME=" + metrics.shuffleWriteTime +
+        " SHUFFLE_OPEN_TIME_NANOS=" + metrics.shuffleOpenTimeNanos
       case None => ""
     }
 

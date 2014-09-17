@@ -186,6 +186,7 @@ private[spark] class Executor(
         org.apache.hadoop.hdfs.DFSOutputStream.writeTimeNanos.set(0L)
         org.apache.hadoop.hdfs.DFSOutputStream.bytesWritten.set(0L)
         org.apache.hadoop.hdfs.RemoteBlockReader2.readTimeNanos.set(0L)
+        org.apache.hadoop.hdfs.RemoteBlockReader2.openTimeNanos.set(0L)
 
         val startCpuCounters = new CpuCounters()
         val startNetworkCounters = new NetworkCounters()

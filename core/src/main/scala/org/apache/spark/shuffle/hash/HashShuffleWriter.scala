@@ -45,8 +45,10 @@ private[spark] class HashShuffleWriter[K, V](
   private val blockManager = SparkEnv.get.blockManager
   private val shuffleBlockManager = blockManager.shuffleBlockManager
   private val ser = Serializer.getSerializer(dep.serializer.getOrElse(null))
+  val openStartTime = System.nanoTime
   private val shuffle = shuffleBlockManager.forMapTask(dep.shuffleId, mapId, numOutputSplits, ser,
     writeMetrics)
+  writeMetrics.shuffleOpenTimeNanos = System.nanoTime - openStartTime
 
   /** Write a bunch of records to this task's output */
   override def write(records: Iterator[_ <: Product2[K, V]]): Unit = {

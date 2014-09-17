@@ -226,7 +226,11 @@ class HadoopRDD[K, V](
 
       override def close() {
         try {
-          inputMetrics.readTimeNanos = org.apache.hadoop.hdfs.RemoteBlockReader2.readTimeNanos.get()
+          inputMetrics.openTimeNanos =
+            org.apache.hadoop.hdfs.RemoteBlockReader2.openTimeNanos.get()
+          inputMetrics.readTimeNanos =
+            (org.apache.hadoop.hdfs.RemoteBlockReader2.readTimeNanos.get() +
+              inputMetrics.openTimeNanos)
           inputMetrics.numPackets = org.apache.hadoop.hdfs.RemoteBlockReader2.totalPacketsRead.get()
           reader.close()
         } catch {
