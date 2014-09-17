@@ -203,6 +203,13 @@ case class InputMetrics(readMethod: DataReadMethod.Value) {
    * Packets (just for debugging).
    */
   var numPackets: Int = 0
+
+  /**
+   * Time Hadoop spent opening the file for reading.
+   *
+   * Includes in readTimeNanos.
+   */
+  var openTimeNanos: Long = 0L
 }
 
 
@@ -270,4 +277,11 @@ class ShuffleWriteMetrics extends Serializable {
    * Time the task spent blocking on writes to disk or buffer cache, in nanoseconds
    */
   @volatile var shuffleWriteTime: Long = _
+
+  /**
+   * Time spent opening shuffle files for writing to them.
+   *
+   * Included in shuffleWriteTime.
+   */
+  var shuffleOpenTimeNanos: Long = _
 }
