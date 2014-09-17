@@ -153,7 +153,9 @@ private[spark] class ShuffleMapTask(
     try {
       // Obtain all the block writers for shuffle blocks.
       val ser = SparkEnv.get.serializerManager.get(dep.serializerClass, SparkEnv.get.conf)
+      val openStartTime = System.nanoTime
       shuffle = shuffleBlockManager.forMapTask(dep.shuffleId, partitionId, numOutputSplits, ser)
+      val fileOpenTime = System.nanoTime - openStartTime
 
       // Write the map output to its associated buckets.
       for (elem <- rdd.iterator(split, context)) {
@@ -177,7 +179,8 @@ private[spark] class ShuffleMapTask(
       // Update shuffle metrics.
       val shuffleMetrics = new ShuffleWriteMetrics
       shuffleMetrics.shuffleBytesWritten = totalBytes
-      shuffleMetrics.shuffleWriteTime = totalTime
+      shuffleMetrics.shuffleWriteTime = totalTime + fileOpenTime
+      shuffleMetrics.shuffleOpenTimeNanos = fileOpenTime
       metrics.get.shuffleWriteMetrics = Some(shuffleMetrics)
 
       success = true
