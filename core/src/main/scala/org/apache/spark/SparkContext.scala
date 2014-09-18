@@ -343,6 +343,11 @@ class SparkContext(config: SparkConf) extends Logging with ExecutorAllocationCli
     }
   }
 
+  if (conf.getBoolean("spark.jobLogger.enabled", false)) {
+    val jobLogger = new JobLogger()
+    addSparkListener(jobLogger)
+  }
+
   // start TaskScheduler after taskScheduler sets DAGScheduler reference in DAGScheduler's
   // constructor
   taskScheduler.start()
