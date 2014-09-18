@@ -300,6 +300,11 @@ class SparkContext(config: SparkConf) extends Logging {
       new SparkException("DAGScheduler cannot be initialized due to %s".format(e.getMessage))
   }
 
+  if (conf.getBoolean("spark.jobLogger.enabled", false)) {
+    val jobLogger = new JobLogger()
+    addSparkListener(jobLogger)
+  }
+
   // start TaskScheduler after taskScheduler sets DAGScheduler reference in DAGScheduler's
   // constructor
   taskScheduler.start()
