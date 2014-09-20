@@ -221,6 +221,7 @@ private[spark] class Executor(
         // may have been set in tasks that ran in the same thread.
         org.apache.hadoop.hdfs.DFSOutputStream.writeTimeNanos.set(0L)
         org.apache.hadoop.hdfs.DFSOutputStream.bytesWritten.set(0L)
+        org.apache.hadoop.hdfs.RemoteBlockReader2.totalPacketsRead.set(0)
         org.apache.hadoop.hdfs.RemoteBlockReader2.readTimeNanos.set(0L)
         org.apache.hadoop.hdfs.RemoteBlockReader2.openTimeNanos.set(0L)
 

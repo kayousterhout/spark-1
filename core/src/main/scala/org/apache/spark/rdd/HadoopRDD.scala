@@ -158,7 +158,7 @@ class HadoopRDD[K, V](
       reader = inputFormat.getRecordReader(split.inputSplit.value, jobConf, Reporter.NULL)
 
       val inputMetrics = new InputMetrics(DataReadMethod.Hdfs)
-      inputMetrics.bytesRead = split.inputSplit.value.getLength()
+      inputMetrics.numPackets = split.inputSplit.value.getLength()
       context.taskMetrics.inputMetrics = Some(inputMetrics)
 
       // Register an on-task-completion callback to close the input stream.
@@ -167,7 +167,9 @@ class HadoopRDD[K, V](
       val value: V = reader.createValue()
       override def getNext() = {
         try {
+          val beginPosition = reader.getPos()
           finished = !reader.next(key, value)
+          inputMetrics.bytesRead += reader.getPos() - beginPosition
         } catch {
           case eof: EOFException => {
             finished = true
@@ -183,7 +185,6 @@ class HadoopRDD[K, V](
           inputMetrics.readTimeNanos =
             (org.apache.hadoop.hdfs.RemoteBlockReader2.readTimeNanos.get() +
               inputMetrics.openTimeNanos)
-          inputMetrics.numPackets = org.apache.hadoop.hdfs.RemoteBlockReader2.totalPacketsRead.get()
           reader.close()
         } catch {
           case e: Exception => logWarning("Exception in RecordReader.close()", e)

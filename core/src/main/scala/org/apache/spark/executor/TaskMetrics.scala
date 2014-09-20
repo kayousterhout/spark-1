@@ -154,7 +154,7 @@ case class InputMetrics(val readMethod: DataReadMethod.Value) {
   /**
    * Packets (just for debugging).
    */
-  var numPackets: Int = 0
+  var numPackets: Long = 0L
 
   /**
    * Time Hadoop spent opening the file for reading.
