@@ -120,7 +120,13 @@ private[spark] class DiskBlockObjectWriter(
   private var writesSinceMetricsUpdate = 0
 
   override def open(): BlockObjectWriter = {
+    /* Creating the FileOutputStream causes the file to be opened; time to open the file should
+     * be included in the shuffleWriteTime because it can be a significant amount of the time when
+     * the disk is contended. */
+    val start = System.nanoTime()
     fos = new FileOutputStream(file, true)
+    writeMetrics.shuffleWriteTime += (System.nanoTime() - start)
+
     ts = new TimeTrackingOutputStream(fos)
     channel = fos.getChannel()
     bs = compressStream(new BufferedOutputStream(ts, bufferSize))

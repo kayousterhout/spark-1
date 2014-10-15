@@ -24,7 +24,10 @@ import scala.language.existentials
 import org.apache.spark._
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
-import org.apache.spark.shuffle.ShuffleWriter
+import java.io.ByteArrayOutputStream
+import org.apache.spark.serializer.Serializer
+import org.apache.spark.storage.{BlockManager, ShuffleBlockId, StorageLevel}
+import org.apache.spark.executor.ShuffleWriteMetrics
 
 /**
 * A ShuffleMapTask divides the elements of an RDD into multiple buckets (based on a partitioner
@@ -57,28 +60,75 @@ private[spark] class ShuffleMapTask(
   override def runTask(context: TaskContext): MapStatus = {
     // Deserialize the RDD using the broadcast variable.
     val ser = SparkEnv.get.closureSerializer.newInstance()
-    val (rdd, dep) = ser.deserialize[(RDD[_], ShuffleDependency[_, _, _])](
+    val (rdd, depRaw) = ser.deserialize[(RDD[_], ShuffleDependency[_, _, _])](
       ByteBuffer.wrap(taskBinary.value), Thread.currentThread.getContextClassLoader)
+    val dep = depRaw.asInstanceOf[ShuffleDependency[Any, Any, _]]
 
     metrics = Some(context.taskMetrics)
-    var writer: ShuffleWriter[Any, Any] = null
-    try {
-      val manager = SparkEnv.get.shuffleManager
-      writer = manager.getWriter[Any, Any](dep.shuffleHandle, partitionId, context)
-      writer.write(rdd.iterator(partition, context).asInstanceOf[Iterator[_ <: Product2[Any, Any]]])
-      return writer.stop(success = true).get
-    } catch {
-      case e: Exception =>
-        if (writer != null) {
-          writer.stop(success = false)
-        }
-        throw e
-    } finally {
-      context.markTaskCompleted()
+
+    // Optionally do map-side combining before outputting shuffle files.
+    val uncombinedIterator =
+      rdd.iterator(partition, context).asInstanceOf[Iterator[_ <: Product2[Any, Any]]]
+    val iter = if (dep.aggregator.isDefined && dep.mapSideCombine) {
+        dep.aggregator.get.combineValuesByKey(uncombinedIterator, context)
+    } else if (dep.aggregator.isEmpty && dep.mapSideCombine) {
+      throw new IllegalStateException("Aggregator is empty for map-side combine")
+    } else {
+      uncombinedIterator
     }
+
+    // Create a different writer for each output bucket.
+    val blockManager = SparkEnv.get.blockManager
+    val shuffleData = Array.tabulate[SerializedObjectWriter](dep.partitioner.numPartitions) {
+      bucketId =>
+        new SerializedObjectWriter(blockManager, dep, partitionId, bucketId)
+    }
+    for (elem <- iter) {
+      val bucketId = dep.partitioner.getPartition(elem._1)
+      shuffleData(bucketId).write(elem)
+    }
+
+    // Store the shuffle data in the block manager and get the sizes.
+    val shuffleWriteMetrics = new ShuffleWriteMetrics()
+    context.taskMetrics.shuffleWriteMetrics = Some(shuffleWriteMetrics)
+    val compressedSizes = shuffleData.map { shuffleWriter =>
+      val bytesWritten = shuffleWriter.put()
+      MapOutputTracker.compressSize(bytesWritten)
+    }
+    context.markTaskCompleted()
+
+    new MapStatus(SparkEnv.get.blockManager.blockManagerId, compressedSizes)
   }
 
   override def preferredLocations: Seq[TaskLocation] = preferredLocs
 
   override def toString = "ShuffleMapTask(%d, %d)".format(stageId, partitionId)
+}
+
+private class SerializedObjectWriter(
+    blockManager: BlockManager, dep: ShuffleDependency[_,_,_], partitionId: Int, bucketId: Int) {
+  private val byteOutputStream = new ByteArrayOutputStream()
+  private val ser = Serializer.getSerializer(dep.serializer.getOrElse(null))
+  private val blockId = ShuffleBlockId(shuffleId, partitionId, bucketId)
+  private val compressionStream = blockManager.wrapForCompression(blockId, byteOutputStream)
+  private val serializationStream = ser.newInstance().serializeStream(compressionStream)
+  private val shuffleId = dep.shuffleId
+
+  def write(value: Any) {
+    serializationStream.writeObject(value)
+  }
+
+  def put(): Long = {
+    serializationStream.flush()
+    serializationStream.close()
+    /* TODO: toByteArray creates a copy of byteOutputStream; change MemoryStore to store streams
+     * so that we can avoid this copy (ByteBuffer.wrap does not cause a copy).
+     * See http://stackoverflow.com/questions/2716596/
+     *   how-to-put-data-from-an-outputstream-into-a-bytebuffer
+     * for a way to do this that involves subclassing ByteArrayOutputStream. */
+    /* TODO: Need to delete this data after the reduce task completes! */
+     val result = blockManager.putBytes(
+      blockId, ByteBuffer.wrap(byteOutputStream.toByteArray), StorageLevel.MEMORY_ONLY_SER)
+    return result.size
+  }
 }
