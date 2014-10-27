@@ -101,9 +101,6 @@ class BlockManagerMasterActor(val isLocal: Boolean, conf: SparkConf, listenerBus
     case RemoveRdd(rddId) =>
       sender ! removeRdd(rddId)
 
-    case RemoveShuffle(shuffleId) =>
-      sender ! removeShuffle(shuffleId)
-
     case RemoveBroadcast(broadcastId, removeFromDriver) =>
       sender ! removeBroadcast(broadcastId, removeFromDriver)
 

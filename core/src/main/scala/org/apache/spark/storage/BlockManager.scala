@@ -64,8 +64,7 @@ private[spark] class BlockManager(
   extends BlockDataProvider with Logging {
 
   private val port = conf.getInt("spark.blockManager.port", 0)
-  val shuffleBlockManager = new ShuffleBlockManager(this, shuffleManager)
-  val diskBlockManager = new DiskBlockManager(shuffleBlockManager, conf)
+  val diskBlockManager = new DiskBlockManager(conf)
   val connectionManager =
     new ConnectionManager(port, conf, securityManager, "Connection manager for block manager")
 
@@ -83,7 +82,7 @@ private[spark] class BlockManager(
     val tachyonStorePath = s"$storeDir/$appFolderName/${this.executorId}"
     val tachyonMaster = conf.get("spark.tachyonStore.url",  "tachyon://localhost:19998")
     val tachyonBlockManager =
-      new TachyonBlockManager(shuffleBlockManager, tachyonStorePath, tachyonMaster)
+      new TachyonBlockManager(conf, tachyonStorePath, tachyonMaster)
     tachyonInitialized = true
     new TachyonStore(this, tachyonBlockManager)
   }
@@ -101,8 +100,6 @@ private[spark] class BlockManager(
   private val compressShuffle = conf.getBoolean("spark.shuffle.compress", true)
   // Whether to compress RDD partitions that are stored serialized
   private val compressRdds = conf.getBoolean("spark.rdd.compress", false)
-  // Whether to compress shuffle output temporarily spilled to disk
-  private val compressShuffleSpill = conf.getBoolean("spark.shuffle.spill.compress", true)
 
   private val slaveActor = actorSystem.actorOf(
     Props(new BlockManagerSlaveActor(this, mapOutputTracker)),
@@ -987,7 +984,6 @@ private[spark] class BlockManager(
       case _: ShuffleBlockId => compressShuffle
       case _: BroadcastBlockId => compressBroadcast
       case _: RDDBlockId => compressRdds
-      case _: TempBlockId => compressShuffleSpill
       case _ => false
     }
   }
@@ -1043,7 +1039,6 @@ private[spark] class BlockManager(
 
   def stop(): Unit = {
     connectionManager.stop()
-    shuffleBlockManager.stop()
     diskBlockManager.stop()
 
     actorSystem.stop(slaveActor)
