@@ -207,6 +207,7 @@ object BlockFetcherIterator {
         val fetchResult = localBytes match {
           case Some(bytes) =>
             logDebug("Got local block " + id)
+            readMetrics.localBlocksFetched += 1
             // Pass in a function, rather than passing in the iterator directly, so that
             // dataDeserialize doesn't get called until the data is being used (dataDeserialize
             // can lead to significant memory allocation to wrap the stream for decompression /

@@ -93,6 +93,7 @@ private[spark] class ShuffleMapTask(
     context.taskMetrics.shuffleWriteMetrics = Some(shuffleWriteMetrics)
     val compressedSizes = shuffleData.map { shuffleWriter =>
       val bytesWritten = shuffleWriter.put()
+      shuffleWriteMetrics.shuffleBytesWritten += bytesWritten
       MapOutputTracker.compressSize(bytesWritten)
     }
     context.markTaskCompleted()
@@ -109,10 +110,10 @@ private class SerializedObjectWriter(
     blockManager: BlockManager, dep: ShuffleDependency[_,_,_], partitionId: Int, bucketId: Int) {
   private val byteOutputStream = new ByteArrayOutputStream()
   private val ser = Serializer.getSerializer(dep.serializer.getOrElse(null))
+  private val shuffleId = dep.shuffleId
   private val blockId = ShuffleBlockId(shuffleId, partitionId, bucketId)
   private val compressionStream = blockManager.wrapForCompression(blockId, byteOutputStream)
   private val serializationStream = ser.newInstance().serializeStream(compressionStream)
-  private val shuffleId = dep.shuffleId
 
   def write(value: Any) {
     serializationStream.writeObject(value)
