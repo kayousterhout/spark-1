@@ -17,6 +17,7 @@
 
 package org.apache.spark.scheduler
 
+import java.io.OutputStream
 import java.nio.ByteBuffer
 
 import scala.language.existentials
@@ -25,7 +26,7 @@ import org.apache.spark._
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
 import java.io.ByteArrayOutputStream
-import org.apache.spark.serializer.Serializer
+import org.apache.spark.serializer.{SerializationStream, Serializer}
 import org.apache.spark.storage.{BlockManager, ShuffleBlockId, StorageLevel}
 import org.apache.spark.executor.ShuffleWriteMetrics
 
@@ -112,24 +113,42 @@ private class SerializedObjectWriter(
   private val ser = Serializer.getSerializer(dep.serializer.getOrElse(null))
   private val shuffleId = dep.shuffleId
   private val blockId = ShuffleBlockId(shuffleId, partitionId, bucketId)
-  private val compressionStream = blockManager.wrapForCompression(blockId, byteOutputStream)
-  private val serializationStream = ser.newInstance().serializeStream(compressionStream)
+
+  /* Only initialize compressionStream and serializationStream if some bytes are written, otherwise
+   * 16 bytes will always be written to the byteOutputStream (and those bytes will be unnecessarily
+   * transferred to reduce tasks). */
+  private var initialized = false
+  private var compressionStream: OutputStream = null
+  private var serializationStream: SerializationStream = null
+
+  def open() {
+    compressionStream = blockManager.wrapForCompression(blockId, byteOutputStream)
+    serializationStream = ser.newInstance().serializeStream(compressionStream)
+    initialized = true
+  }
 
   def write(value: Any) {
+    if (!initialized) {
+      open()
+    }
     serializationStream.writeObject(value)
   }
 
   def put(): Long = {
-    serializationStream.flush()
-    serializationStream.close()
-    /* TODO: toByteArray creates a copy of byteOutputStream; change MemoryStore to store streams
-     * so that we can avoid this copy (ByteBuffer.wrap does not cause a copy).
-     * See http://stackoverflow.com/questions/2716596/
-     *   how-to-put-data-from-an-outputstream-into-a-bytebuffer
-     * for a way to do this that involves subclassing ByteArrayOutputStream. */
-    /* TODO: Need to delete this data after the reduce task completes! */
-     val result = blockManager.putBytes(
-      blockId, ByteBuffer.wrap(byteOutputStream.toByteArray), StorageLevel.MEMORY_ONLY_SER)
-    return result.size
+    if (initialized) {
+      serializationStream.flush()
+      serializationStream.close()
+      /* TODO: toByteArray creates a copy of byteOutputStream; change MemoryStore to store streams
+       * so that we can avoid this copy (ByteBuffer.wrap does not cause a copy).
+       * See http://stackoverflow.com/questions/2716596/
+       *   how-to-put-data-from-an-outputstream-into-a-bytebuffer
+       * for a way to do this that involves subclassing ByteArrayOutputStream. */
+      /* TODO: Need to delete this data after the reduce task completes! */
+      val result = blockManager.putBytes(
+        blockId, ByteBuffer.wrap(byteOutputStream.toByteArray), StorageLevel.MEMORY_ONLY_SER)
+      return result.size
+    } else {
+      return 0
+    }
   }
 }
