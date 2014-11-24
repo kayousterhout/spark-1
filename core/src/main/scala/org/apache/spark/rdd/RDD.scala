@@ -35,7 +35,6 @@ import org.apache.spark.Partitioner._
 import org.apache.spark.SparkContext._
 import org.apache.spark.annotation.{DeveloperApi, Experimental}
 import org.apache.spark.api.java.JavaRDD
-import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.partial.BoundedDouble
 import org.apache.spark.partial.CountEvaluator
 import org.apache.spark.partial.GroupedCountEvaluator
@@ -92,7 +91,7 @@ abstract class RDD[T: ClassTag](
    * Implemented by subclasses to compute a given partition.
    */
   @DeveloperApi
-  def compute(split: Partition, context: TaskContext): Iterator[T]
+  def compute(split: Partition, goop: TaskGoop): Iterator[T]
 
   /**
    * Implemented by subclasses to return the set of partitions in this RDD. This method will only
@@ -222,11 +221,11 @@ abstract class RDD[T: ClassTag](
    * This should ''not'' be called by users directly, but is available for implementors of custom
    * subclasses of RDD.
    */
-  final def iterator(split: Partition, context: TaskContext): Iterator[T] = {
+  final def iterator(split: Partition, goop: TaskGoop): Iterator[T] = {
     if (storageLevel != StorageLevel.NONE) {
-      SparkEnv.get.cacheManager.getOrCompute(this, split, context, storageLevel)
+      SparkEnv.get.cacheManager.getOrCompute(this, split, goop, storageLevel)
     } else {
-      computeOrReadCheckpoint(split, context)
+      computeOrReadCheckpoint(split, goop)
     }
   }
 
@@ -257,9 +256,9 @@ abstract class RDD[T: ClassTag](
   /**
    * Compute an RDD partition or read it from a checkpoint if the RDD is checkpointing.
    */
-  private[spark] def computeOrReadCheckpoint(split: Partition, context: TaskContext): Iterator[T] =
+  private[spark] def computeOrReadCheckpoint(split: Partition, goop: TaskGoop): Iterator[T] =
   {
-    if (isCheckpointed) firstParent[T].iterator(split, context) else compute(split, context)
+    if (isCheckpointed) firstParent[T].iterator(split, goop) else compute(split, goop)
   }
 
   // Transformations (return a new RDD)

@@ -17,11 +17,17 @@
 
 package org.apache.spark.rdd
 
-import scala.reflect.ClassTag
+import scala.Some
+import scala.collection.mutable.{ArrayBuffer, HashMap}
 
 import org.apache.spark._
 import org.apache.spark.annotation.DeveloperApi
+import org.apache.spark.monotasks.Monotask
+import org.apache.spark.monotasks.network.NetworkMonotask
+import org.apache.spark.network.BufferMessage
 import org.apache.spark.serializer.Serializer
+import org.apache.spark.storage._
+import org.apache.spark.shuffle.NewShuffleReader
 
 private[spark] class ShuffledRDDPartition(val idx: Int) extends Partition {
   override val index = idx
@@ -51,6 +57,11 @@ class ShuffledRDD[K, V, C](
   private var aggregator: Option[Aggregator[K, V, C]] = None
 
   private var mapSideCombine: Boolean = false
+
+  // BlockIds for blocks that are stored in the local block manager. Includes both shuffle block
+  // Ids that were stored locally, and monotask output IDs (for blocks that were fetched remotely
+  // and haven't yet been deserialized).
+  @transient private var localBlockIds: ArrayBuffer[BlockId] = null
 
   /** Set a serializer for this RDD's shuffle, or null to use the default (spark.serializer) */
   def setSerializer(serializer: Serializer): ShuffledRDD[K, V, C] = {
@@ -86,11 +97,13 @@ class ShuffledRDD[K, V, C](
     Array.tabulate[Partition](part.numPartitions)(i => new ShuffledRDDPartition(i))
   }
 
-  override def compute(split: Partition, context: TaskContext): Iterator[(K, C)] = {
-    val dep = dependencies.head.asInstanceOf[ShuffleDependency[K, V, C]]
-    SparkEnv.get.shuffleManager.getReader(dep.shuffleHandle, split.index, split.index + 1, context)
-      .read()
-      .asInstanceOf[Iterator[(K, C)]]
+  override def compute(split: Partition, goop: TaskGoop): Iterator[(K, C)] = {
+    dependencies.head.asInstanceOf[ShuffleDependency[K, V, C]].shuffleReader match {
+      case Some(shuffleReader) =>
+        shuffleReader.getDeserializedAggregatedSortedData()
+      case None =>
+        throw new SparkException("No shuffle reader found!")
+    }
   }
 
   override def clearDependencies() {

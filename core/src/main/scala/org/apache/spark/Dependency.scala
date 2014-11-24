@@ -20,7 +20,8 @@ package org.apache.spark
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.rdd.RDD
 import org.apache.spark.serializer.Serializer
-import org.apache.spark.shuffle.ShuffleHandle
+import org.apache.spark.shuffle.{NewShuffleReader, ShuffleHandle}
+import org.apache.spark.monotasks.Monotask
 
 /**
  * :: DeveloperApi ::
@@ -29,6 +30,15 @@ import org.apache.spark.shuffle.ShuffleHandle
 @DeveloperApi
 abstract class Dependency[T] extends Serializable {
   def rdd: RDD[T]
+
+  /**
+   * Returns the monotasks that need to be run to construct the data for this dependency.
+   *
+   * Current, all implementations assume that the monotasks for a dependency do not depend
+   * on one another, and that the only dependency is that the compute monotask for the RDD
+   * being computed depends on the monotasks for its dependencies. This assumption will break
+   * once we add support for monotasks to, for example, cache intermediate data. */
+  def getMonotasks(goop: TaskGoop, partitionId: Int): Seq[Monotask]
 }
 
 
@@ -47,6 +57,15 @@ abstract class NarrowDependency[T](_rdd: RDD[T]) extends Dependency[T] {
   def getParents(partitionId: Int): Seq[Int]
 
   override def rdd: RDD[T] = _rdd
+
+  override def getMonotasks(goop: TaskGoop, partitionId: Int): Seq[Monotask] = {
+    // For each of the parent partitions, get the input monotasks to generate that partition.
+    getParents(partitionId).flatMap { parentPartitionId =>
+      rdd.dependencies.flatMap { dependency =>
+        dependency.getMonotasks(goop, parentPartitionId)
+      }
+    }
+  }
 }
 
 
@@ -79,6 +98,15 @@ class ShuffleDependency[K, V, C](
     shuffleId, _rdd.partitions.size, this)
 
   _rdd.sparkContext.cleaner.foreach(_.registerShuffleForCleanup(this))
+
+  /** Helps with reading the shuffle data associated with this dependency. Set by getMonotasks(). */
+  var shuffleReader: Option[NewShuffleReader[K, V, C]] = None
+
+  override def getMonotasks(goop: TaskGoop, partitionId: Int): Seq[Monotask] = {
+    // TODO: should the shuffle reader code be part of the dependency?
+    shuffleReader = Some(new NewShuffleReader(this, partitionId, goop))
+    shuffleReader.get.getReadMonotasks()
+  }
 }
 
 

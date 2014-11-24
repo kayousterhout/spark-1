@@ -69,9 +69,9 @@ class CheckpointRDD[T: ClassTag](sc: SparkContext, val checkpointPath: String)
     locations.headOption.toList.flatMap(_.getHosts).filter(_ != "localhost")
   }
 
-  override def compute(split: Partition, context: TaskContext): Iterator[T] = {
+  override def compute(split: Partition, goop: TaskGoop): Iterator[T] = {
     val file = new Path(checkpointPath, CheckpointRDD.splitIdToFile(split.index))
-    CheckpointRDD.readFromFile(file, broadcastedConf, context)
+    CheckpointRDD.readFromFile(file, broadcastedConf, goop.context)
   }
 
   override def checkpoint() {

@@ -21,14 +21,14 @@ import scala.language.existentials
 
 import java.io.{IOException, ObjectOutputStream}
 
+import scala.Some
 import scala.collection.mutable.ArrayBuffer
 
-import org.apache.spark.{InterruptibleIterator, Partition, Partitioner, SparkEnv, TaskContext}
-import org.apache.spark.{Dependency, OneToOneDependency, ShuffleDependency}
+import org.apache.spark._
 import org.apache.spark.annotation.DeveloperApi
-import org.apache.spark.util.collection.{AppendOnlyMap, CompactBuffer}
 import org.apache.spark.serializer.Serializer
 import org.apache.spark.shuffle.ShuffleHandle
+import org.apache.spark.util.collection.{AppendOnlyMap, CompactBuffer}
 
 private[spark] sealed trait CoGroupSplitDep extends Serializable
 
@@ -115,7 +115,8 @@ class CoGroupedRDD[K](@transient var rdds: Seq[RDD[_ <: Product2[K, _]]], part: 
 
   override val partitioner: Some[Partitioner] = Some(part)
 
-  override def compute(s: Partition, context: TaskContext): Iterator[(K, Array[Iterable[_]])] = {
+  override def compute(s: Partition, goop: TaskGoop): Iterator[(K, Array[Iterable[_]])] = {
+    // TODO: This should use the new shuffle code, like Shuffled RDD.
     val sparkConf = SparkEnv.get.conf
     val split = s.asInstanceOf[CoGroupPartition]
     val numRdds = split.deps.size
@@ -125,13 +126,13 @@ class CoGroupedRDD[K](@transient var rdds: Seq[RDD[_ <: Product2[K, _]]], part: 
     for ((dep, depNum) <- split.deps.zipWithIndex) dep match {
       case NarrowCoGroupSplitDep(rdd, _, itsSplit) =>
         // Read them from the parent
-        val it = rdd.iterator(itsSplit, context).asInstanceOf[Iterator[Product2[K, Any]]]
+        val it = rdd.iterator(itsSplit, goop).asInstanceOf[Iterator[Product2[K, Any]]]
         rddIterators += ((it, depNum))
 
       case ShuffleCoGroupSplitDep(handle) =>
         // Read map outputs of shuffle
         val it = SparkEnv.get.shuffleManager
-          .getReader(handle, split.index, split.index + 1, context)
+          .getReader(handle, split.index, split.index + 1, goop.context)
           .read()
         rddIterators += ((it, depNum))
     }
@@ -149,7 +150,7 @@ class CoGroupedRDD[K](@transient var rdds: Seq[RDD[_ <: Product2[K, _]]], part: 
         getCombiner(kv._1)(depNum) += kv._2
       }
     }
-    new InterruptibleIterator(context,
+    new InterruptibleIterator(goop.context,
       map.iterator.asInstanceOf[Iterator[(K, Array[Iterable[_]])]])
   }
 

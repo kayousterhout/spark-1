@@ -32,7 +32,7 @@ import org.apache.spark.InterruptibleIterator
 import org.apache.spark.Logging
 import org.apache.spark.Partition
 import org.apache.spark.SerializableWritable
-import org.apache.spark.{SparkContext, TaskContext}
+import org.apache.spark.{SparkContext, TaskGoop}
 import org.apache.spark.executor.{DataReadMethod, InputMetrics}
 import org.apache.spark.rdd.NewHadoopRDD.NewHadoopMapPartitionsWithSplitRDD
 
@@ -99,7 +99,7 @@ class NewHadoopRDD[K, V](
     result
   }
 
-  override def compute(theSplit: Partition, context: TaskContext): InterruptibleIterator[(K, V)] = {
+  override def compute(theSplit: Partition, goop: TaskGoop): InterruptibleIterator[(K, V)] = {
     val iter = new Iterator[(K, V)] {
       val split = theSplit.asInstanceOf[NewHadoopPartition]
       logInfo("Input split: " + split.serializableHadoopSplit)
@@ -126,10 +126,10 @@ class NewHadoopRDD[K, V](
         case e: Exception =>
           logWarning("Unable to get input split size in order to set task input bytes", e)
       }
-      context.taskMetrics.inputMetrics = Some(inputMetrics)
+      goop.context.taskMetrics.inputMetrics = Some(inputMetrics)
 
       // Register an on-task-completion callback to close the input stream.
-      context.addTaskCompletionListener(context => close())
+      goop.context.addTaskCompletionListener(context => close())
       var havePair = false
       var finished = false
 
@@ -157,7 +157,7 @@ class NewHadoopRDD[K, V](
         }
       }
     }
-    new InterruptibleIterator(context, iter)
+    new InterruptibleIterator(goop.context, iter)
   }
 
   /** Maps over a partition, providing the InputSplit that was used as the base of the partition. */
@@ -191,10 +191,10 @@ private[spark] object NewHadoopRDD {
 
     override def getPartitions: Array[Partition] = firstParent[T].partitions
 
-    override def compute(split: Partition, context: TaskContext) = {
+    override def compute(split: Partition, goop: TaskGoop) = {
       val partition = split.asInstanceOf[NewHadoopPartition]
       val inputSplit = partition.serializableHadoopSplit.value
-      f(inputSplit, firstParent[T].iterator(split, context))
+      f(inputSplit, firstParent[T].iterator(split, goop))
     }
   }
 }

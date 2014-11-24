@@ -435,7 +435,7 @@ private[spark] class TaskSetManager(
           val startTime = clock.getTime()
           // We rely on the DAGScheduler to catch non-serializable closures and RDDs, so in here
           // we assume the task can be serialized without exceptions.
-          val serializedTask = Task.serializeWithDependencies(
+          val serializedTask = Macrotask.serializeWithDependencies(
             task, sched.sc.addedFiles, sched.sc.addedJars, ser)
           if (serializedTask.limit > TaskSetManager.TASK_SIZE_TO_WARN_KB * 1024 &&
               !emittedTaskSizeWarning) {
@@ -671,7 +671,7 @@ private[spark] class TaskSetManager(
     // Re-enqueue any tasks that ran on the failed executor if this is a shuffle map stage.
     // The reason is the next stage wouldn't be able to fetch the data from this dead executor
     // so we would need to rerun these tasks on other executors.
-    if (tasks(0).isInstanceOf[ShuffleMapTask]) {
+    if (tasks(0).isInstanceOf[ShuffleMapMacrotask]) {
       for ((tid, info) <- taskInfos if info.executorId == execId) {
         val index = taskInfos(tid).index
         if (successful(index)) {

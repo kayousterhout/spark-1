@@ -19,6 +19,8 @@ package org.apache.spark.monotasks
 import scala.collection.mutable.HashSet
 
 import org.apache.spark.Logging
+import org.apache.spark.monotasks.compute.{ComputeMonotask, ComputeScheduler}
+import org.apache.spark.monotasks.network.{NetworkMonotask, NetworkScheduler}
 
 /**
  * LocalDagScheduler tracks running and waiting monotasks. When all of a monotask's
@@ -26,10 +28,10 @@ import org.apache.spark.Logging
  * to the appropriate scheduler to be executed once sufficient resources are available.
  */
 private[spark] class LocalDagScheduler extends Logging {
-  // TODO: Comment these back in once the relevant schedulers have been added.
-  // val computeScheduler = new ComputeScheduler
+  val computeScheduler = new ComputeScheduler
+  val networkScheduler = new NetworkScheduler
+  // TODO: Comment this back in once the disk scheduler has been added.
   // val diskScheduler = new DiskScheduler
-  // val networkScheduler = new NetworkScheduler
 
   /* IDs of monotasks that are waiting for dependencies to be satisfied. This exists solely for
    * debugging/testing and is not needed for maintaining correctness. */
@@ -39,14 +41,16 @@ private[spark] class LocalDagScheduler extends Logging {
    * debugging/testing and is not needed for maintaining correctness. */
   val runningMonotasks = new HashSet[Long]()
 
-  def submitMonotasks(monotasks: Seq[Monotask]) {
-    monotasks.foreach { monotask =>
-      if (monotask.dependencies.isEmpty) {
-        scheduleMonotask(monotask)
-      } else {
-        waitingMonotasks += monotask.taskId
-      }
+  def submitMonotask(monotask: Monotask) {
+    if (monotask.dependencies.isEmpty) {
+      scheduleMonotask(monotask)
+    } else {
+      waitingMonotasks += monotask.taskId
     }
+  }
+
+  def submitMonotasks(monotasks: Seq[Monotask]) {
+    monotasks.foreach(submitMonotask(_))
   }
 
   def handleTaskCompletion(completedMonotask: Monotask) {
@@ -59,6 +63,10 @@ private[spark] class LocalDagScheduler extends Logging {
     runningMonotasks.remove(completedMonotask.taskId)
   }
 
+  def handleTaskFailure(failedMonotask: Monotask) {
+
+  }
+
   /**
    * Submits a monotask to the relevant scheduler to be executed. This method should only be called
    * after all of the monotask's dependencies have been satisfied.
@@ -66,9 +74,9 @@ private[spark] class LocalDagScheduler extends Logging {
   private def scheduleMonotask(monotask: Monotask) {
     assert(monotask.dependencies.isEmpty)
     monotask match {
-      // TODO: Comment these in once the relevant monotasks / schedulers have been added.
-      // case computeMonotask: ComputeMonotask => computeScheduler.submitTask(computeMonotask)
-      // case networkMonotask: NetworkMonotask => networkScheduler.submitTask(networkMonotask)
+      case computeMonotask: ComputeMonotask => computeScheduler.submitTask(computeMonotask)
+      case networkMonotask: NetworkMonotask => networkScheduler.submitTask(networkMonotask)
+      // TODO: Comment this in once the disk scheduler has been added.
       // case diskMonotask: DiskMonotask => diskScheduler.submitTask(diskMonotask)
       case _ => logError("Received unexpected type of monotask")
     }

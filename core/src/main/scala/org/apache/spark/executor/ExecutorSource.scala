@@ -40,27 +40,6 @@ private[spark] class ExecutorSource(val executor: Executor, executorId: String) 
   // TODO: It would be nice to pass the application name here
   override val sourceName = "executor.%s".format(executorId)
 
-  // Gauge for executor thread pool's actively executing task counts
-  metricRegistry.register(MetricRegistry.name("threadpool", "activeTasks"), new Gauge[Int] {
-    override def getValue: Int = executor.threadPool.getActiveCount()
-  })
-
-  // Gauge for executor thread pool's approximate total number of tasks that have been completed
-  metricRegistry.register(MetricRegistry.name("threadpool", "completeTasks"), new Gauge[Long] {
-    override def getValue: Long = executor.threadPool.getCompletedTaskCount()
-  })
-
-  // Gauge for executor thread pool's current number of threads
-  metricRegistry.register(MetricRegistry.name("threadpool", "currentPool_size"), new Gauge[Int] {
-    override def getValue: Int = executor.threadPool.getPoolSize()
-  })
-
-  // Gauge got executor thread pool's largest number of threads that have ever simultaneously
-  // been in th pool
-  metricRegistry.register(MetricRegistry.name("threadpool", "maxPool_size"), new Gauge[Int] {
-    override def getValue: Int = executor.threadPool.getMaximumPoolSize()
-  })
-
   // Gauge for file system stats of this executor
   for (scheme <- Array("hdfs", "file")) {
     registerFileSystemStat(scheme, "read_bytes", _.getBytesRead(), 0L)

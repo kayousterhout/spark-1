@@ -26,7 +26,7 @@ import scala.reflect.ClassTag
 import com.google.common.base.Optional
 import org.apache.hadoop.io.compress.CompressionCodec
 
-import org.apache.spark.{Partition, SparkContext, TaskContext}
+import org.apache.spark.{Partition, SparkContext, TaskGoop}
 import org.apache.spark.annotation.Experimental
 import org.apache.spark.api.java.JavaPairRDD._
 import org.apache.spark.api.java.JavaSparkContext.fakeClassTag
@@ -63,8 +63,8 @@ trait JavaRDDLike[T, This <: JavaRDDLike[T, This]] extends Serializable {
    * This should ''not'' be called by users directly, but is available for implementors of custom
    * subclasses of RDD.
    */
-  def iterator(split: Partition, taskContext: TaskContext): java.util.Iterator[T] =
-    asJavaIterator(rdd.iterator(split, taskContext))
+  def iterator(split: Partition, taskGoop: TaskGoop): java.util.Iterator[T] =
+    asJavaIterator(rdd.iterator(split, taskGoop))
 
   // Transformations (return a new RDD)
 

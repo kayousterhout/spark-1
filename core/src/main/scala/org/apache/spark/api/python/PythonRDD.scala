@@ -57,7 +57,7 @@ private[spark] class PythonRDD(
 
   override val partitioner = if (preservePartitoning) parent.partitioner else None
 
-  override def compute(split: Partition, context: TaskContext): Iterator[Array[Byte]] = {
+  override def compute(split: Partition, goop: TaskGoop): Iterator[Array[Byte]] = {
     val startTime = System.currentTimeMillis
     val env = SparkEnv.get
     val localdir = env.blockManager.diskBlockManager.localDirs.map(
@@ -66,9 +66,9 @@ private[spark] class PythonRDD(
     val worker: Socket = env.createPythonWorker(pythonExec, envVars.toMap)
 
     // Start a thread to feed the process input from our parent's iterator
-    val writerThread = new WriterThread(env, worker, split, context)
+    val writerThread = new WriterThread(env, worker, split, goop)
 
-    context.addTaskCompletionListener { context =>
+    goop.context.addTaskCompletionListener { context =>
       writerThread.shutdownOnTaskCompletion()
 
       // Cleanup the worker socket. This will also cause the Python worker to exit.
@@ -80,7 +80,7 @@ private[spark] class PythonRDD(
     }
 
     writerThread.start()
-    new MonitorThread(env, worker, context).start()
+    new MonitorThread(env, worker, goop.context).start()
 
     // Return an iterator that read lines from the process's stdout
     val stream = new DataInputStream(new BufferedInputStream(worker.getInputStream, bufferSize))
@@ -137,7 +137,7 @@ private[spark] class PythonRDD(
           }
         } catch {
 
-          case e: Exception if context.isInterrupted =>
+          case e: Exception if goop.context.isInterrupted =>
             logDebug("Exception thrown after task interruption", e)
             throw new TaskKilledException
 
@@ -155,7 +155,7 @@ private[spark] class PythonRDD(
 
       def hasNext = _nextObj != null
     }
-    new InterruptibleIterator(context, stdoutIterator)
+    new InterruptibleIterator(goop.context, stdoutIterator)
   }
 
   val asJavaRDD : JavaRDD[Array[Byte]] = JavaRDD.fromRDD(this)
@@ -164,7 +164,7 @@ private[spark] class PythonRDD(
    * The thread responsible for writing the data from the PythonRDD's parent iterator to the
    * Python process.
    */
-  class WriterThread(env: SparkEnv, worker: Socket, split: Partition, context: TaskContext)
+  class WriterThread(env: SparkEnv, worker: Socket, split: Partition, goop: TaskGoop)
     extends Thread(s"stdout writer for $pythonExec") {
 
     @volatile private var _exception: Exception = null
@@ -176,7 +176,7 @@ private[spark] class PythonRDD(
 
     /** Terminates the writer thread, ignoring any exceptions that may occur due to cleanup. */
     def shutdownOnTaskCompletion() {
-      assert(context.isCompleted)
+      assert(goop.context.isCompleted)
       this.interrupt()
     }
 
@@ -205,10 +205,10 @@ private[spark] class PythonRDD(
         dataOut.writeInt(command.length)
         dataOut.write(command)
         // Data values
-        PythonRDD.writeIteratorToStream(parent.iterator(split, context), dataOut)
+        PythonRDD.writeIteratorToStream(parent.iterator(split, goop), dataOut)
         dataOut.flush()
       } catch {
-        case e: Exception if context.isCompleted || context.isInterrupted =>
+        case e: Exception if goop.context.isCompleted || goop.context.isInterrupted =>
           logDebug("Exception thrown after task completion (likely due to cleanup)", e)
 
         case e: Exception =>
@@ -260,8 +260,8 @@ private class PythonException(msg: String, cause: Exception) extends RuntimeExce
 private class PairwiseRDD(prev: RDD[Array[Byte]]) extends
   RDD[(Long, Array[Byte])](prev) {
   override def getPartitions = prev.partitions
-  override def compute(split: Partition, context: TaskContext) =
-    prev.iterator(split, context).grouped(2).map {
+  override def compute(split: Partition, goop: TaskGoop) =
+    prev.iterator(split, goop).grouped(2).map {
       case Seq(a, b) => (Utils.deserializeLongValue(a), b)
       case x => throw new SparkException("PairwiseRDD: unexpected value: " + x)
     }

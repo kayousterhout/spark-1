@@ -67,7 +67,7 @@ private[spark] class Stage(
 
   /** For stages that are the final (consists of only ResultTasks), link to the ActiveJob. */
   var resultOfJob: Option[ActiveJob] = None
-  var pendingTasks = new HashSet[Task[_]]
+  var pendingTasks = new HashSet[Macrotask[_]]
 
   private var nextAttemptId = 0
 

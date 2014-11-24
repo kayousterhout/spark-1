@@ -24,7 +24,7 @@ import java.util.Properties
  * missing partitions of a particular stage.
  */
 private[spark] class TaskSet(
-    val tasks: Array[Task[_]],
+    val tasks: Array[Macrotask[_]],
     val stageId: Int,
     val attempt: Int,
     val priority: Int,

@@ -17,6 +17,9 @@
 
 package org.apache.spark.executor
 
+import java.lang.management.ManagementFactory
+
+import scala.collection.JavaConversions._
 import scala.collection.mutable.ArrayBuffer
 
 import org.apache.spark.annotation.DeveloperApi
@@ -60,6 +63,17 @@ class TaskMetrics extends Serializable {
    * Amount of time the JVM spent in garbage collection while executing this task
    */
   var jvmGCTime: Long = _
+
+  @transient private val startingGCTime =
+    ManagementFactory.getGarbageCollectorMXBeans.map(_.getCollectionTime).sum
+
+  /**
+   * Sets the time spent in garbage collection since the TaskMetrics was created.
+   */
+  def setJvmGCTime() {
+    val endingGCTime = ManagementFactory.getGarbageCollectorMXBeans.map(_.getCollectionTime).sum
+    jvmGCTime = endingGCTime - startingGCTime
+  }
 
   /**
    * Amount of time spent serializing the task result

@@ -137,7 +137,7 @@ class DAGScheduler(
   initializeEventProcessActor()
 
   // Called by TaskScheduler to report task's starting.
-  def taskStarted(task: Task[_], taskInfo: TaskInfo) {
+  def taskStarted(task: Macrotask[_], taskInfo: TaskInfo) {
     eventProcessActor ! BeginEvent(task, taskInfo)
   }
 
@@ -148,7 +148,7 @@ class DAGScheduler(
 
   // Called by TaskScheduler to report task completions or failures.
   def taskEnded(
-      task: Task[_],
+      task: Macrotask[_],
       reason: TaskEndReason,
       result: Any,
       accumUpdates: Map[Long, Any],
@@ -629,8 +629,11 @@ class DAGScheduler(
       val split = rdd.partitions(job.partitions(0))
       val taskContext =
         new TaskContext(job.finalStage.id, job.partitions(0), 0, runningLocally = true)
+      // TODO: how to create a correct goop here?
+      val taskGoop =
+        new TaskGoop(env, null, 0, 0, null, null)
       try {
-        val result = job.func(taskContext, rdd.iterator(split, taskContext))
+        val result = job.func(taskContext, rdd.iterator(split, taskGoop))
         job.listener.taskSucceeded(0, result)
       } finally {
         taskContext.markTaskCompleted()
@@ -675,7 +678,7 @@ class DAGScheduler(
     submitWaitingStages()
   }
 
-  private[scheduler] def handleBeginEvent(task: Task[_], taskInfo: TaskInfo) {
+  private[scheduler] def handleBeginEvent(task: Macrotask[_], taskInfo: TaskInfo) {
     // Note that there is a chance that this task is launched after the stage is cancelled.
     // In that case, we wouldn't have the stage anymore in stageIdToStage.
     val stageAttemptId = stageIdToStage.get(task.stageId).map(_.latestInfo.attemptId).getOrElse(-1)
@@ -838,11 +841,11 @@ class DAGScheduler(
         return
     }
 
-    val tasks: Seq[Task[_]] = if (stage.isShuffleMap) {
+    val tasks: Seq[Macrotask[_]] = if (stage.isShuffleMap) {
       partitionsToCompute.map { id =>
         val locs = getPreferredLocs(stage.rdd, id)
         val part = stage.rdd.partitions(id)
-        new ShuffleMapTask(stage.id, taskBinary, part, locs)
+        new ShuffleMapMacrotask(stage.id, taskBinary, part, locs)
       }
     } else {
       val job = stage.resultOfJob.get
@@ -850,7 +853,7 @@ class DAGScheduler(
         val p: Int = job.partitions(id)
         val part = stage.rdd.partitions(p)
         val locs = getPreferredLocs(stage.rdd, p)
-        new ResultTask(stage.id, taskBinary, part, locs, id)
+        new ResultMacrotask(stage.id, taskBinary, part, locs, id)
       }
     }
 
@@ -956,7 +959,7 @@ class DAGScheduler(
           event.reason, event.taskInfo, event.taskMetrics))
         stage.pendingTasks -= task
         task match {
-          case rt: ResultTask[_, _] =>
+          case rt: ResultMacrotask[_, _] =>
             stage.resultOfJob match {
               case Some(job) =>
                 if (!job.finished(rt.outputId)) {
@@ -983,14 +986,14 @@ class DAGScheduler(
                 logInfo("Ignoring result from " + rt + " because its job has finished")
             }
 
-          case smt: ShuffleMapTask =>
+          case smt: ShuffleMapMacrotask =>
             val status = event.result.asInstanceOf[MapStatus]
             val execId = status.location.executorId
             logDebug("ShuffleMapTask finished on " + execId)
             if (failedEpoch.contains(execId) && smt.epoch <= failedEpoch(execId)) {
               logInfo("Ignoring possibly bogus ShuffleMapTask completion from " + execId)
             } else {
-              stage.addOutputLoc(smt.partitionId, status)
+              stage.addOutputLoc(smt.partition.index, status)
             }
             if (runningStages.contains(stage) && stage.pendingTasks.isEmpty) {
               markStageAsFinished(stage)

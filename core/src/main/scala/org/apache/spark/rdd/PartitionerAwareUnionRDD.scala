@@ -21,7 +21,7 @@ import java.io.{IOException, ObjectOutputStream}
 
 import scala.reflect.ClassTag
 
-import org.apache.spark.{OneToOneDependency, Partition, SparkContext, TaskContext}
+import org.apache.spark.{OneToOneDependency, Partition, SparkContext, TaskGoop}
 
 /**
  * Class representing partitions of PartitionerAwareUnionRDD, which maintains the list of
@@ -92,10 +92,10 @@ class PartitionerAwareUnionRDD[T: ClassTag](
     location.toSeq
   }
 
-  override def compute(s: Partition, context: TaskContext): Iterator[T] = {
+  override def compute(s: Partition, goop: TaskGoop): Iterator[T] = {
     val parentPartitions = s.asInstanceOf[PartitionerAwareUnionRDDPartition].parents
     rdds.zip(parentPartitions).iterator.flatMap {
-      case (rdd, p) => rdd.iterator(p, context)
+      case (rdd, p) => rdd.iterator(p, goop)
     }
   }
 

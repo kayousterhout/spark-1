@@ -19,13 +19,13 @@ package org.apache.spark.rdd
 
 import scala.reflect.ClassTag
 
-import org.apache.spark.{Partition, TaskContext}
+import org.apache.spark.{Partition, TaskGoop}
 
 private[spark] class GlommedRDD[T: ClassTag](prev: RDD[T])
   extends RDD[Array[T]](prev) {
 
   override def getPartitions: Array[Partition] = firstParent[T].partitions
 
-  override def compute(split: Partition, context: TaskContext) =
-    Array(firstParent[T].iterator(split, context).toArray).iterator
+  override def compute(split: Partition, goop: TaskGoop) =
+    Array(firstParent[T].iterator(split, goop).toArray).iterator
 }
