@@ -19,7 +19,7 @@ package org.apache.spark.rdd
 
 import scala.reflect.ClassTag
 
-import org.apache.spark.{TaskGoop, Partition, SparkContext}
+import org.apache.spark.{TaskContext, Partition, SparkContext}
 
 /**
  * An RDD that has no partitions and no elements.
@@ -28,7 +28,7 @@ private[spark] class EmptyRDD[T: ClassTag](sc: SparkContext) extends RDD[T](sc, 
 
   override def getPartitions: Array[Partition] = Array.empty
 
-  override def compute(split: Partition, goop: TaskGoop): Iterator[T] = {
+  override def compute(split: Partition, context: TaskContext): Iterator[T] = {
     throw new UnsupportedOperationException("empty RDD")
   }
 }

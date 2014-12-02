@@ -16,9 +16,12 @@
 
 package org.apache.spark.monotasks
 
+import java.nio.ByteBuffer
+
 import scala.collection.mutable.HashSet
 
-import org.apache.spark.Logging
+import org.apache.spark.{TaskState, Logging}
+import org.apache.spark.executor.ExecutorBackend
 import org.apache.spark.monotasks.compute.{ComputeMonotask, ComputeScheduler}
 import org.apache.spark.monotasks.network.{NetworkMonotask, NetworkScheduler}
 
@@ -26,8 +29,13 @@ import org.apache.spark.monotasks.network.{NetworkMonotask, NetworkScheduler}
  * LocalDagScheduler tracks running and waiting monotasks. When all of a monotask's
  * dependencies have finished executing, the LocalDagScheduler will submit the monotask
  * to the appropriate scheduler to be executed once sufficient resources are available.
+ *
+ * TODO: The LocalDagScheduler should implement thread safety using an actor, rather than
+ * having all methods be synchronized (which can lead to monotasks that block waiting for the
+ * local dag scheduler).
  */
-private[spark] class LocalDagScheduler extends Logging {
+private[spark] class LocalDagScheduler(executorBackend: ExecutorBackend) extends Logging {
+
   val computeScheduler = new ComputeScheduler
   val networkScheduler = new NetworkScheduler
   // TODO: Comment this back in once the disk scheduler has been added.
@@ -41,7 +49,12 @@ private[spark] class LocalDagScheduler extends Logging {
    * debugging/testing and is not needed for maintaining correctness. */
   val runningMonotasks = new HashSet[Long]()
 
-  def submitMonotask(monotask: Monotask) {
+  /* IDs for macrotasks that currently are running. Used to determine whether to notify the
+   * executor backend that a task has failed (we should only notify it once if dependent monotasks
+   * fail). */
+  val runningMacrotaskAttemptIds = new HashSet[Long]()
+
+  def submitMonotask(monotask: Monotask) = synchronized {
     if (monotask.dependencies.isEmpty) {
       scheduleMonotask(monotask)
     } else {
@@ -49,11 +62,25 @@ private[spark] class LocalDagScheduler extends Logging {
     }
   }
 
-  def submitMonotasks(monotasks: Seq[Monotask]) {
-    monotasks.foreach(submitMonotask(_))
+  def submitMonotasks(monotasks: Seq[Monotask]) = synchronized {
+    monotasks.foreach { monotask =>
+      submitMonotask(monotask)
+      runningMacrotaskAttemptIds += monotask.context.taskAttemptId
+    }
   }
 
-  def handleTaskCompletion(completedMonotask: Monotask) {
+  /**
+   * Marks the monotask as successfully completed by updating the dependency tree and running any
+   * newly runnable monotasks.
+   *
+   * @param completedMonotask The monotask that has completed.
+   * @param serializedTaskResult If the monotask was the final monotask for the macrotask, a
+   *                             serialized TaskResult to be sent to the driver (None otherwise).
+   */
+  def handleTaskCompletion(
+    completedMonotask: Monotask,
+    serializedTaskResult: Option[ByteBuffer] = None)
+    = synchronized {
     completedMonotask.dependents.foreach { monotask =>
       monotask.dependencies -= completedMonotask.taskId
       if (monotask.dependencies.isEmpty) {
@@ -61,10 +88,57 @@ private[spark] class LocalDagScheduler extends Logging {
       }
     }
     runningMonotasks.remove(completedMonotask.taskId)
+
+    serializedTaskResult.map { result =>
+      val taskAttemptId = completedMonotask.context.taskAttemptId
+      // Tell the executorBackend that the task failed, if we haven't already.
+      if (runningMacrotaskAttemptIds.remove(taskAttemptId)) {
+        executorBackend.statusUpdate(taskAttemptId, TaskState.FINISHED, result)
+      }
+    }
   }
 
-  def handleTaskFailure(failedMonotask: Monotask) {
+  /**
+   * Marks the monotask and all monotasks that depend on it as failed and notifies the executor
+   * backend that the associated macrotask has failed.
+   *
+   * @param failedMonotask The monotask that failed.
+   * @param serializedFailureReason A serialized TaskFailedReason describing why the task failed.
+   */
+  def handleTaskFailure(failedMonotask: Monotask, serializedFailureReason: ByteBuffer)
+    = synchronized {
+    runningMonotasks -= failedMonotask.taskId
+    failDependentMonotasks(failedMonotask, failedMonotask.taskId)
+    val taskAttemptId = failedMonotask.context.taskAttemptId
 
+    // Notify the executor backend that the macrotask has failed, if we didn't already.
+    if (runningMacrotaskAttemptIds.remove(taskAttemptId)) {
+      executorBackend.statusUpdate(taskAttemptId, TaskState.FAILED, serializedFailureReason)
+    }
+  }
+
+  private def failDependentMonotasks(monotask: Monotask, originalFailedTaskId: Long) {
+    /* TODO: Right now, this may still result in some unnecessary monotasks being run. For example,
+     * given the following dependency tree:
+     *
+     * A --> B --> C
+     *             ^
+     *             |
+     *             D
+     *
+     * If D fails, C will never be run (because it will forever have an unsatisfied dependency
+     * on D).  But, if A is running when D fails, B will still be run (which is wasted effort).
+     *
+     * We could fix this problem by cleaning up the dependencies / dependents when a task fails
+     * to remove tasks that have failed or should never run due to a failure.  Alternately, we could
+     * set an "isZombie" flag in the monotask to signal to schedulers not to run it.
+     */
+    monotask.dependents.foreach { dependentMonotask =>
+      logDebug(s"Failing monotask ${dependentMonotask.taskId} because it dependended on monotask " +
+        s"$originalFailedTaskId, which failed")
+      waitingMonotasks -= dependentMonotask.taskId
+      failDependentMonotasks(dependentMonotask, originalFailedTaskId)
+    }
   }
 
   /**
@@ -73,6 +147,7 @@ private[spark] class LocalDagScheduler extends Logging {
    */
   private def scheduleMonotask(monotask: Monotask) {
     assert(monotask.dependencies.isEmpty)
+    assert(waitingMonotasks.contains(monotask.taskId))
     monotask match {
       case computeMonotask: ComputeMonotask => computeScheduler.submitTask(computeMonotask)
       case networkMonotask: NetworkMonotask => networkScheduler.submitTask(networkMonotask)
@@ -93,7 +168,7 @@ private[spark] class LocalDagScheduler extends Logging {
    */
   def waitUntilAllTasksComplete(timeoutMillis: Int): Boolean = {
     val finishTime = System.currentTimeMillis + timeoutMillis
-    while (!(waitingMonotasks.isEmpty && runningMonotasks.isEmpty)) {
+    while (!this.synchronized(waitingMonotasks.isEmpty && runningMonotasks.isEmpty)) {
       if (System.currentTimeMillis > finishTime) {
         return false
       }

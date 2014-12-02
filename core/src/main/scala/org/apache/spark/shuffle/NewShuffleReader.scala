@@ -32,12 +32,12 @@ import org.apache.spark.storage.{MonotaskResultBlockId, ShuffleBlockId}
  * TODO
  * @param shuffleDependency
  * @param reduceId The partition ID corresponding to the reduce task.
- * @param goop
+ * @param context
  */
 class NewShuffleReader[K, V, C](
     shuffleDependency: ShuffleDependency[K, V, C],
     reduceId: Int,
-    goop: TaskGoop)
+    context: TaskContext)
   extends Logging {
 
   private val localBlockIds = new ArrayBuffer[BlockId]()
@@ -65,11 +65,11 @@ class NewShuffleReader[K, V, C](
     for ((address, blockInfos) <- blocksByAddress) {
       totalBlocks += blockInfos.size
       val nonEmptyBlocks = blockInfos.filter(_._2 != 0)
-      if (address == goop.env.blockManager.blockManagerId) {
+      if (address == context.env.blockManager.blockManagerId) {
         // Filter out zero-sized blocks
         localBlockIds ++= nonEmptyBlocks.map(_._1)
       } else {
-        val networkMonotask = new NetworkMonotask(goop, address, nonEmptyBlocks, reduceId)
+        val networkMonotask = new NetworkMonotask(context, address, nonEmptyBlocks, reduceId)
         localBlockIds.append(new MonotaskResultBlockId(networkMonotask.taskId))
         fetchMonotasks.append(networkMonotask)
       }
@@ -83,11 +83,11 @@ class NewShuffleReader[K, V, C](
         // The map task was run on this machine, so the memory store has the deserialized shuffle
         // data.  The block manager transparently handles deserializing the data.
         // TODO: handle the case where the shuffle data doesn't exist due to an error.
-        goop.env.blockManager.get(shuffleBlockId).get.data
+        context.env.blockManager.get(shuffleBlockId).get.data
 
       case monotaskResultBlockId: MonotaskResultBlockId =>
         // TODO: handle case where the block doesn't exist.
-        val bufferMessage = goop.env.blockManager.memoryStore.getValue(monotaskResultBlockId).get
+        val bufferMessage = context.env.blockManager.memoryStore.getValue(monotaskResultBlockId).get
           .asInstanceOf[BufferMessage]
         val blockMessageArray = BlockMessageArray.fromBufferMessage(bufferMessage)
         blockMessageArray.flatMap { blockMessage =>
@@ -105,10 +105,10 @@ class NewShuffleReader[K, V, C](
           //readMetrics.remoteBlocksFetched += 1
           // TODO: is block manager the best place for this deserialization code?
           // THIS IS LAZY. Just returns an iterator.
-          val deserializedData = goop.env.blockManager.dataDeserialize(
+          val deserializedData = context.env.blockManager.dataDeserialize(
             blockId,
             blockMessage.getData,
-            shuffleDependency.serializer.getOrElse(goop.env.serializer))
+            shuffleDependency.serializer.getOrElse(context.env.serializer))
           deserializedData
         }
 
@@ -125,12 +125,12 @@ class NewShuffleReader[K, V, C](
     if (shuffleDependency.aggregator.isDefined) {
       if (shuffleDependency.mapSideCombine) {
         new InterruptibleIterator(
-          goop.context,
+          context,
           shuffleDependency.aggregator.get.combineCombinersByKey(
             iterator.asInstanceOf[Iterator[_ <: Product2[K, C]]]))
       } else {
         new InterruptibleIterator(
-          goop.context,
+          context,
           shuffleDependency.aggregator.get.combineValuesByKey(
             iterator.asInstanceOf[Iterator[_ <: Product2[K, V]]]))
       }

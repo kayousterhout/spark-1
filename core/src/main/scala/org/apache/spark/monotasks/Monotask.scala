@@ -20,7 +20,9 @@ import java.util.concurrent.atomic.AtomicLong
 
 import scala.collection.mutable.{ArrayBuffer, HashSet}
 
-private[spark] abstract class Monotask(val localDagScheduler: LocalDagScheduler) {
+import org.apache.spark.TaskContext
+
+private[spark] abstract class Monotask(val context: TaskContext) {
   val taskId = Monotask.newId()
 
   // IDs of Monotasks that must complete before this can be run.

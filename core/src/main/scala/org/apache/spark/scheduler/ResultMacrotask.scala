@@ -20,7 +20,7 @@ import java.nio.ByteBuffer
 
 import scala.reflect.ClassTag
 
-import org.apache.spark.{Partition, TaskContext, TaskGoop}
+import org.apache.spark.{Partition, TaskContext}
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.monotasks.Monotask
 import org.apache.spark.monotasks.compute.ResultMonotask
@@ -48,16 +48,17 @@ private[spark] class ResultMacrotask[T, U: ClassTag](
 
   // Deserializes the task binary and creates the rest of the monotasks needed to run the
   // macrotask.
-  override def getMonotasks(goop: TaskGoop): Seq[Monotask] = {
+  override def getMonotasks(context: TaskContext): Seq[Monotask] = {
     // TODO: Task.run() setups up TaskContext and sets hostname in metrics; need to do that here!
-    val ser = goop.env.closureSerializer.newInstance()
+    val ser = context.env.closureSerializer.newInstance()
     val (rdd, func) = ser.deserialize[(RDD[T], (TaskContext, Iterator[T]) => U)](
-      ByteBuffer.wrap(taskBinary.value), goop.dependencyManager.replClassLoader)
+      ByteBuffer.wrap(taskBinary.value), context.dependencyManager.replClassLoader)
 
-    goop.setContext(stageId, partition.index)
+    context.stageId = stageId
+    context.partitionId = partition.index
     val inputMonotasks: Seq[Monotask] =
-      rdd.dependencies.flatMap(_.getMonotasks(goop, partition.index))
-    val computeMonotask = new ResultMonotask(goop, rdd, partition, func)
+      rdd.dependencies.flatMap(_.getMonotasks(context, partition.index))
+    val computeMonotask = new ResultMonotask(context, rdd, partition, func)
     // Create dependency graph: compute monotask depends on all input monotasks.
     inputMonotasks.foreach(computeMonotask.addDependency(_))
 

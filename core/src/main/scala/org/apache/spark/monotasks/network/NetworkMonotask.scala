@@ -28,20 +28,23 @@ import org.apache.spark.util.Utils
 import org.apache.spark.monotasks.Monotask
 
 
-/* TODO: currently this describes a shuffle -- not a more general network monotask.
-* @param remoteAddress remote BlockManager to fetch from.
-* @param blocks        Sequence of tuples, where the first element is the block id,
-*                      and the second element is the estimated size, used to calculate
-*                      bytesInFlight.
-* @param partitionId   Partition id for the macrotask corresponding to this network monotask.
-*                      Used only when there are errors (to report them back to the master).
-*/
+/**
+ * A monotask that uses the network to fetch shuffle data.  This monotask handles only fetching
+ * data, and does not deserialize it.
+ *
+ * @param remoteAddress remote BlockManager to fetch from.
+ * @param blocks        Sequence of tuples, where the first element is the block id,
+ *                      and the second element is the estimated size, used to calculate
+ *                      bytesInFlight.
+ * @param partitionId   Partition id for the macrotask corresponding to this network monotask.
+ *                      Used only when there are errors (to report them back to the master).
+ */
 private[spark] class NetworkMonotask(
-    val goop: TaskGoop,
+    context: TaskContext,
     val remoteAddress: BlockManagerId,
     val blocks: Seq[(BlockId, Long)],
     val partitionId: Int)
-  extends Monotask(goop.localDagScheduler) with Logging {
+  extends Monotask(context) with Logging {
 
   val size = blocks.map(_._2).sum
   val connectionManagerId = new ConnectionManagerId(remoteAddress.host, remoteAddress.port)
@@ -53,16 +56,16 @@ private[spark] class NetworkMonotask(
   def execute() {
     logDebug(s"Sending request for ${blocks.size} blocks (${Utils.bytesToString(size)}}) " +
       s"from $remoteAddress")
-    val future = goop.env.blockManager.connectionManager.sendMessageReliably(
+    val future = context.env.blockManager.connectionManager.sendMessageReliably(
         connectionManagerId, blockMessageArray.toBufferMessage)
 
-    implicit val futureExecContext = goop.env.blockManager.futureExecContext
+    // TODO: This execution context should not go through the block manager.
+    implicit val futureExecContext = context.env.blockManager.futureExecContext
     future.onComplete {
       case Success(message) => {
-        // TODO: make new putValue method in blockmanager
-        goop.env.blockManager.memoryStore.putValue(
+        context.env.blockManager.memoryStore.putValue(
           new MonotaskResultBlockId(taskId), message.asInstanceOf[BufferMessage])
-        localDagScheduler.handleTaskCompletion(this)
+        context.localDagScheduler.handleTaskCompletion(this)
       }
 
       case Failure(exception) => {
@@ -76,12 +79,8 @@ private[spark] class NetworkMonotask(
             case ShuffleBlockId(shuffleId, mapId, _) =>
               val failureReason = FetchFailed(remoteAddress, shuffleId, mapId, partitionId)
               val serializedFailureReason =
-                goop.env.closureSerializer.newInstance().serialize(failureReason)
-              /* TODO: propagate this back to local dag scheduler -- which will need to fail other
-               *       monotasks that depend on this one, and should handle notifying the executor
-               *       backend of the failure. */
-              goop.executorBackend.statusUpdate(
-                goop.taskAttemptId, TaskState.FAILED, serializedFailureReason)
+                context.env.closureSerializer.newInstance().serialize(failureReason)
+              context.localDagScheduler.handleTaskFailure(this, serializedFailureReason)
 
             case _ =>
               val exception = new SparkException(
@@ -90,9 +89,10 @@ private[spark] class NetworkMonotask(
                 exception.getClass.getName,
                 exception.getMessage,
                 exception.getStackTrace,
-                Some(goop.context.taskMetrics))
-              val serializedReason = goop.env.closureSerializer.newInstance().serialize(reason)
-              goop.executorBackend.statusUpdate(taskId, TaskState.FAILED, serializedReason)
+                Some(context.taskMetrics))
+              val serializedFailureReason =
+                context.env.closureSerializer.newInstance().serialize(reason)
+              context.localDagScheduler.handleTaskFailure(this, serializedFailureReason)
           }
         }
       }

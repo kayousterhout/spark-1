@@ -18,25 +18,29 @@ package org.apache.spark.monotasks.compute
 
 import java.nio.ByteBuffer
 
-import org.apache.spark.TaskGoop
+import org.apache.spark.{SparkEnv, TaskContext}
 import org.apache.spark.scheduler.Macrotask
 
-/** A ComputeMonotask responsible for preparing the rest of the monotasks corresponding to the
-  * macrotask (e.g., by first deserializing the byte buffer to determine what kind of macro
-  * task this is). */
-private[spark] class PrepareMonotask(val goop: TaskGoop, val serializedTask: ByteBuffer)
-  extends ComputeMonotask(goop.localDagScheduler) {
+/**
+ * A ComputeMonotask responsible for preparing the rest of the monotasks corresponding to the
+ * macrotask (e.g., by first deserializing the byte buffer to determine what kind of macro
+ * task this is). */
+private[spark] class PrepareMonotask(context: TaskContext, val serializedTask: ByteBuffer)
+  extends ComputeMonotask(context) {
 
   override def execute() = {
     val (taskFiles, taskJars, taskBytes) = Macrotask.deserializeWithDependencies(serializedTask)
-    goop.dependencyManager.updateDependencies(taskFiles, taskJars)
-    val ser = goop.env.closureSerializer.newInstance()
+    // TODO: This call is a little bit evil because it's synchronized, so can block and waste CPU
+    // resources.
+    context.dependencyManager.updateDependencies(taskFiles, taskJars)
+    val ser = SparkEnv.get.closureSerializer.newInstance()
     val macrotask = ser.deserialize[Macrotask[Any]](
-      taskBytes, goop.dependencyManager.replClassLoader)
+      taskBytes, context.dependencyManager.replClassLoader)
 
     // TODO: what is the point of this?
-    goop.env.mapOutputTracker.updateEpoch(macrotask.epoch)
+    SparkEnv.get.mapOutputTracker.updateEpoch(macrotask.epoch)
 
-    goop.localDagScheduler.submitMonotasks(macrotask.getMonotasks(goop))
+    context.localDagScheduler.submitMonotasks(macrotask.getMonotasks(context))
+    context.localDagScheduler.handleTaskCompletion(this)
   }
 }

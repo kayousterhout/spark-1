@@ -18,20 +18,20 @@ package org.apache.spark.monotasks.compute
 
 import scala.reflect.ClassTag
 
-import org.apache.spark.{Logging, Partition, TaskContext, TaskGoop}
+import org.apache.spark.{Logging, Partition, TaskContext}
 import org.apache.spark.rdd.RDD
 
 /**
  * A task that sends back a result (based on the input RDD) to the driver application.
  */
 private[spark] class ResultMonotask[T, U: ClassTag](
-    goop: TaskGoop,
+    context: TaskContext,
     rdd: RDD[T],
     split: Partition,
     val func: (TaskContext, Iterator[T]) => U)
-  extends ExecutionMonotask[T, U](goop, rdd, split) with Logging {
+  extends ExecutionMonotask[T, U](context, rdd, split) with Logging {
 
   override def getResult(): U = {
-    func(goop.context, rdd.iterator(split, goop))
+    func(context, rdd.iterator(split, context))
   }
 }

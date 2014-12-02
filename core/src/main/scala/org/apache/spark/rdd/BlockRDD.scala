@@ -21,6 +21,7 @@ import scala.reflect.ClassTag
 
 import org.apache.spark._
 import org.apache.spark.storage.{BlockId, BlockManager}
+import scala.Some
 
 private[spark] class BlockRDDPartition(val blockId: BlockId, idx: Int) extends Partition {
   val index = idx
@@ -40,7 +41,7 @@ class BlockRDD[T: ClassTag](@transient sc: SparkContext, @transient val blockIds
     }).toArray
   }
 
-  override def compute(split: Partition, goop: TaskGoop): Iterator[T] = {
+  override def compute(split: Partition, context: TaskContext): Iterator[T] = {
     assertValid()
     val blockManager = SparkEnv.get.blockManager
     val blockId = split.asInstanceOf[BlockRDDPartition].blockId

@@ -29,7 +29,7 @@ import org.apache.spark.Partition
 import org.apache.spark.Partitioner
 import org.apache.spark.ShuffleDependency
 import org.apache.spark.SparkEnv
-import org.apache.spark.TaskGoop
+import org.apache.spark.TaskContext
 import org.apache.spark.serializer.Serializer
 
 /**
@@ -92,7 +92,7 @@ private[spark] class SubtractedRDD[K: ClassTag, V: ClassTag, W: ClassTag](
 
   override val partitioner = Some(part)
 
-  override def compute(p: Partition, goop: TaskGoop): Iterator[(K, V)] = {
+  override def compute(p: Partition, context: TaskContext): Iterator[(K, V)] = {
     val partition = p.asInstanceOf[CoGroupPartition]
     val map = new JHashMap[K, ArrayBuffer[V]]
     def getSeq(k: K): ArrayBuffer[V] = {
@@ -107,11 +107,11 @@ private[spark] class SubtractedRDD[K: ClassTag, V: ClassTag, W: ClassTag](
     }
     def integrate(dep: CoGroupSplitDep, op: Product2[K, V] => Unit) = dep match {
       case NarrowCoGroupSplitDep(rdd, _, itsSplit) =>
-        rdd.iterator(itsSplit, goop).asInstanceOf[Iterator[Product2[K, V]]].foreach(op)
+        rdd.iterator(itsSplit, context).asInstanceOf[Iterator[Product2[K, V]]].foreach(op)
 
       case ShuffleCoGroupSplitDep(handle) =>
         val iter = SparkEnv.get.shuffleManager
-          .getReader(handle, partition.index, partition.index + 1, goop.context)
+          .getReader(handle, partition.index, partition.index + 1, context)
           .read()
         iter.foreach(op)
     }

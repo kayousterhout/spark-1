@@ -627,13 +627,13 @@ class DAGScheduler(
     try {
       val rdd = job.finalStage.rdd
       val split = rdd.partitions(job.partitions(0))
+      // TODO: how to create a correct TaskContext here?
       val taskContext =
-        new TaskContext(job.finalStage.id, job.partitions(0), 0, runningLocally = true)
-      // TODO: how to create a correct goop here?
-      val taskGoop =
-        new TaskGoop(env, null, 0, 0, null, null)
+        new TaskContext(env, null, 0, null, 0, runningLocally = true)
+      taskContext.stageId = job.finalStage.id
+      taskContext.partitionId = job.partitions(0)
       try {
-        val result = job.func(taskContext, rdd.iterator(split, taskGoop))
+        val result = job.func(taskContext, rdd.iterator(split, taskContext))
         job.listener.taskSucceeded(0, result)
       } finally {
         taskContext.markTaskCompleted()

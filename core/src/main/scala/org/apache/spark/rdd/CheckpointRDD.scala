@@ -69,9 +69,9 @@ class CheckpointRDD[T: ClassTag](sc: SparkContext, val checkpointPath: String)
     locations.headOption.toList.flatMap(_.getHosts).filter(_ != "localhost")
   }
 
-  override def compute(split: Partition, goop: TaskGoop): Iterator[T] = {
+  override def compute(split: Partition, context: TaskContext): Iterator[T] = {
     val file = new Path(checkpointPath, CheckpointRDD.splitIdToFile(split.index))
-    CheckpointRDD.readFromFile(file, broadcastedConf, goop.context)
+    CheckpointRDD.readFromFile(file, broadcastedConf, context)
   }
 
   override def checkpoint() {
@@ -95,7 +95,7 @@ private[spark] object CheckpointRDD extends Logging {
 
     val finalOutputName = splitIdToFile(ctx.partitionId)
     val finalOutputPath = new Path(outputDir, finalOutputName)
-    val tempOutputPath = new Path(outputDir, "." + finalOutputName + "-attempt-" + ctx.attemptId)
+    val tempOutputPath = new Path(outputDir, "." + finalOutputName + "-attempt-" + ctx.taskAttemptId)
 
     if (fs.exists(tempOutputPath)) {
       throw new IOException("Checkpoint failed: temporary path " +
@@ -119,7 +119,7 @@ private[spark] object CheckpointRDD extends Logging {
         logInfo("Deleting tempOutputPath " + tempOutputPath)
         fs.delete(tempOutputPath, false)
         throw new IOException("Checkpoint failed: failed to save output of task: "
-          + ctx.attemptId + " and final output path does not exist")
+          + ctx.taskAttemptId + " and final output path does not exist")
       } else {
         // Some other copy of this task must've finished before us and renamed it
         logInfo("Final output path " + finalOutputPath + " already exists; not overwriting it")

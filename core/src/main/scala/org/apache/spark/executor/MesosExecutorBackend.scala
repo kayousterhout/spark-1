@@ -56,6 +56,7 @@ private[spark] class MesosExecutorBackend
     executor = new Executor(
       executorInfo.getExecutorId.getValue,
       slaveInfo.getHostname,
+      this,
       properties)
   }
 
@@ -64,7 +65,7 @@ private[spark] class MesosExecutorBackend
     if (executor == null) {
       logError("Received launchTask but executor was null")
     } else {
-      executor.launchTask(this, taskId, taskInfo.getName, taskInfo.getData.asReadOnlyByteBuffer)
+      executor.launchTask(taskId, taskInfo.getName, taskInfo.getData.asReadOnlyByteBuffer)
     }
   }
 

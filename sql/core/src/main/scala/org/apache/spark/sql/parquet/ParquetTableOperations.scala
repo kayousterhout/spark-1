@@ -289,7 +289,7 @@ case class InsertIntoParquetTable(
     def writeShard(context: TaskContext, iter: Iterator[Row]): Int = {
       // Hadoop wants a 32-bit task attempt ID, so if ours is bigger than Int.MaxValue, roll it
       // around by taking a mod. We expect that no task will be attempted 2 billion times.
-      val attemptNumber = (context.attemptId % Int.MaxValue).toInt
+      val attemptNumber = (context.taskAttemptId % Int.MaxValue).toInt
       /* "reduce task" <split #> <attempt # = spark task #> */
       val attemptId = newTaskAttemptID(jobtrackerID, stageId, isMap = false, context.partitionId,
         attemptNumber)

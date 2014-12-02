@@ -87,9 +87,9 @@ private[spark] class CoalescedRDD[T: ClassTag](
     }
   }
 
-  override def compute(partition: Partition, goop: TaskGoop): Iterator[T] = {
+  override def compute(partition: Partition, context: TaskContext): Iterator[T] = {
     partition.asInstanceOf[CoalescedRDDPartition].parents.iterator.flatMap { parentPartition =>
-      firstParent[T].iterator(parentPartition, goop)
+      firstParent[T].iterator(parentPartition, context)
     }
   }
 

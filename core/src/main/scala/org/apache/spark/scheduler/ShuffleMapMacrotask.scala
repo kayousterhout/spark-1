@@ -20,7 +20,7 @@ import java.nio.ByteBuffer
 
 import scala.language.existentials
 
-import org.apache.spark.{Logging, Partition, ShuffleDependency, TaskGoop}
+import org.apache.spark.{Logging, Partition, ShuffleDependency, TaskContext}
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.monotasks.Monotask
 import org.apache.spark.monotasks.compute.ShuffleMapMonotask
@@ -45,15 +45,16 @@ private[spark] class ShuffleMapMacrotask(
 
   override def toString = "ShuffleMapTask(%d, %d)".format(stageId, partition.index)
 
-  override def getMonotasks(goop: TaskGoop): Seq[Monotask] = {
-    val ser = goop.env.closureSerializer.newInstance()
+  override def getMonotasks(context: TaskContext): Seq[Monotask] = {
+    val ser = context.env.closureSerializer.newInstance()
     val (rdd, dep) = ser.deserialize[(RDD[_], ShuffleDependency[Any, Any, _])](
       ByteBuffer.wrap(taskBinary.value), Thread.currentThread.getContextClassLoader)
 
-    goop.setContext(stageId, partition.index)
+    context.stageId = stageId
+    context.partitionId = partition.index
     val inputMonotasks: Seq[Monotask] =
-      rdd.dependencies.flatMap(_.getMonotasks(goop, partition.index))
-    val computeMonotask = new ShuffleMapMonotask(goop, rdd, partition, dep)
+      rdd.dependencies.flatMap(_.getMonotasks(context, partition.index))
+    val computeMonotask = new ShuffleMapMonotask(context, rdd, partition, dep)
 
     // Create dependency graph: compute monotask depends on all input monotasks.
     inputMonotasks.foreach(computeMonotask.addDependency(_))

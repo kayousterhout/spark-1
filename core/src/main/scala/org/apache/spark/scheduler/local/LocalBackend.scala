@@ -51,7 +51,7 @@ private[spark] class LocalActor(
   private val localExecutorHostname = "localhost"
 
   val executor = new Executor(
-    localExecutorId, localExecutorHostname, scheduler.conf.getAll, isLocal = true)
+      localExecutorId, localExecutorHostname, executorBackend, scheduler.conf.getAll, isLocal = true)
 
   override def receiveWithLogging = {
     case ReviveOffers =>
@@ -75,7 +75,7 @@ private[spark] class LocalActor(
     val offers = Seq(new WorkerOffer(localExecutorId, localExecutorHostname, freeCores))
     for (task <- scheduler.resourceOffers(offers).flatten) {
       freeCores -= scheduler.CPUS_PER_TASK
-      executor.launchTask(executorBackend, task.taskId, task.name, task.serializedTask)
+      executor.launchTask(task.taskId, task.name, task.serializedTask)
     }
   }
 }

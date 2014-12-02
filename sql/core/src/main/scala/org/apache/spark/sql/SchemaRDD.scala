@@ -24,7 +24,7 @@ import scala.collection.JavaConverters._
 
 import net.razorvine.pickle.Pickler
 
-import org.apache.spark.{Dependency, OneToOneDependency, Partition, Partitioner, TaskGoop}
+import org.apache.spark.{Dependency, OneToOneDependency, Partition, Partitioner, TaskContext}
 import org.apache.spark.annotation.{AlphaComponent, Experimental}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.api.java.JavaSchemaRDD
@@ -111,8 +111,8 @@ class SchemaRDD(
   // RDD functions: Copy the internal row representation so we present immutable data to users.
   // =========================================================================================
 
-  override def compute(split: Partition, goop: TaskGoop): Iterator[Row] =
-    firstParent[Row].compute(split, goop).map(_.copy())
+  override def compute(split: Partition, context: TaskContext): Iterator[Row] =
+    firstParent[Row].compute(split, context).map(_.copy())
 
   override def getPartitions: Array[Partition] = firstParent[Row].partitions
 

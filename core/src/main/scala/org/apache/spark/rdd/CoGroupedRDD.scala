@@ -115,7 +115,7 @@ class CoGroupedRDD[K](@transient var rdds: Seq[RDD[_ <: Product2[K, _]]], part: 
 
   override val partitioner: Some[Partitioner] = Some(part)
 
-  override def compute(s: Partition, goop: TaskGoop): Iterator[(K, Array[Iterable[_]])] = {
+  override def compute(s: Partition, context: TaskContext): Iterator[(K, Array[Iterable[_]])] = {
     // TODO: This should use the new shuffle code, like Shuffled RDD.
     val sparkConf = SparkEnv.get.conf
     val split = s.asInstanceOf[CoGroupPartition]
@@ -126,13 +126,13 @@ class CoGroupedRDD[K](@transient var rdds: Seq[RDD[_ <: Product2[K, _]]], part: 
     for ((dep, depNum) <- split.deps.zipWithIndex) dep match {
       case NarrowCoGroupSplitDep(rdd, _, itsSplit) =>
         // Read them from the parent
-        val it = rdd.iterator(itsSplit, goop).asInstanceOf[Iterator[Product2[K, Any]]]
+        val it = rdd.iterator(itsSplit, context).asInstanceOf[Iterator[Product2[K, Any]]]
         rddIterators += ((it, depNum))
 
       case ShuffleCoGroupSplitDep(handle) =>
         // Read map outputs of shuffle
         val it = SparkEnv.get.shuffleManager
-          .getReader(handle, split.index, split.index + 1, goop.context)
+          .getReader(handle, split.index, split.index + 1, context)
           .read()
         rddIterators += ((it, depNum))
     }
@@ -150,7 +150,7 @@ class CoGroupedRDD[K](@transient var rdds: Seq[RDD[_ <: Product2[K, _]]], part: 
         getCombiner(kv._1)(depNum) += kv._2
       }
     }
-    new InterruptibleIterator(goop.context,
+    new InterruptibleIterator(context,
       map.iterator.asInstanceOf[Iterator[(K, Array[Iterable[_]])]])
   }
 

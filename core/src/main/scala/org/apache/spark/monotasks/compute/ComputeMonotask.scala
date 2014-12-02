@@ -16,10 +16,11 @@
 
 package org.apache.spark.monotasks.compute
 
-import org.apache.spark.monotasks.{LocalDagScheduler, Monotask}
+import org.apache.spark.TaskContext
+import org.apache.spark.monotasks.Monotask
 
-private[spark] abstract class ComputeMonotask(localDagScheduler: LocalDagScheduler)
-  extends Monotask(localDagScheduler) {
+private[spark] abstract class ComputeMonotask(context: TaskContext)
+  extends Monotask(context) {
 
   def execute()
 }

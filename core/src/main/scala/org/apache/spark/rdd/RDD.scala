@@ -91,7 +91,7 @@ abstract class RDD[T: ClassTag](
    * Implemented by subclasses to compute a given partition.
    */
   @DeveloperApi
-  def compute(split: Partition, goop: TaskGoop): Iterator[T]
+  def compute(split: Partition, context: TaskContext): Iterator[T]
 
   /**
    * Implemented by subclasses to return the set of partitions in this RDD. This method will only
@@ -221,11 +221,11 @@ abstract class RDD[T: ClassTag](
    * This should ''not'' be called by users directly, but is available for implementors of custom
    * subclasses of RDD.
    */
-  final def iterator(split: Partition, goop: TaskGoop): Iterator[T] = {
+  final def iterator(split: Partition, context: TaskContext): Iterator[T] = {
     if (storageLevel != StorageLevel.NONE) {
-      SparkEnv.get.cacheManager.getOrCompute(this, split, goop, storageLevel)
+      SparkEnv.get.cacheManager.getOrCompute(this, split, context, storageLevel)
     } else {
-      computeOrReadCheckpoint(split, goop)
+      computeOrReadCheckpoint(split, context)
     }
   }
 
@@ -256,9 +256,9 @@ abstract class RDD[T: ClassTag](
   /**
    * Compute an RDD partition or read it from a checkpoint if the RDD is checkpointing.
    */
-  private[spark] def computeOrReadCheckpoint(split: Partition, goop: TaskGoop): Iterator[T] =
+  private[spark] def computeOrReadCheckpoint(split: Partition, context: TaskContext): Iterator[T] =
   {
-    if (isCheckpointed) firstParent[T].iterator(split, goop) else compute(split, goop)
+    if (isCheckpointed) firstParent[T].iterator(split, context) else compute(split, context)
   }
 
   // Transformations (return a new RDD)

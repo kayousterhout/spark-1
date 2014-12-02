@@ -29,7 +29,7 @@ import scala.collection.mutable.ArrayBuffer
 import scala.io.Source
 import scala.reflect.ClassTag
 
-import org.apache.spark.{Partition, SparkEnv, TaskGoop}
+import org.apache.spark.{Partition, SparkEnv, TaskContext}
 import org.apache.spark.util.Utils
 
 
@@ -71,7 +71,7 @@ private[spark] class PipedRDD[T: ClassTag](
     }
   }
 
-  override def compute(split: Partition, goop: TaskGoop): Iterator[String] = {
+  override def compute(split: Partition, context: TaskContext): Iterator[String] = {
     val pb = new ProcessBuilder(command)
     // Add the environmental variables to the process.
     val currentEnvVars = pb.environment()
@@ -137,7 +137,7 @@ private[spark] class PipedRDD[T: ClassTag](
         if (printPipeContext != null) {
           printPipeContext(out.println(_))
         }
-        for (elem <- firstParent[T].iterator(split, goop)) {
+        for (elem <- firstParent[T].iterator(split, context)) {
           if (printRDDElement != null) {
             printRDDElement(elem, out.println(_))
           } else {

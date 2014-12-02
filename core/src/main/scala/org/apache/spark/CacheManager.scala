@@ -36,9 +36,8 @@ private[spark] class CacheManager(blockManager: BlockManager) extends Logging {
   def getOrCompute[T](
       rdd: RDD[T],
       partition: Partition,
-      goop: TaskGoop,
+      context: TaskContext,
       storageLevel: StorageLevel): Iterator[T] = {
-    val context = goop.context
     val key = RDDBlockId(rdd.id, partition.index)
     logDebug(s"Looking for partition $key")
     blockManager.get(key) match {
@@ -58,7 +57,7 @@ private[spark] class CacheManager(blockManager: BlockManager) extends Logging {
         // Otherwise, we have to load the partition ourselves
         try {
           logInfo(s"Partition $key not found, computing it")
-          val computedValues = rdd.computeOrReadCheckpoint(partition, goop)
+          val computedValues = rdd.computeOrReadCheckpoint(partition, context)
 
           // If the task is running locally, do not persist the result
           if (context.runningLocally) {

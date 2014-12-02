@@ -19,7 +19,7 @@ package org.apache.spark.executor
 
 import java.nio.ByteBuffer
 
-import org.apache.spark.{Logging, SparkConf, SparkEnv, TaskGoop, TaskState}
+import org.apache.spark.{Logging, SparkConf, SparkEnv, TaskContext, TaskState}
 import org.apache.spark.util.{AkkaUtils, Utils}
 import org.apache.spark.monotasks.LocalDagScheduler
 import org.apache.spark.monotasks.compute.PrepareMonotask
@@ -30,6 +30,7 @@ import org.apache.spark.monotasks.compute.PrepareMonotask
 private[spark] class Executor(
     executorId: String,
     slaveHostname: String,
+    executorBackend: ExecutorBackend,
     properties: Seq[(String, String)],
     isLocal: Boolean = false)
   extends Logging
@@ -82,16 +83,15 @@ private[spark] class Executor(
   private val maximumResultSizeBytes =
     AkkaUtils.maxFrameSizeBytes(conf) - AkkaUtils.reservedSizeBytes
 
-  private val localDagScheduler = new LocalDagScheduler()
+  private val localDagScheduler = new LocalDagScheduler(executorBackend)
 
-  def launchTask(
-      context: ExecutorBackend, taskAttemptId: Long, taskName: String, serializedTask: ByteBuffer) {
+  def launchTask(taskAttemptId: Long, taskName: String, serializedTask: ByteBuffer) {
     // TODO: Do we really need to propogate this task started message back to the scheduler?
     //       Doesn't the scheduler just drop it?
-    context.statusUpdate(taskAttemptId, TaskState.RUNNING, EMPTY_BYTE_BUFFER)
-    val goop = new TaskGoop(
-      env, localDagScheduler, taskAttemptId, maximumResultSizeBytes, context, dependencyManager)
-    val prepareMonotask = new PrepareMonotask(goop, serializedTask)
+    executorBackend.statusUpdate(taskAttemptId, TaskState.RUNNING, EMPTY_BYTE_BUFFER)
+    val context = new TaskContext(
+      env, localDagScheduler, maximumResultSizeBytes, dependencyManager, taskAttemptId)
+    val prepareMonotask = new PrepareMonotask(context, serializedTask)
     localDagScheduler.submitMonotask(prepareMonotask)
   }
 

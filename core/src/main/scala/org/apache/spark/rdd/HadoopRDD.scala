@@ -184,7 +184,7 @@ class HadoopRDD[K, V](
     array
   }
 
-  override def compute(theSplit: Partition, goop: TaskGoop): InterruptibleIterator[(K, V)] = {
+  override def compute(theSplit: Partition, context: TaskContext): InterruptibleIterator[(K, V)] = {
     val iter = new NextIterator[(K, V)] {
 
       val split = theSplit.asInstanceOf[HadoopPartition]
@@ -193,11 +193,11 @@ class HadoopRDD[K, V](
       val jobConf = getJobConf()
       val inputFormat = getInputFormat(jobConf)
       HadoopRDD.addLocalConfiguration(new SimpleDateFormat("yyyyMMddHHmm").format(createTime),
-        goop.context.stageId, theSplit.index, goop.context.attemptId.toInt, jobConf)
+        context.stageId, theSplit.index, context.taskAttemptId.toInt, jobConf)
       reader = inputFormat.getRecordReader(split.inputSplit.value, jobConf, Reporter.NULL)
 
       // Register an on-task-completion callback to close the input stream.
-      goop.context.addTaskCompletionListener{ context => closeIfNeeded() }
+      context.addTaskCompletionListener{ context => closeIfNeeded() }
       val key: K = reader.createKey()
       val value: V = reader.createValue()
 
@@ -212,7 +212,7 @@ class HadoopRDD[K, V](
         case e: java.io.IOException =>
           logWarning("Unable to get input size to set InputMetrics for task", e)
       }
-      goop.context.taskMetrics.inputMetrics = Some(inputMetrics)
+      context.taskMetrics.inputMetrics = Some(inputMetrics)
 
       override def getNext() = {
         try {
@@ -232,7 +232,7 @@ class HadoopRDD[K, V](
         }
       }
     }
-    new InterruptibleIterator[(K, V)](goop.context, iter)
+    new InterruptibleIterator[(K, V)](context, iter)
   }
 
   /** Maps over a partition, providing the InputSplit that was used as the base of the partition. */
@@ -298,10 +298,10 @@ private[spark] object HadoopRDD {
 
     override def getPartitions: Array[Partition] = firstParent[T].partitions
 
-    override def compute(split: Partition, goop: TaskGoop) = {
+    override def compute(split: Partition, context: TaskContext) = {
       val partition = split.asInstanceOf[HadoopPartition]
       val inputSplit = partition.inputSplit.value
-      f(inputSplit, firstParent[T].iterator(split, goop))
+      f(inputSplit, firstParent[T].iterator(split, context))
     }
   }
 }

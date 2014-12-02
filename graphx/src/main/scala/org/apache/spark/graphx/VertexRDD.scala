@@ -114,8 +114,8 @@ class VertexRDD[@specialized VD: ClassTag](
   /**
    * Provides the `RDD[(VertexId, VD)]` equivalent output.
    */
-  override def compute(part: Partition, goop: TaskGoop): Iterator[(VertexId, VD)] = {
-    firstParent[ShippableVertexPartition[VD]].iterator(part, goop).next.iterator
+  override def compute(part: Partition, context: TaskContext): Iterator[(VertexId, VD)] = {
+    firstParent[ShippableVertexPartition[VD]].iterator(part, context).next.iterator
   }
 
   /**

@@ -67,8 +67,8 @@ class JdbcRDD[T: ClassTag](
     }).toArray
   }
 
-  override def compute(thePart: Partition, goop: TaskGoop) = new NextIterator[T] {
-    goop.context.addTaskCompletionListener{ context => closeIfNeeded() }
+  override def compute(thePart: Partition, context: TaskContext) = new NextIterator[T] {
+    context.addTaskCompletionListener{ context => closeIfNeeded() }
     val part = thePart.asInstanceOf[JdbcPartition]
     val conn = getConnection()
     val stmt = conn.prepareStatement(sql, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)

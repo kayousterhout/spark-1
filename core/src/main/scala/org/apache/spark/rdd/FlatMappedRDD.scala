@@ -19,7 +19,7 @@ package org.apache.spark.rdd
 
 import scala.reflect.ClassTag
 
-import org.apache.spark.{Partition, TaskGoop}
+import org.apache.spark.{Partition, TaskContext}
 
 private[spark]
 class FlatMappedRDD[U: ClassTag, T: ClassTag](
@@ -29,6 +29,6 @@ class FlatMappedRDD[U: ClassTag, T: ClassTag](
 
   override def getPartitions: Array[Partition] = firstParent[T].partitions
 
-  override def compute(split: Partition, goop: TaskGoop) =
-    firstParent[T].iterator(split, goop).flatMap(f)
+  override def compute(split: Partition, context: TaskContext) =
+    firstParent[T].iterator(split, context).flatMap(f)
 }

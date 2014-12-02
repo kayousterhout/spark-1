@@ -20,7 +20,8 @@ package org.apache.spark
 import scala.collection.mutable.ArrayBuffer
 
 import org.apache.spark.annotation.DeveloperApi
-import org.apache.spark.executor.TaskMetrics
+import org.apache.spark.executor.{ExecutorBackend, DependencyManager, TaskMetrics}
+import org.apache.spark.monotasks.LocalDagScheduler
 import org.apache.spark.util.TaskCompletionListener
 
 
@@ -28,20 +29,27 @@ import org.apache.spark.util.TaskCompletionListener
  * :: DeveloperApi ::
  * Contextual information about a task which can be read or mutated during execution.
  *
- * @param stageId stage id
- * @param partitionId index of the partition
- * @param attemptId the number of attempts to execute this task
+ * @param maximumResultSizeBytes the largest size result (in bytes) that can be sent directly back
+ *                               to the Spark driver. Larger results will be sent via the block
+ *                               manager.
+ * @param taskAttemptId a unique identifier for the task
  * @param runningLocally whether the task is running locally in the driver JVM
  * @param taskMetrics performance metrics of the task
  */
 @DeveloperApi
 class TaskContext(
-    val stageId: Int,
-    val partitionId: Int,
-    val attemptId: Long,
+    val env: SparkEnv,
+    val localDagScheduler: LocalDagScheduler,
+    val maximumResultSizeBytes: Long,
+    val dependencyManager: DependencyManager,
+    val taskAttemptId: Long,
     val runningLocally: Boolean = false,
     private[spark] val taskMetrics: TaskMetrics = TaskMetrics.empty)
   extends Serializable {
+
+  // stageId and partitionId are set after the task is deserialized.
+  var stageId: Int = -1
+  var partitionId: Int = -1
 
   @deprecated("use partitionId", "0.8.1")
   def splitId = partitionId

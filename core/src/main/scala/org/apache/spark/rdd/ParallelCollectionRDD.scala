@@ -98,8 +98,8 @@ private[spark] class ParallelCollectionRDD[T: ClassTag](
     slices.indices.map(i => new ParallelCollectionPartition(id, i, slices(i))).toArray
   }
 
-  override def compute(s: Partition, goop: TaskGoop) = {
-    new InterruptibleIterator(goop.context, s.asInstanceOf[ParallelCollectionPartition[T]].iterator)
+  override def compute(s: Partition, context: TaskContext) = {
+    new InterruptibleIterator(context, s.asInstanceOf[ParallelCollectionPartition[T]].iterator)
   }
 
   override def getPreferredLocations(s: Partition): Seq[String] = {

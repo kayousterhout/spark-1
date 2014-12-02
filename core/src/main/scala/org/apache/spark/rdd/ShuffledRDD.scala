@@ -97,7 +97,7 @@ class ShuffledRDD[K, V, C](
     Array.tabulate[Partition](part.numPartitions)(i => new ShuffledRDDPartition(i))
   }
 
-  override def compute(split: Partition, goop: TaskGoop): Iterator[(K, C)] = {
+  override def compute(split: Partition, context: TaskContext): Iterator[(K, C)] = {
     dependencies.head.asInstanceOf[ShuffleDependency[K, V, C]].shuffleReader match {
       case Some(shuffleReader) =>
         shuffleReader.getDeserializedAggregatedSortedData()

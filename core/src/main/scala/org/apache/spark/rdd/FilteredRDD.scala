@@ -19,7 +19,7 @@ package org.apache.spark.rdd
 
 import scala.reflect.ClassTag
 
-import org.apache.spark.{Partition, TaskGoop}
+import org.apache.spark.{Partition, TaskContext}
 
 private[spark] class FilteredRDD[T: ClassTag](
     prev: RDD[T],
@@ -30,6 +30,6 @@ private[spark] class FilteredRDD[T: ClassTag](
 
   override val partitioner = prev.partitioner    // Since filter cannot change a partition's keys
 
-  override def compute(split: Partition, goop: TaskGoop) =
-    firstParent[T].iterator(split, goop).filter(f)
+  override def compute(split: Partition, context: TaskContext) =
+    firstParent[T].iterator(split, context).filter(f)
 }

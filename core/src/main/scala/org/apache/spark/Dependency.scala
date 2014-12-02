@@ -38,7 +38,7 @@ abstract class Dependency[T] extends Serializable {
    * on one another, and that the only dependency is that the compute monotask for the RDD
    * being computed depends on the monotasks for its dependencies. This assumption will break
    * once we add support for monotasks to, for example, cache intermediate data. */
-  def getMonotasks(goop: TaskGoop, partitionId: Int): Seq[Monotask]
+  def getMonotasks(context: TaskContext, partitionId: Int): Seq[Monotask]
 }
 
 
@@ -58,11 +58,11 @@ abstract class NarrowDependency[T](_rdd: RDD[T]) extends Dependency[T] {
 
   override def rdd: RDD[T] = _rdd
 
-  override def getMonotasks(goop: TaskGoop, partitionId: Int): Seq[Monotask] = {
+  override def getMonotasks(context: TaskContext, partitionId: Int): Seq[Monotask] = {
     // For each of the parent partitions, get the input monotasks to generate that partition.
     getParents(partitionId).flatMap { parentPartitionId =>
       rdd.dependencies.flatMap { dependency =>
-        dependency.getMonotasks(goop, parentPartitionId)
+        dependency.getMonotasks(context, parentPartitionId)
       }
     }
   }
@@ -102,9 +102,9 @@ class ShuffleDependency[K, V, C](
   /** Helps with reading the shuffle data associated with this dependency. Set by getMonotasks(). */
   var shuffleReader: Option[NewShuffleReader[K, V, C]] = None
 
-  override def getMonotasks(goop: TaskGoop, partitionId: Int): Seq[Monotask] = {
+  override def getMonotasks(context: TaskContext, partitionId: Int): Seq[Monotask] = {
     // TODO: should the shuffle reader code be part of the dependency?
-    shuffleReader = Some(new NewShuffleReader(this, partitionId, goop))
+    shuffleReader = Some(new NewShuffleReader(this, partitionId, context))
     shuffleReader.get.getReadMonotasks()
   }
 }

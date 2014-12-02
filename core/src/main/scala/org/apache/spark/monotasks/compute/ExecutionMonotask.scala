@@ -16,6 +16,8 @@
 
 package org.apache.spark.monotasks.compute
 
+import java.nio.ByteBuffer
+
 import scala.collection.mutable.HashMap
 import scala.reflect.ClassTag
 
@@ -29,11 +31,12 @@ import org.apache.spark.util.Utils
 
 /** Monotask that handles executing the compute part of a macro task. */
 private[spark] abstract class ExecutionMonotask[T, U: ClassTag](
-    goop: TaskGoop,
+    context: TaskContext,
     val rdd: RDD[T],
     val split: Partition)
-  extends ComputeMonotask(goop.localDagScheduler) with Logging {
+  extends ComputeMonotask(context) with Logging {
 
+  /** Subclasses should define this to return a macrotask result to be sent to the driver. */
   def getResult(): U
 
   override def execute() = {
@@ -41,61 +44,53 @@ private[spark] abstract class ExecutionMonotask[T, U: ClassTag](
     val closureSerializer = SparkEnv.get.closureSerializer.newInstance()
     try {
       val result = getResult()
-      goop.context.markTaskCompleted()
-      serializeAndSendResult(result, closureSerializer)
+      context.markTaskCompleted()
+      val serializedResult = serializeResult(result, closureSerializer)
+      context.localDagScheduler.handleTaskCompletion(this, Some(serializedResult))
     } catch {
       case t: Throwable => {
         // Attempt to exit cleanly by informing the driver of our failure.
         // If anything goes wrong (or this was a fatal exception), we will delegate to
         // the default uncaught exception handler, which will terminate the Executor.
-        logError(s"Exception in TID ${goop.taskAttemptId}", t)
-
-        // TODO: support metrics
-        val reason = ExceptionFailure(
-          t.getClass.getName, t.getMessage, t.getStackTrace, None)
-        goop.executorBackend.statusUpdate(
-          goop.taskAttemptId, TaskState.FAILED, closureSerializer.serialize(reason))
+        logError(s"Exception in TID ${context.taskAttemptId}", t)
 
         // Don't forcibly exit unless the exception was inherently fatal, to avoid
         // stopping other tasks unnecessarily.
         if (Utils.isFatalError(t)) {
           ExecutorUncaughtExceptionHandler.uncaughtException(t)
         }
+
+        // TODO: support metrics.
+        val reason = ExceptionFailure(
+          t.getClass.getName, t.getMessage, t.getStackTrace, None)
+        context.localDagScheduler.handleTaskFailure(this, closureSerializer.serialize(reason))
       }
     }
   }
 
-  private def serializeAndSendResult(result: U, closureSerializer: SerializerInstance) {
+  private def serializeResult(result: U, closureSerializer: SerializerInstance): ByteBuffer = {
     val resultSer = SparkEnv.get.serializer.newInstance()
     val valueBytes = resultSer.serialize(result)
 
     // TODO: deal with accumulator updates (previously, accumulators done using thread locals,
-    // which don't work anymore!
-    goop.context.taskMetrics.setJvmGCTime()
+    // which don't work anymore!).
+    context.taskMetrics.setJvmGCTime()
     val directResult = new DirectTaskResult(
-      valueBytes, new HashMap[Long, Any](), goop.context.taskMetrics)
+      valueBytes, new HashMap[Long, Any](), context.taskMetrics)
     val serializedDirectResult = closureSerializer.serialize(directResult)
     val resultSize = serializedDirectResult.limit
 
-    // directSend = sending directly back to the driver
-    val (serializedResult, directSend) = {
-      if (resultSize >= goop.maximumResultSizeBytes) {
-        val blockId = TaskResultBlockId(goop.taskAttemptId)
-        SparkEnv.get.blockManager.putBytes(
-          blockId, serializedDirectResult, StorageLevel.MEMORY_AND_DISK_SER)
-        (closureSerializer.serialize(new IndirectTaskResult[Any](blockId)), false)
-      } else {
-        (serializedDirectResult, true)
-      }
-    }
-
-    goop.executorBackend.statusUpdate(goop.taskAttemptId, TaskState.FINISHED, serializedResult)
-
-    if (directSend) {
-      logInfo(s"Finished TID ${goop.taskAttemptId}. $resultSize bytes result sent to driver")
+    if (resultSize >= context.maximumResultSizeBytes) {
+      val blockId = TaskResultBlockId(context.taskAttemptId)
+      SparkEnv.get.blockManager.putBytes(
+        blockId, serializedDirectResult, StorageLevel.MEMORY_AND_DISK_SER)
+      logInfo(s"Finished TID ${context.taskAttemptId}. $resultSize bytes result will be sent " +
+        "via BlockManager)")
+      closureSerializer.serialize(new IndirectTaskResult[Any](blockId))
     } else {
-      logInfo(
-        s"Finished TID ${goop.taskAttemptId}. $resultSize bytes result sent via BlockManager)")
+      logInfo(s"Finished TID ${context.taskAttemptId}. $resultSize bytes result will be sent " +
+        "directly to driver")
+      serializedDirectResult
     }
   }
 }

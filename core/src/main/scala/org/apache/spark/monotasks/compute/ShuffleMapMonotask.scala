@@ -33,16 +33,16 @@ import org.apache.spark.storage.{BlockManager, ShuffleBlockId, StorageLevel}
  * ShuffleDependency) and stores the result in the BlockManager.
  */
 private[spark] class ShuffleMapMonotask[T](
-    goop: TaskGoop,
+    context: TaskContext,
     rdd: RDD[T],
     partition: Partition,
     dependency: ShuffleDependency[Any, Any, _])
-  extends ExecutionMonotask[T, MapStatus](goop, rdd, partition) {
+  extends ExecutionMonotask[T, MapStatus](context, rdd, partition) {
 
   override def getResult(): MapStatus = {
     // Optionally do map-side combining before outputting shuffle files.
     val uncombinedIterator =
-      rdd.iterator(partition, goop).asInstanceOf[Iterator[_ <: Product2[Any, Any]]]
+      rdd.iterator(partition, context).asInstanceOf[Iterator[_ <: Product2[Any, Any]]]
     val iter = if (dependency.aggregator.isDefined && dependency.mapSideCombine) {
       dependency.aggregator.get.combineValuesByKey(uncombinedIterator)
     } else if (dependency.aggregator.isEmpty && dependency.mapSideCombine) {
@@ -64,13 +64,13 @@ private[spark] class ShuffleMapMonotask[T](
 
     // Store the shuffle data in the block manager and get the sizes.
     val shuffleWriteMetrics = new ShuffleWriteMetrics()
-    goop.context.taskMetrics.shuffleWriteMetrics = Some(shuffleWriteMetrics)
+    context.taskMetrics.shuffleWriteMetrics = Some(shuffleWriteMetrics)
     val compressedSizes = shuffleData.map { shuffleWriter =>
       val bytesWritten = shuffleWriter.saveToBlockManager()
       shuffleWriteMetrics.shuffleBytesWritten += bytesWritten
       MapOutputTracker.compressSize(bytesWritten)
     }
-    goop.context.markTaskCompleted()
+    context.markTaskCompleted()
 
     new MapStatus(SparkEnv.get.blockManager.blockManagerId, compressedSizes)
   }

@@ -19,7 +19,7 @@ package org.apache.spark.graphx
 
 import scala.reflect.{classTag, ClassTag}
 
-import org.apache.spark.{OneToOneDependency, Partition, Partitioner, TaskGoop}
+import org.apache.spark.{OneToOneDependency, Partition, Partitioner, TaskContext}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
 
@@ -49,8 +49,8 @@ class EdgeRDD[@specialized ED: ClassTag, VD: ClassTag](
   override val partitioner =
     partitionsRDD.partitioner.orElse(Some(Partitioner.defaultPartitioner(partitionsRDD)))
 
-  override def compute(part: Partition, goop: TaskGoop): Iterator[Edge[ED]] = {
-    val p = firstParent[(PartitionID, EdgePartition[ED, VD])].iterator(part, goop)
+  override def compute(part: Partition, context: TaskContext): Iterator[Edge[ED]] = {
+    val p = firstParent[(PartitionID, EdgePartition[ED, VD])].iterator(part, context)
     if (p.hasNext) {
       p.next._2.iterator.map(_.copy())
     } else {

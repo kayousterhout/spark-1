@@ -57,7 +57,7 @@ private[spark] class CoarseGrainedExecutorBackend(
     case RegisteredExecutor =>
       logInfo("Successfully registered with driver")
       // Make this host instead of hostPort ?
-      executor = new Executor(executorId, Utils.parseHostPort(hostPort)._1, sparkProperties,
+      executor = new Executor(executorId, Utils.parseHostPort(hostPort)._1, this, sparkProperties,
         false)
 
     case RegisterExecutorFailed(message) =>
@@ -72,7 +72,7 @@ private[spark] class CoarseGrainedExecutorBackend(
         val ser = SparkEnv.get.closureSerializer.newInstance()
         val taskDesc = ser.deserialize[TaskDescription](data.value)
         logInfo("Got assigned task " + taskDesc.taskId)
-        executor.launchTask(this, taskDesc.taskId, taskDesc.name, taskDesc.serializedTask)
+        executor.launchTask(taskDesc.taskId, taskDesc.name, taskDesc.serializedTask)
       }
 
     case KillTask(taskId, _, interruptThread) =>
