@@ -84,6 +84,7 @@ private[spark] class LocalDagScheduler(executorBackend: ExecutorBackend) extends
     completedMonotask.dependents.foreach { monotask =>
       monotask.dependencies -= completedMonotask.taskId
       if (monotask.dependencies.isEmpty) {
+        assert(waitingMonotasks.contains(monotask.taskId))
         scheduleMonotask(monotask)
       }
     }
@@ -147,7 +148,6 @@ private[spark] class LocalDagScheduler(executorBackend: ExecutorBackend) extends
    */
   private def scheduleMonotask(monotask: Monotask) {
     assert(monotask.dependencies.isEmpty)
-    assert(waitingMonotasks.contains(monotask.taskId))
     monotask match {
       case computeMonotask: ComputeMonotask => computeScheduler.submitTask(computeMonotask)
       case networkMonotask: NetworkMonotask => networkScheduler.submitTask(networkMonotask)
