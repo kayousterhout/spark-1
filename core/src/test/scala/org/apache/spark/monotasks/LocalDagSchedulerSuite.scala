@@ -16,13 +16,18 @@
 
 package org.apache.spark.monotasks
 
+import org.mockito.Mockito._
+
 import org.scalatest.{BeforeAndAfterEach, FunSuite, Matchers}
 
+import org.apache.spark.executor.ExecutorBackend
+
 class LocalDagSchedulerSuite extends FunSuite with Matchers with BeforeAndAfterEach {
+  private var executorBackend = mock(classOf[ExecutorBackend])
   private var localDagScheduler: LocalDagScheduler = _
 
   override def beforeEach() {
-    localDagScheduler = new LocalDagScheduler()
+    localDagScheduler = new LocalDagScheduler(executorBackend)
   }
 
   test("submitMonotasks: tasks with no dependencies are run immediately") {
