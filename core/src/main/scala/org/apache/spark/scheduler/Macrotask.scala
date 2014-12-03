@@ -51,7 +51,7 @@ private[spark] abstract class Macrotask[T](val stageId: Int, val partition: Part
    * Returns the monotasks that need to be run in order to execute this macrotask. This is run
    * within a compute monotask, so should not use network or disk.
    */
-  def getMonotasks(goop: TaskContext): Seq[Monotask]
+  def getMonotasks(context: TaskContext): Seq[Monotask]
 }
 
 /**

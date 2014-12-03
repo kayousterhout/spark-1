@@ -44,7 +44,6 @@ private[spark] abstract class ExecutionMonotask[T, U: ClassTag](
     val closureSerializer = SparkEnv.get.closureSerializer.newInstance()
     try {
       val result = getResult()
-      context.markTaskCompleted()
       val serializedResult = serializeResult(result, closureSerializer)
       context.localDagScheduler.handleTaskCompletion(this, Some(serializedResult))
     } catch {
@@ -65,6 +64,8 @@ private[spark] abstract class ExecutionMonotask[T, U: ClassTag](
           t.getClass.getName, t.getMessage, t.getStackTrace, None)
         context.localDagScheduler.handleTaskFailure(this, closureSerializer.serialize(reason))
       }
+    } finally {
+      context.markTaskCompleted()
     }
   }
 

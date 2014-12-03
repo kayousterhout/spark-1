@@ -22,9 +22,8 @@ import org.scalatest.{FunSuite, Matchers}
 
 class MonotaskSuite extends FunSuite with Matchers {
  test("monotasks are assigned unique IDs") {
-   val localDagScheduler = new LocalDagScheduler()
    val numMonotasks = 10
-   val monotaskList = Array.fill[Monotask](numMonotasks)(new SimpleMonotask(localDagScheduler))
+   val monotaskList = Array.fill[Monotask](numMonotasks)(new SimpleMonotask(0))
 
    // Make sure that all of the IDs are unique.
    val monotaskIdSet = new HashSet[Long]()

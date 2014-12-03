@@ -268,7 +268,7 @@ class TaskSchedulerImplSuite extends FunSuite with LocalSparkContext with Loggin
     taskScheduler.initialize(new FakeSchedulerBackend)
     // Need to initialize a DAGScheduler for the taskScheduler to use for callbacks.
     val dagScheduler = new DAGScheduler(sc, taskScheduler) {
-      override def taskStarted(task: Task[_], taskInfo: TaskInfo) {}
+      override def taskStarted(stageId: Int, taskInfo: TaskInfo) {}
       override def executorAdded(execId: String, host: String) {}
     }
 
@@ -302,7 +302,7 @@ class TaskSchedulerImplSuite extends FunSuite with LocalSparkContext with Loggin
     taskScheduler.initialize(new FakeSchedulerBackend)
     // Need to initialize a DAGScheduler for the taskScheduler to use for callbacks.
     val dagScheduler = new DAGScheduler(sc, taskScheduler) {
-      override def taskStarted(task: Task[_], taskInfo: TaskInfo) {}
+      override def taskStarted(stageId: Int, taskInfo: TaskInfo) {}
       override def executorAdded(execId: String, host: String) {}
     }
     taskScheduler.setDAGScheduler(dagScheduler)

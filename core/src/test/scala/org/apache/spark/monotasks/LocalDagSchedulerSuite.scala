@@ -16,22 +16,26 @@
 
 package org.apache.spark.monotasks
 
+import java.nio.ByteBuffer
+
 import org.mockito.Mockito._
 
 import org.scalatest.{BeforeAndAfterEach, FunSuite, Matchers}
 
+import org.apache.spark.TaskContext
 import org.apache.spark.executor.ExecutorBackend
 
 class LocalDagSchedulerSuite extends FunSuite with Matchers with BeforeAndAfterEach {
-  private var executorBackend = mock(classOf[ExecutorBackend])
+  private var executorBackend: ExecutorBackend = _
   private var localDagScheduler: LocalDagScheduler = _
 
   override def beforeEach() {
+    executorBackend = mock(classOf[ExecutorBackend])
     localDagScheduler = new LocalDagScheduler(executorBackend)
   }
 
   test("submitMonotasks: tasks with no dependencies are run immediately") {
-    val noDependencyMonotask = new SimpleMonotask(localDagScheduler)
+    val noDependencyMonotask = new SimpleMonotask(0)
     localDagScheduler.submitMonotasks(List(noDependencyMonotask))
 
     assert(localDagScheduler.waitingMonotasks.isEmpty)
@@ -40,8 +44,8 @@ class LocalDagSchedulerSuite extends FunSuite with Matchers with BeforeAndAfterE
   }
 
   test("submitMonotasks: tasks with unsatisfied dependencies are not run immediately") {
-    val firstMonotask = new SimpleMonotask(localDagScheduler)
-    val secondMonotask = new SimpleMonotask(localDagScheduler)
+    val firstMonotask = new SimpleMonotask(0)
+    val secondMonotask = new SimpleMonotask(0)
     secondMonotask.addDependency(firstMonotask)
     localDagScheduler.submitMonotasks(List(firstMonotask, secondMonotask))
 
@@ -52,8 +56,8 @@ class LocalDagSchedulerSuite extends FunSuite with Matchers with BeforeAndAfterE
   }
 
   test("handleTaskCompletion results in appropriate new monotasks being run") {
-    val firstMonotask = new SimpleMonotask(localDagScheduler)
-    val secondMonotask = new SimpleMonotask(localDagScheduler)
+    val firstMonotask = new SimpleMonotask(0)
+    val secondMonotask = new SimpleMonotask(0)
     secondMonotask.addDependency(firstMonotask)
     localDagScheduler.submitMonotasks(List(firstMonotask, secondMonotask))
     localDagScheduler.handleTaskCompletion(firstMonotask)
@@ -61,6 +65,15 @@ class LocalDagSchedulerSuite extends FunSuite with Matchers with BeforeAndAfterE
     assert(1 === localDagScheduler.runningMonotasks.size)
     assert(localDagScheduler.runningMonotasks.contains(secondMonotask.taskId))
     assert(localDagScheduler.waitingMonotasks.isEmpty)
+  }
+
+  /**
+   * Tests that when a serialized task result is provided to handleTaskCompletion(), the local
+   * DAG scheduler removes the associated macrotask from the set of running macrotasks, and also
+   * updates the executor backend that the task has finished.
+   */
+  test("handleTaskCompletion works correctly when a serializedTaskResult is provided") {
+
   }
 
   /**
@@ -73,11 +86,11 @@ class LocalDagSchedulerSuite extends FunSuite with Matchers with BeforeAndAfterE
    *              D --'
    */
   test("handleTaskCompletion properly handles complex DAGs") {
-    val monotaskA = new SimpleMonotask(localDagScheduler)
-    val monotaskB = new SimpleMonotask(localDagScheduler)
-    val monotaskC = new SimpleMonotask(localDagScheduler)
-    val monotaskD = new SimpleMonotask(localDagScheduler)
-    val monotaskE = new SimpleMonotask(localDagScheduler)
+    val monotaskA = new SimpleMonotask(0)
+    val monotaskB = new SimpleMonotask(0)
+    val monotaskC = new SimpleMonotask(0)
+    val monotaskD = new SimpleMonotask(0)
+    val monotaskE = new SimpleMonotask(0)
 
     monotaskC.addDependency(monotaskA)
     monotaskC.addDependency(monotaskB)
@@ -115,6 +128,12 @@ class LocalDagSchedulerSuite extends FunSuite with Matchers with BeforeAndAfterE
     assert(localDagScheduler.waitingMonotasks.isEmpty)
     assert(1 === localDagScheduler.runningMonotasks.size)
     assert(localDagScheduler.runningMonotasks.contains(monotaskE.taskId))
+
+    // Make a dummy result to pass in as part of the task completion to signal that the macrotask
+    // has completed.
+    val result = ByteBuffer.allocate(2)
+    localDagScheduler.handleTaskCompletion(monotaskE, Some(result))
+    assertDataStructuresEmpty()
   }
 
   test("waitUntilAllTasksComplete returns immediately when no tasks are running or waiting") {
@@ -123,8 +142,8 @@ class LocalDagSchedulerSuite extends FunSuite with Matchers with BeforeAndAfterE
 
   test("waitUntilAllTasksComplete waits for all tasks to complete") {
     // Create a simple DAG with two tasks.
-    val firstMonotask = new SimpleMonotask(localDagScheduler)
-    val secondMonotask = new SimpleMonotask(localDagScheduler)
+    val firstMonotask = new SimpleMonotask(0)
+    val secondMonotask = new SimpleMonotask(0)
     secondMonotask.addDependency(firstMonotask)
     localDagScheduler.submitMonotasks(List(firstMonotask, secondMonotask))
 
@@ -133,7 +152,19 @@ class LocalDagSchedulerSuite extends FunSuite with Matchers with BeforeAndAfterE
     localDagScheduler.handleTaskCompletion(firstMonotask)
     assert(!localDagScheduler.waitUntilAllTasksComplete(10))
 
-    localDagScheduler.handleTaskCompletion(secondMonotask)
+    // Make a dummy result to pass in as part of the task completion to signal that the macrotask
+    // has completed.
+    val result = ByteBuffer.allocate(2)
+    localDagScheduler.handleTaskCompletion(secondMonotask, Some(result))
     assert(localDagScheduler.waitUntilAllTasksComplete(10))
+
+    assertDataStructuresEmpty()
+  }
+
+  // TODO: need this??
+  private def assertDataStructuresEmpty() = {
+    assert(localDagScheduler.waitingMonotasks.isEmpty)
+    assert(localDagScheduler.runningMonotasks.isEmpty)
+    assert(localDagScheduler.runningMacrotaskAttemptIds.isEmpty)
   }
 }

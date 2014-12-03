@@ -19,4 +19,5 @@ package org.apache.spark.monotasks
 import org.apache.spark.TaskContext
 
 /** A minimal subclass of monotask for use in testing. */
-class SimpleMonotask(context: TaskContext) extends Monotask(context)
+class SimpleMonotask(taskAttemptId: Int)
+  extends Monotask(new TaskContext(null, null, 0, null, taskAttemptId))

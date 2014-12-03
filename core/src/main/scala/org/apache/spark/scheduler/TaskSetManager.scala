@@ -453,7 +453,7 @@ private[spark] class TaskSetManager(
           logInfo("Starting %s (TID %d, %s, %s, %d bytes)".format(
               taskName, taskId, host, taskLocality, serializedTask.limit))
 
-          sched.dagScheduler.taskStarted(task, info)
+          sched.dagScheduler.taskStarted(task.stageId, info)
           return Some(new TaskDescription(taskId, execId, taskName, index, serializedTask))
         }
         case _ =>

@@ -55,7 +55,7 @@ private[scheduler] case class JobGroupCancelled(groupId: String) extends DAGSche
 private[scheduler] case object AllJobsCancelled extends DAGSchedulerEvent
 
 private[scheduler]
-case class BeginEvent(task: Macrotask[_], taskInfo: TaskInfo) extends DAGSchedulerEvent
+case class BeginEvent(stageId: Int, taskInfo: TaskInfo) extends DAGSchedulerEvent
 
 private[scheduler]
 case class GettingResultEvent(taskInfo: TaskInfo) extends DAGSchedulerEvent

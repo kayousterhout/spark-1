@@ -27,16 +27,17 @@ import org.scalatest.FunSuite
 import org.apache.spark._
 import org.apache.spark.executor.TaskMetrics
 import org.apache.spark.util.FakeClock
+import org.apache.spark.monotasks.Monotask
 
 class FakeDAGScheduler(sc: SparkContext, taskScheduler: FakeTaskScheduler)
   extends DAGScheduler(sc) {
 
-  override def taskStarted(task: Task[_], taskInfo: TaskInfo) {
+  override def taskStarted(stageId: Int, taskInfo: TaskInfo) {
     taskScheduler.startedTasks += taskInfo.index
   }
 
   override def taskEnded(
-      task: Task[_],
+      task: Macrotask[_],
       reason: TaskEndReason,
       result: Any,
       accumUpdates: mutable.Map[Long, Any],
@@ -137,12 +138,12 @@ class FakeTaskScheduler(sc: SparkContext, liveExecutors: (String, String)* /* ex
 /**
  * A Task implementation that results in a large serialized task.
  */
-class LargeTask(stageId: Int) extends Task[Array[Byte]](stageId, 0) {
+class LargeTask(stageId: Int) extends Macrotask[Array[Byte]](stageId, null) {
   val randomBuffer = new Array[Byte](TaskSetManager.TASK_SIZE_TO_WARN_KB * 1024)
   val random = new Random(0)
   random.nextBytes(randomBuffer)
 
-  override def runTask(context: TaskContext): Array[Byte] = randomBuffer
+  override def getMonotasks(context: TaskContext): Seq[Monotask] = Seq.empty
   override def preferredLocations: Seq[TaskLocation] = Seq[TaskLocation]()
 }
 

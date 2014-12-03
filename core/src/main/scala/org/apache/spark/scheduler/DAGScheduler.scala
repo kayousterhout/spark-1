@@ -137,8 +137,8 @@ class DAGScheduler(
   initializeEventProcessActor()
 
   // Called by TaskScheduler to report task's starting.
-  def taskStarted(task: Macrotask[_], taskInfo: TaskInfo) {
-    eventProcessActor ! BeginEvent(task, taskInfo)
+  def taskStarted(stageId: Int, taskInfo: TaskInfo) {
+    eventProcessActor ! BeginEvent(stageId, taskInfo)
   }
 
   // Called to report that a task has completed and results are being fetched remotely.
@@ -678,11 +678,11 @@ class DAGScheduler(
     submitWaitingStages()
   }
 
-  private[scheduler] def handleBeginEvent(task: Macrotask[_], taskInfo: TaskInfo) {
+  private[scheduler] def handleBeginEvent(stageId: Int, taskInfo: TaskInfo) {
     // Note that there is a chance that this task is launched after the stage is cancelled.
     // In that case, we wouldn't have the stage anymore in stageIdToStage.
-    val stageAttemptId = stageIdToStage.get(task.stageId).map(_.latestInfo.attemptId).getOrElse(-1)
-    listenerBus.post(SparkListenerTaskStart(task.stageId, stageAttemptId, taskInfo))
+    val stageAttemptId = stageIdToStage.get(stageId).map(_.latestInfo.attemptId).getOrElse(-1)
+    listenerBus.post(SparkListenerTaskStart(stageId, stageAttemptId, taskInfo))
     submitWaitingStages()
   }
 
@@ -1380,8 +1380,8 @@ private[scheduler] class DAGSchedulerEventProcessActor(dagScheduler: DAGSchedule
     case ExecutorLost(execId) =>
       dagScheduler.handleExecutorLost(execId)
 
-    case BeginEvent(task, taskInfo) =>
-      dagScheduler.handleBeginEvent(task, taskInfo)
+    case BeginEvent(stageId, taskInfo) =>
+      dagScheduler.handleBeginEvent(stageId, taskInfo)
 
     case GettingResultEvent(taskInfo) =>
       dagScheduler.handleGetTaskResult(taskInfo)
