@@ -48,7 +48,7 @@ private[spark] class ShuffleMapMacrotask(
   override def getMonotasks(context: TaskContext): Seq[Monotask] = {
     val ser = context.env.closureSerializer.newInstance()
     val (rdd, dep) = ser.deserialize[(RDD[_], ShuffleDependency[Any, Any, _])](
-      ByteBuffer.wrap(taskBinary.value), Thread.currentThread.getContextClassLoader)
+      ByteBuffer.wrap(taskBinary.value), context.dependencyManager.replClassLoader)
 
     context.stageId = stageId
     context.partitionId = partition.index

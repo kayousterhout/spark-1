@@ -30,6 +30,10 @@ private[spark] class ComputeScheduler() extends Logging {
   def submitTask(monotask: ComputeMonotask) {
     computeThreadpool.execute(new Runnable {
       override def run(): Unit = {
+        // Set the class loader for the thread, which will be used by any broadcast variables that
+        // are deserialized as part of the compute monotask.
+        Thread.currentThread.setContextClassLoader(
+          monotask.context.dependencyManager.replClassLoader)
         monotask.execute()
       }
     })
