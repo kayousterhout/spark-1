@@ -21,9 +21,8 @@ import scala.collection.mutable.{ArrayBuffer, HashMap}
 import org.apache.spark._
 import org.apache.spark.monotasks.Monotask
 import org.apache.spark.monotasks.network.NetworkMonotask
-import org.apache.spark.storage._
 import org.apache.spark.network.BufferMessage
-import org.apache.spark.storage.{MonotaskResultBlockId, ShuffleBlockId}
+import org.apache.spark.storage._
 
 /**
  * Handles reading shuffle data over the network and deserializing, aggregating, and sorting the
@@ -159,10 +158,5 @@ class NewShuffleReader[K, V, C](
         iterator
     }
     sortedIter.asInstanceOf[Iterator[(K, C)]]
-  }
-
-  /** TODO: remove only local monotask output data? remove everything? */
-  def removeShuffledData() {
-
   }
 }

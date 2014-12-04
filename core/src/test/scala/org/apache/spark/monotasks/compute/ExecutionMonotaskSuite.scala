@@ -21,24 +21,37 @@ import org.mockito.Matchers.{any, eq => meq}
 
 import org.scalatest.{BeforeAndAfterEach, FunSuite}
 
-import org.apache.spark.{LocalSparkContext, SparkContext, TaskContext}
+import org.apache.spark.{LocalSparkContext, SparkContext, SparkEnv, TaskContext}
+import org.apache.spark.executor.TaskMetrics
 import org.apache.spark.monotasks.LocalDagScheduler
 
 class ExecutionMonotaskSuite extends FunSuite with LocalSparkContext with BeforeAndAfterEach {
 
+  var localDagScheduler: LocalDagScheduler = _
+  var taskContext: TaskContext = _
+  val taskMetrics: TaskMetrics = new TaskMetrics()
+
   override def beforeEach() {
     /* Need to create a local spark context so that SparkEnv gets initialized (which is used
      * in ExecutionMonotask). */
-    sc = new SparkContext("local", "test")
+     //TODO: why not env in TaskContext??
+     sc = new SparkContext("local", "test")
+
+    localDagScheduler = mock(classOf[LocalDagScheduler])
+    taskContext = new TaskContext(SparkEnv.get, localDagScheduler, 500, null, 12)
   }
 
-  test("execute correctly handles thrown exceptions") {
-    /* When an exception is thrown, the execute() method should still mark the task context as
-     * completed, and snould notify the local DAG scheduler that the task has failed. */
-    val localDagScheduler = mock(classOf[LocalDagScheduler])
-    val taskContext = mock(classOf[TaskContext])
-    when(taskContext.localDagScheduler).thenReturn(localDagScheduler)
+  test("execute tells DAG scheduler and marks task as completed when task completes successfully") {
+    val monotask = new ExecutionMonotask[Int, Int](taskContext, null, null) {
+      override def getResult(): Int = 15
+    }
 
+    monotask.execute()
+    verify(localDagScheduler).handleTaskCompletion(meq(monotask), any())
+    assert(taskContext.isCompleted)
+  }
+
+  test("execute tells DAG scheduler and marks task as completed when task throws exceptions") {
     val monotask = new ExecutionMonotask[Int, Int](taskContext, null, null) {
       override def getResult(): Int = {
         throw new Exception("task failed")
@@ -46,11 +59,9 @@ class ExecutionMonotaskSuite extends FunSuite with LocalSparkContext with Before
     }
 
     monotask.execute()
-    verify(taskContext).markTaskCompleted()
+    /* When an exception is thrown, the execute() method should still mark the task context as
+     * completed, and should notify the local DAG scheduler that the task has failed. */
+    assert(taskContext.isCompleted)
     verify(localDagScheduler).handleTaskFailure(meq(monotask), any())
-  }
-
-  test("execute tells DAG scheduler when task compeltes successfully") {
-
   }
 }

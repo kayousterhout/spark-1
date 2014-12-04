@@ -34,6 +34,9 @@ import org.apache.spark.serializer.JavaSerializer
  * [[org.apache.spark.Accumulator]]. They won't always be the same, though -- e.g., imagine you are
  * accumulating a set. You will add items to the set, and you will union two sets together.
  *
+ * Accumulators are currently only supported during an RDD's compute function; accumulator updates
+ * that occur elsewhere will be ignored.
+ *
  * @param initialValue initial value of accumulator
  * @param param helper object defining how to add elements of type `R` and `T`
  * @param name human-readable name for use in Spark's web UI

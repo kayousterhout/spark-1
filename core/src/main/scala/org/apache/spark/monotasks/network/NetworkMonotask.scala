@@ -48,7 +48,7 @@ private[spark] class NetworkMonotask(
 
   val size = blocks.map(_._2).sum
   val connectionManagerId = new ConnectionManagerId(remoteAddress.host, remoteAddress.port)
-  // TODO: this fromGetBlock stuff is crap...fix it.
+  // TODO: this fromGetBlock stuff is crap (why make a GetBlock just to call fromGetBlock?). Fix it.
   val blockMessageArray = new BlockMessageArray(blocks.map {
     case (blockId, size) => BlockMessage.fromGetBlock(GetBlock(blockId))
   })
@@ -59,7 +59,9 @@ private[spark] class NetworkMonotask(
     val future = context.env.blockManager.connectionManager.sendMessageReliably(
         connectionManagerId, blockMessageArray.toBufferMessage)
 
-    // TODO: This execution context should not go through the block manager.
+    // TODO: This execution context should not go through the block manager (should be handled by
+    // the network monotask scheduler -- since it is the thread used to execute the network
+    // callbacks).
     implicit val futureExecContext = context.env.blockManager.futureExecContext
     future.onComplete {
       case Success(message) => {

@@ -60,13 +60,11 @@ private[spark] class LocalDagScheduler(executorBackend: ExecutorBackend) extends
     } else {
       waitingMonotasks += monotask.taskId
     }
+    runningMacrotaskAttemptIds += monotask.context.taskAttemptId
   }
 
   def submitMonotasks(monotasks: Seq[Monotask]) = synchronized {
-    monotasks.foreach { monotask =>
-      submitMonotask(monotask)
-      runningMacrotaskAttemptIds += monotask.context.taskAttemptId
-    }
+    monotasks.foreach(submitMonotask(_))
   }
 
   /**
