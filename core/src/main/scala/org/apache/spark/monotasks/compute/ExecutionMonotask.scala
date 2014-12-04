@@ -39,7 +39,6 @@ private[spark] abstract class ExecutionMonotask[T, U: ClassTag](
   def getResult(): U
 
   override def execute() = {
-    Accumulators.clear()
     try {
       val result = getResult()
       val serializedResult = serializeResult(result)
@@ -75,7 +74,8 @@ private[spark] abstract class ExecutionMonotask[T, U: ClassTag](
     val valueBytes = resultSer.serialize(result)
 
     context.taskMetrics.setJvmGCTime()
-    val directResult = new DirectTaskResult(valueBytes, Accumulators.values, context.taskMetrics)
+    val accumulatorValues = Accumulators.getValues(context.accumulators)
+    val directResult = new DirectTaskResult(valueBytes, accumulatorValues, context.taskMetrics)
     val serializedDirectResult = closureSerializer.serialize(directResult)
     val resultSize = serializedDirectResult.limit
 

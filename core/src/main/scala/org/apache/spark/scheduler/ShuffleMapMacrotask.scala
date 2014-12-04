@@ -50,8 +50,6 @@ private[spark] class ShuffleMapMacrotask(
     val (rdd, dep) = ser.deserialize[(RDD[_], ShuffleDependency[Any, Any, _])](
       ByteBuffer.wrap(taskBinary.value), context.dependencyManager.replClassLoader)
 
-    context.stageId = stageId
-    context.partitionId = partition.index
     val inputMonotasks: Seq[Monotask] =
       rdd.dependencies.flatMap(_.getMonotasks(context, partition.index))
     val computeMonotask = new ShuffleMapMonotask(context, rdd, partition, dep)

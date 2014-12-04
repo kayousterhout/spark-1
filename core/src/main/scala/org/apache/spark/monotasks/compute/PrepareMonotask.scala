@@ -18,7 +18,7 @@ package org.apache.spark.monotasks.compute
 
 import java.nio.ByteBuffer
 
-import org.apache.spark.{SparkEnv, TaskContext}
+import org.apache.spark.{Accumulators, SparkEnv, TaskContext}
 import org.apache.spark.scheduler.Macrotask
 
 /**
@@ -29,6 +29,8 @@ private[spark] class PrepareMonotask(context: TaskContext, val serializedTask: B
   extends ComputeMonotask(context) {
 
   override def execute() = {
+    val registeredAccumulables = Accumulators.registeredAccumulables.get()
+    registeredAccumulables.clear()
     val (taskFiles, taskJars, taskBytes) = Macrotask.deserializeWithDependencies(serializedTask)
     // TODO: This call is a little bit evil because it's synchronized, so can block and waste CPU
     // resources.
@@ -36,6 +38,8 @@ private[spark] class PrepareMonotask(context: TaskContext, val serializedTask: B
     val ser = SparkEnv.get.closureSerializer.newInstance()
     val macrotask = ser.deserialize[Macrotask[Any]](
       taskBytes, context.dependencyManager.replClassLoader)
+
+    context.initialize(macrotask.stageId, macrotask.partition.index, registeredAccumulables)
 
     // TODO: what is the point of this?
     SparkEnv.get.mapOutputTracker.updateEpoch(macrotask.epoch)

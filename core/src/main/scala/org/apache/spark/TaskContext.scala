@@ -17,7 +17,7 @@
 
 package org.apache.spark
 
-import scala.collection.mutable.ArrayBuffer
+import scala.collection.mutable.{ArrayBuffer, HashMap, Map}
 
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.executor.{ExecutorBackend, DependencyManager, TaskMetrics}
@@ -47,9 +47,13 @@ class TaskContext(
     private[spark] val taskMetrics: TaskMetrics = TaskMetrics.empty)
   extends Serializable {
 
-  // stageId and partitionId are set after the task is deserialized.
+  /* stageId, partitionId, and accumulators are set in initialize() (which is called after the task
+   * is deserialized). */
   var stageId: Int = -1
   var partitionId: Int = -1
+
+  // The accumulators used by this macrotask (passed back to the driver when the task completes).
+  var accumulators: Map[Long, Accumulable[_, _]] = null
 
   @deprecated("use partitionId", "0.8.1")
   def splitId = partitionId
@@ -62,6 +66,12 @@ class TaskContext(
 
   // Whether the task has completed.
   @volatile private var completed: Boolean = false
+
+  def initialize(stageId: Int, partitionId: Int, accumulators: Map[Long, Accumulable[_, _]]) {
+    this.stageId = stageId
+    this.partitionId = partitionId
+    this.accumulators = accumulators
+  }
 
   /** Checks whether the task has completed. */
   def isCompleted: Boolean = completed

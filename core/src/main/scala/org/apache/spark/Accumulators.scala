@@ -23,7 +23,7 @@ import scala.collection.generic.Growable
 import scala.collection.mutable.Map
 import scala.reflect.ClassTag
 
-import org.apache.spark.serializer.JavaSerializer
+import org.apache.spark.serializer.{SerializerInstance, JavaSerializer}
 
 /**
  * A data type that can be accumulated, ie has an commutative and associative "add" operation,
@@ -251,8 +251,14 @@ trait AccumulatorParam[T] extends AccumulableParam[T, T] {
 private object Accumulators {
   // TODO: Use soft references? => need to make readObject work properly then
   val originals = Map[Long, Accumulable[_, _]]()
-  val localAccums = Map[Thread, Map[Long, Accumulable[_, _]]]()
   var lastId: Long = 0
+
+  /** Accumulables that were registered (which happens during deserialization) in this thread. */
+  val registeredAccumulables = new ThreadLocal[Map[Long, Accumulable[_, _]]] {
+    override def initialValue(): Map[Long, Accumulable[_, _]] = {
+      Map[Long, Accumulable[_, _]]()
+    }
+  }
 
   def newId: Long = synchronized {
     lastId += 1
@@ -263,25 +269,25 @@ private object Accumulators {
     if (original) {
       originals(a.id) = a
     } else {
-      val accums = localAccums.getOrElseUpdate(Thread.currentThread, Map())
-      accums(a.id) = a
+      registeredAccumulables.get()(a.id) = a
     }
+  }
+
+  /**
+   * Convenience method that takes a map of accumulable id to accumulables, and returns a map
+   * of accumulable id to the local value.
+   */
+  def getValues(accumulables: Map[Long, Accumulable[_, _]]): Map[Long, Any] = {
+   val ret = Map[Long, Any]()
+   for ((id, accum) <- accumulables) {
+     ret(id) = accum.localValue
+   }
+   return ret
   }
 
   // Clear the local (non-original) accumulators for the current thread
   def clear() {
-    synchronized {
-      localAccums.remove(Thread.currentThread)
-    }
-  }
-
-  // Get the values of the local accumulators for the current thread (by ID)
-  def values: Map[Long, Any] = synchronized {
-    val ret = Map[Long, Any]()
-    for ((id, accum) <- localAccums.getOrElse(Thread.currentThread, Map())) {
-      ret(id) = accum.localValue
-    }
-    return ret
+    registeredAccumulables.get().clear()
   }
 
   // Add values to the original accumulators with some given IDs
