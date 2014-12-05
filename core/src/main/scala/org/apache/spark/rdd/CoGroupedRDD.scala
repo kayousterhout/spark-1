@@ -27,7 +27,6 @@ import scala.collection.mutable.ArrayBuffer
 import org.apache.spark._
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.serializer.Serializer
-import org.apache.spark.shuffle.ShuffleHandle
 import org.apache.spark.util.collection.{AppendOnlyMap, CompactBuffer}
 
 private[spark] sealed trait CoGroupSplitDep extends Serializable
@@ -46,7 +45,8 @@ private[spark] case class NarrowCoGroupSplitDep(
   }
 }
 
-private[spark] case class ShuffleCoGroupSplitDep(handle: ShuffleHandle) extends CoGroupSplitDep
+private[spark] case class ShuffleCoGroupSplitDep(dependency: ShuffleDependency[_, _, _])
+  extends CoGroupSplitDep
 
 private[spark] class CoGroupPartition(idx: Int, val deps: Array[CoGroupSplitDep])
   extends Partition with Serializable {
@@ -104,7 +104,7 @@ class CoGroupedRDD[K](@transient var rdds: Seq[RDD[_ <: Product2[K, _]]], part: 
         // Assume each RDD contributed a single dependency, and get it
         dependencies(j) match {
           case s: ShuffleDependency[_, _, _] =>
-            new ShuffleCoGroupSplitDep(s.shuffleHandle)
+            new ShuffleCoGroupSplitDep(s)
           case _ =>
             new NarrowCoGroupSplitDep(rdd, i, rdd.partitions(i))
         }
@@ -116,8 +116,6 @@ class CoGroupedRDD[K](@transient var rdds: Seq[RDD[_ <: Product2[K, _]]], part: 
   override val partitioner: Some[Partitioner] = Some(part)
 
   override def compute(s: Partition, context: TaskContext): Iterator[(K, Array[Iterable[_]])] = {
-    // TODO: This should use the new shuffle code, like Shuffled RDD.
-    val sparkConf = SparkEnv.get.conf
     val split = s.asInstanceOf[CoGroupPartition]
     val numRdds = split.deps.size
 
@@ -129,11 +127,14 @@ class CoGroupedRDD[K](@transient var rdds: Seq[RDD[_ <: Product2[K, _]]], part: 
         val it = rdd.iterator(itsSplit, context).asInstanceOf[Iterator[Product2[K, Any]]]
         rddIterators += ((it, depNum))
 
-      case ShuffleCoGroupSplitDep(handle) =>
-        // Read map outputs of shuffle
-        val it = SparkEnv.get.shuffleManager
-          .getReader(handle, split.index, split.index + 1, context)
-          .read()
+      case ShuffleCoGroupSplitDep(dependency) =>
+        // Read map outputs of the shuffle
+        val it = dependency.asInstanceOf[ShuffleDependency[K, Any, Any]].shuffleReader match {
+          case Some(shuffleReader) =>
+            shuffleReader.getDeserializedAggregatedSortedData()
+          case None =>
+            throw new SparkException("No shuffle reader found!")
+        }
         rddIterators += ((it, depNum))
     }
 

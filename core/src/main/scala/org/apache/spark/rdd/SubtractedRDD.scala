@@ -23,13 +23,8 @@ import scala.collection.JavaConversions._
 import scala.collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
 
-import org.apache.spark.Dependency
-import org.apache.spark.OneToOneDependency
-import org.apache.spark.Partition
-import org.apache.spark.Partitioner
-import org.apache.spark.ShuffleDependency
-import org.apache.spark.SparkEnv
-import org.apache.spark.TaskContext
+import org.apache.spark.{Dependency, OneToOneDependency, Partition, Partitioner, ShuffleDependency,
+  SparkException, TaskContext}
 import org.apache.spark.serializer.Serializer
 
 /**
@@ -81,7 +76,7 @@ private[spark] class SubtractedRDD[K: ClassTag, V: ClassTag, W: ClassTag](
       array(i) = new CoGroupPartition(i, Seq(rdd1, rdd2).zipWithIndex.map { case (rdd, j) =>
         dependencies(j) match {
           case s: ShuffleDependency[_, _, _] =>
-            new ShuffleCoGroupSplitDep(s.shuffleHandle)
+            new ShuffleCoGroupSplitDep(s)
           case _ =>
             new NarrowCoGroupSplitDep(rdd, i, rdd.partitions(i))
         }
@@ -106,14 +101,20 @@ private[spark] class SubtractedRDD[K: ClassTag, V: ClassTag, W: ClassTag](
       }
     }
     def integrate(dep: CoGroupSplitDep, op: Product2[K, V] => Unit) = dep match {
-      case NarrowCoGroupSplitDep(rdd, _, itsSplit) =>
+      case NarrowCoGroupSplitDep(rdd, _, itsSplit) => {
         rdd.iterator(itsSplit, context).asInstanceOf[Iterator[Product2[K, V]]].foreach(op)
+      }
 
-      case ShuffleCoGroupSplitDep(handle) =>
-        val iter = SparkEnv.get.shuffleManager
-          .getReader(handle, partition.index, partition.index + 1, context)
-          .read()
+      case ShuffleCoGroupSplitDep(dependency) => {
+        // Read map outputs of the shuffle
+        val iter = dependency.asInstanceOf[ShuffleDependency[K, Any, V]].shuffleReader match {
+          case Some(shuffleReader) =>
+            shuffleReader.getDeserializedAggregatedSortedData()
+          case None =>
+            throw new SparkException("No shuffle reader found!")
+        }
         iter.foreach(op)
+      }
     }
     // the first dep is rdd1; add all values to the map
     integrate(partition.deps(0), t => getSeq(t._1) += t._2)
