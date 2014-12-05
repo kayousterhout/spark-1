@@ -27,6 +27,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.scheduler.{DirectTaskResult, IndirectTaskResult}
 import org.apache.spark.storage.{StorageLevel, TaskResultBlockId}
 import org.apache.spark.util.Utils
+import org.apache.spark.shuffle.FetchFailedException
 
 /** Monotask that handles executing the compute part of a macro task. */
 private[spark] abstract class ExecutionMonotask[T, U: ClassTag](
@@ -44,6 +45,14 @@ private[spark] abstract class ExecutionMonotask[T, U: ClassTag](
       val serializedResult = serializeResult(result)
       context.localDagScheduler.handleTaskCompletion(this, Some(serializedResult))
     } catch {
+      case ffe: FetchFailedException => {
+        /* A FetchFailedException can be thrown by compute monotasks when local shuffle data
+        * is missing from the block manager. */
+        val closureSerializer = SparkEnv.get.closureSerializer.newInstance()
+        context.localDagScheduler.handleTaskFailure(
+          this, closureSerializer.serialize(ffe.toTaskEndReason))
+      }
+
       case t: Throwable => {
         // Attempt to exit cleanly by informing the driver of our failure.
         // If anything goes wrong (or this was a fatal exception), we will delegate to

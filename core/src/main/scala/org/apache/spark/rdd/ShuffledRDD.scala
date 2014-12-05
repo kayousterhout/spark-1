@@ -100,7 +100,7 @@ class ShuffledRDD[K, V, C](
   override def compute(split: Partition, context: TaskContext): Iterator[(K, C)] = {
     dependencies.head.asInstanceOf[ShuffleDependency[K, V, C]].shuffleReader match {
       case Some(shuffleReader) =>
-        shuffleReader.getDeserializedAggregatedSortedData()
+        shuffleReader.getDeserializedAggregatedSortedData().asInstanceOf[Iterator[(K, C)]]
       case None =>
         throw new SparkException("No shuffle reader found!")
     }

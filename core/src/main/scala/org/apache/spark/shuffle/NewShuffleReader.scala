@@ -76,13 +76,21 @@ class NewShuffleReader[K, V, C](
     fetchMonotasks
   }
 
-  def getDeserializedAggregatedSortedData(): Iterator[(K, C)] = {
+  def getDeserializedAggregatedSortedData(): Iterator[Product2[K, C]] = {
+    val shuffleDataSerializer = shuffleDependency.serializer.getOrElse(context.env.serializer)
     val iter = localBlockIds.iterator.flatMap {
       case shuffleBlockId: ShuffleBlockId =>
-        // The map task was run on this machine, so the memory store has the deserialized shuffle
+        // The map task was run on this machine, so the memory store has the serialized shuffle
         // data.  The block manager transparently handles deserializing the data.
-        // TODO: handle the case where the shuffle data doesn't exist due to an error.
-        context.env.blockManager.get(shuffleBlockId).get.data
+        val blockManager = context.env.blockManager
+        blockManager.getLocalBytes(shuffleBlockId) match {
+          case Some(bytes) =>
+            blockManager.dataDeserialize(shuffleBlockId, bytes, shuffleDataSerializer)
+          case None =>
+            logError(s"Unable to fetch local shuffle block with id $shuffleBlockId")
+            throw new FetchFailedException(
+              blockManager.blockManagerId, shuffleBlockId.shuffleId, shuffleBlockId.mapId, reduceId)
+        }
 
       case monotaskResultBlockId: MonotaskResultBlockId =>
         // TODO: handle case where the block doesn't exist.
@@ -105,9 +113,7 @@ class NewShuffleReader[K, V, C](
           // TODO: is block manager the best place for this deserialization code?
           // THIS IS LAZY. Just returns an iterator.
           val deserializedData = context.env.blockManager.dataDeserialize(
-            blockId,
-            blockMessage.getData,
-            shuffleDependency.serializer.getOrElse(context.env.serializer))
+            blockId, blockMessage.getData, shuffleDataSerializer)
           deserializedData
         }
 
