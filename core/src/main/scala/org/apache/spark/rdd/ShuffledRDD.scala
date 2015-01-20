@@ -54,11 +54,6 @@ class ShuffledRDD[K, V, C](
 
   private var mapSideCombine: Boolean = false
 
-  // BlockIds for blocks that are stored in the local block manager. Includes both shuffle block
-  // Ids that were stored locally, and monotask output IDs (for blocks that were fetched remotely
-  // and haven't yet been deserialized).
-  @transient private var localBlockIds: ArrayBuffer[BlockId] = null
-
   /** Set a serializer for this RDD's shuffle, or null to use the default (spark.serializer) */
   def setSerializer(serializer: Serializer): ShuffledRDD[K, V, C] = {
     this.serializer = Option(serializer)

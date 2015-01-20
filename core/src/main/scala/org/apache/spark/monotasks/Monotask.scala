@@ -22,7 +22,10 @@ import scala.collection.mutable.{ArrayBuffer, HashSet}
 
 import org.apache.spark.TaskContext
 
-// TODO: contract is that a monotask will tell the localdagscheduler that it completed (or failed)
+/**
+ * Monotasks are responsible for notifying the localDagScheduler when they have completed
+ * successfully or when they have failed.
+ */
 private[spark] abstract class Monotask(val context: TaskContext) {
   val taskId = Monotask.newId()
 

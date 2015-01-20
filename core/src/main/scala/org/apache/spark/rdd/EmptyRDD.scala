@@ -19,7 +19,7 @@ package org.apache.spark.rdd
 
 import scala.reflect.ClassTag
 
-import org.apache.spark.{TaskContext, Partition, SparkContext}
+import org.apache.spark.{Partition, SparkContext, TaskContext}
 
 /**
  * An RDD that has no partitions and no elements.

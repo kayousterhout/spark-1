@@ -63,8 +63,8 @@ trait JavaRDDLike[T, This <: JavaRDDLike[T, This]] extends Serializable {
    * This should ''not'' be called by users directly, but is available for implementors of custom
    * subclasses of RDD.
    */
-  def iterator(split: Partition, taskGoop: TaskContext): java.util.Iterator[T] =
-    asJavaIterator(rdd.iterator(split, taskGoop))
+  def iterator(split: Partition, taskContext: TaskContext): java.util.Iterator[T] =
+    asJavaIterator(rdd.iterator(split, taskContext))
 
   // Transformations (return a new RDD)
 

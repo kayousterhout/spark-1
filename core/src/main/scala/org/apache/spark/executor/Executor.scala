@@ -51,7 +51,6 @@ private[spark] class Executor(
   val conf = new SparkConf(true)
   conf.setAll(properties)
 
-  // TODO: does this still work?
   if (!isLocal) {
     // Setup an uncaught exception handler for non-local mode.
     // Make any thread terminations due to uncaught exceptions kill the entire
@@ -59,7 +58,6 @@ private[spark] class Executor(
     Thread.setDefaultUncaughtExceptionHandler(ExecutorUncaughtExceptionHandler)
   }
 
-  // TODO: does this depend on thread locals? might not work at all anymore.
   val executorSource = new ExecutorSource(this, executorId)
 
   // Initialize Spark environment (using system properties read above)

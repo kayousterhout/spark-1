@@ -46,7 +46,7 @@ private[spark] case class NarrowCoGroupSplitDep(
 }
 
 private[spark] case class ShuffleCoGroupSplitDep(dependency: ShuffleDependency[_, _, _])
-  extends CoGroupSplitDep
+    extends CoGroupSplitDep
 
 private[spark] class CoGroupPartition(idx: Int, val deps: Array[CoGroupSplitDep])
   extends Partition with Serializable {
