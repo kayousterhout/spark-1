@@ -23,6 +23,7 @@ import org.apache.spark.monotasks.Monotask
 import org.apache.spark.monotasks.network.NetworkMonotask
 import org.apache.spark.network.BufferMessage
 import org.apache.spark.storage._
+import org.apache.spark.util.CompletionIterator
 
 /**
  * Handles reading shuffle data over the network and deserializing, aggregating, and sorting the
@@ -78,6 +79,7 @@ class NewShuffleReader[K, V, C](
 
   def getDeserializedAggregatedSortedData(): Iterator[Product2[K, C]] = {
     val shuffleDataSerializer = shuffleDependency.serializer.getOrElse(context.env.serializer)
+    val readMetrics = context.taskMetrics.createShuffleReadMetricsForDependency()
     val iter = localBlockIds.iterator.flatMap {
       case shuffleBlockId: ShuffleBlockId =>
         // The map task was run on this machine, so the memory store has the serialized shuffle
@@ -85,6 +87,7 @@ class NewShuffleReader[K, V, C](
         val blockManager = context.env.blockManager
         blockManager.getLocalBytes(shuffleBlockId) match {
           case Some(bytes) =>
+            readMetrics.localBlocksFetched += 1
             blockManager.dataDeserialize(shuffleBlockId, bytes, shuffleDataSerializer)
           case None =>
             logError(s"Unable to fetch local shuffle block with id $shuffleBlockId")
@@ -108,10 +111,10 @@ class NewShuffleReader[K, V, C](
           }
           val blockId = blockMessage.getId
           val networkSize = blockMessage.getData.limit()
-          //readMetrics.remoteBytesRead += networkSize
-          //readMetrics.remoteBlocksFetched += 1
+          readMetrics.remoteBytesRead += networkSize
+          readMetrics.remoteBlocksFetched += 1
           // TODO: is block manager the best place for this deserialization code?
-          // THIS IS LAZY. Just returns an iterator.
+          // This is lazy: it just returns an iterator, but doesn't yet perform the deserialization.
           val deserializedData = context.env.blockManager.dataDeserialize(
             blockId, blockMessage.getData, shuffleDataSerializer)
           deserializedData
@@ -122,7 +125,15 @@ class NewShuffleReader[K, V, C](
         throw new SparkException("Unexpected type of shuffle ID!")
     }
 
-    getMaybeSortedIterator(getMaybeAggregatedIterator(iter))
+    /* After iterating through all of the shuffle data, aggregate the shuffle read metrics.
+     * All calls to updateShuffleReadMetrics() (across all shuffle dependencies) need to happen
+     * in a single thread; this is guaranteed here, because this will be called from the task's
+     * main compute monotask. */
+    val completionIter = CompletionIterator[Any, Iterator[Any]](iter, {
+      context.taskMetrics.updateShuffleReadMetrics()
+    })
+
+    getMaybeSortedIterator(getMaybeAggregatedIterator(completionIter))
   }
 
   /** If an aggregator is defined for the shuffle, returns an aggregated iterator. */
