@@ -30,8 +30,8 @@ import org.apache.spark.monotasks.network.{NetworkMonotask, NetworkScheduler}
  * dependencies have finished executing, the LocalDagScheduler will submit the monotask
  * to the appropriate scheduler to be executed once sufficient resources are available.
  *
- * TODO: The LocalDagScheduler should implement thread safety using an actor, rather than
- * having all methods be synchronized (which can lead to monotasks that block waiting for the
+ * TODO: The LocalDagScheduler should implement thread safety using an actor or event loop, rather
+ * than having all methods be synchronized (which can lead to monotasks that block waiting for the
  * local dag scheduler).
  */
 private[spark] class LocalDagScheduler(executorBackend: ExecutorBackend) extends Logging {
@@ -50,8 +50,8 @@ private[spark] class LocalDagScheduler(executorBackend: ExecutorBackend) extends
   val runningMonotasks = new HashSet[Long]()
 
   /* IDs for macrotasks that currently are running. Used to determine whether to notify the
-   * executor backend that a task has failed (we should only notify it once if dependent monotasks
-   * fail). */
+   * executor backend that a task has failed (we should only notify the executor backend once if
+   * dependent monotasks fail). */
   val runningMacrotaskAttemptIds = new HashSet[Long]()
 
   def submitMonotask(monotask: Monotask) = synchronized {

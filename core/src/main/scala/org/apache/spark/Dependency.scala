@@ -103,7 +103,7 @@ class ShuffleDependency[K, V, C](
   var shuffleReader: Option[NewShuffleReader[K, V, C]] = None
 
   override def getMonotasks(context: TaskContext, partitionId: Int): Seq[Monotask] = {
-    // TODO: should the shuffle reader code be part of the dependency?
+    // TODO: should the shuffle reader code just be part of the dependency?
     shuffleReader = Some(new NewShuffleReader(this, partitionId, context))
     shuffleReader.get.getReadMonotasks()
   }

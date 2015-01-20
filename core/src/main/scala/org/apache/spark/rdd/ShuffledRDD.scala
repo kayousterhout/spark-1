@@ -18,16 +18,12 @@
 package org.apache.spark.rdd
 
 import scala.Some
-import scala.collection.mutable.{ArrayBuffer, HashMap}
+import scala.collection.mutable.ArrayBuffer
 
 import org.apache.spark._
 import org.apache.spark.annotation.DeveloperApi
-import org.apache.spark.monotasks.Monotask
-import org.apache.spark.monotasks.network.NetworkMonotask
-import org.apache.spark.network.BufferMessage
 import org.apache.spark.serializer.Serializer
 import org.apache.spark.storage._
-import org.apache.spark.shuffle.NewShuffleReader
 
 private[spark] class ShuffledRDDPartition(val idx: Int) extends Partition {
   override val index = idx
