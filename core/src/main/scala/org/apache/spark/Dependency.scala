@@ -36,7 +36,7 @@ package org.apache.spark
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.rdd.RDD
 import org.apache.spark.serializer.Serializer
-import org.apache.spark.shuffle.{NewShuffleReader, ShuffleHandle}
+import org.apache.spark.shuffle.NewShuffleReader
 import org.apache.spark.monotasks.Monotask
 
 /**
@@ -109,9 +109,6 @@ class ShuffleDependency[K, V, C](
   override def rdd = _rdd.asInstanceOf[RDD[Product2[K, V]]]
 
   val shuffleId: Int = _rdd.context.newShuffleId()
-
-  val shuffleHandle: ShuffleHandle = _rdd.context.env.shuffleManager.registerShuffle(
-    shuffleId, _rdd.partitions.size, this)
 
   _rdd.sparkContext.cleaner.foreach(_.registerShuffleForCleanup(this))
 
