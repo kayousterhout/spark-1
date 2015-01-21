@@ -20,7 +20,7 @@ import java.nio.ByteBuffer
 
 import scala.reflect.ClassTag
 
-import org.apache.spark.{Partition, TaskContext}
+import org.apache.spark.{Logging, Partition, TaskContext}
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.monotasks.Monotask
 import org.apache.spark.monotasks.compute.ResultMonotask
@@ -36,7 +36,7 @@ private[spark] class ResultMacrotask[T, U: ClassTag](
     partition: Partition,
     @transient locs: Seq[TaskLocation],
     val outputId: Int)
-  extends Macrotask[U](stageId, partition) with Serializable {
+  extends Macrotask[U](stageId, partition) with Serializable with Logging {
 
   @transient private[this] val preferredLocs: Seq[TaskLocation] = {
     if (locs == null) Nil else locs.toSet.toSeq

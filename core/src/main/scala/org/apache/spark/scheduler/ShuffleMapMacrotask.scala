@@ -20,7 +20,7 @@ import java.nio.ByteBuffer
 
 import scala.language.existentials
 
-import org.apache.spark.{Logging, Partition, ShuffleDependency, TaskContext}
+import org.apache.spark.{Partition, ShuffleDependency, TaskContext}
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.monotasks.Monotask
 import org.apache.spark.monotasks.compute.ShuffleMapMonotask
@@ -36,7 +36,7 @@ private[spark] class ShuffleMapMacrotask(
     taskBinary: Broadcast[Array[Byte]],
     partition: Partition,
     @transient private var locs: Seq[TaskLocation])
-  extends Macrotask[MapStatus](stageId, partition) with Logging {
+  extends Macrotask[MapStatus](stageId, partition) {
 
   @transient private val preferredLocs: Seq[TaskLocation] = {
     if (locs == null) Nil else locs.toSet.toSeq

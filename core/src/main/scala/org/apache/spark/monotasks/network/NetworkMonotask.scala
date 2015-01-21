@@ -45,6 +45,8 @@ private[spark] class NetworkMonotask(
     val partitionId: Int)
   extends Monotask(context) with Logging {
 
+  val resultBlockId = new MonotaskResultBlockId(taskId)
+
   val size = blocks.map(_._2).sum
   val connectionManagerId = new ConnectionManagerId(remoteAddress.host, remoteAddress.port)
   // TODO: this fromGetBlock stuff is crap (why make a GetBlock just to call fromGetBlock?). Fix it.
@@ -65,7 +67,7 @@ private[spark] class NetworkMonotask(
     future.onComplete {
       case Success(message) => {
         context.env.blockManager.memoryStore.putValue(
-          new MonotaskResultBlockId(taskId), message.asInstanceOf[BufferMessage])
+          resultBlockId, message.asInstanceOf[BufferMessage])
         context.localDagScheduler.handleTaskCompletion(this)
       }
 

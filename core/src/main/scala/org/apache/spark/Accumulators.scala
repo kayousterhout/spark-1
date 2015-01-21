@@ -39,7 +39,7 @@ import scala.collection.generic.Growable
 import scala.collection.mutable.Map
 import scala.reflect.ClassTag
 
-import org.apache.spark.serializer.{SerializerInstance, JavaSerializer}
+import org.apache.spark.serializer.JavaSerializer
 
 /**
  * A data type that can be accumulated, ie has an commutative and associative "add" operation,

@@ -34,10 +34,10 @@
 package org.apache.spark
 
 import org.apache.spark.annotation.DeveloperApi
+import org.apache.spark.monotasks.Monotask
 import org.apache.spark.rdd.RDD
 import org.apache.spark.serializer.Serializer
-import org.apache.spark.shuffle.NewShuffleReader
-import org.apache.spark.monotasks.Monotask
+import org.apache.spark.shuffle.ShuffleReader
 
 /**
  * :: DeveloperApi ::
@@ -113,11 +113,11 @@ class ShuffleDependency[K, V, C](
   _rdd.sparkContext.cleaner.foreach(_.registerShuffleForCleanup(this))
 
   /** Helps with reading the shuffle data associated with this dependency. Set by getMonotasks(). */
-  var shuffleReader: Option[NewShuffleReader[K, V, C]] = None
+  var shuffleReader: Option[ShuffleReader[K, V, C]] = None
 
   override def getMonotasks(context: TaskContext, partitionId: Int): Seq[Monotask] = {
     // TODO: should the shuffle reader code just be part of the dependency?
-    shuffleReader = Some(new NewShuffleReader(this, partitionId, context))
+    shuffleReader = Some(new ShuffleReader(this, partitionId, context))
     shuffleReader.get.getReadMonotasks()
   }
 }

@@ -83,7 +83,7 @@ private[spark] class CoGroupPartition(idx: Int, val deps: Array[CoGroupSplitDep]
  */
 @DeveloperApi
 class CoGroupedRDD[K](@transient var rdds: Seq[RDD[_ <: Product2[K, _]]], part: Partitioner)
-  extends RDD[(K, Array[Iterable[_]])](rdds.head.context, Nil) {
+  extends RDD[(K, Array[Iterable[_]])](rdds.head.context, Nil) with Logging {
 
   // For example, `(k, a) cogroup (k, b)` produces k -> Seq(ArrayBuffer as, ArrayBuffer bs).
   // Each ArrayBuffer is represented as a CoGroup, and the resulting Seq as a CoGroupCombiner.
@@ -149,7 +149,7 @@ class CoGroupedRDD[K](@transient var rdds: Seq[RDD[_ <: Product2[K, _]]], part: 
           case Some(shuffleReader) =>
             shuffleReader.getDeserializedAggregatedSortedData()
           case None =>
-            throw new SparkException("No shuffle reader found!")
+            throw new SparkException(s"No shuffle reader found for shuffle ${dependency.shuffleId}")
         }
         rddIterators += ((it, depNum))
     }

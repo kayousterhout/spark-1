@@ -26,15 +26,15 @@ import org.apache.spark.storage._
 import org.apache.spark.util.CompletionIterator
 
 /**
- * Handles reading shuffle data over the network and deserializing, aggregating, and sorting the
- * result.
+ * Handles creating network monotasks to read shuffle data over the network. Also provides
+ * provides functionality for deserializing, aggregating, and sorting the result.
  *
- * TODO
- * @param shuffleDependency
- * @param reduceId The partition ID corresponding to the reduce task.
- * @param context
+ * Each task that performs a shuffle should create one instance of this class.  The class stores
+ * the intermediate block IDs used to store the shuffle data in the memory store after network
+ * monotasks have read it over the network.  These IDs are used to later read the data (by the
+ * compute monotasks that perform the computation).
  */
-class NewShuffleReader[K, V, C](
+class ShuffleReader[K, V, C](
     shuffleDependency: ShuffleDependency[K, V, C],
     reduceId: Int,
     context: TaskContext)
@@ -70,7 +70,7 @@ class NewShuffleReader[K, V, C](
         localBlockIds ++= nonEmptyBlocks.map(_._1)
       } else {
         val networkMonotask = new NetworkMonotask(context, address, nonEmptyBlocks, reduceId)
-        localBlockIds.append(new MonotaskResultBlockId(networkMonotask.taskId))
+        localBlockIds.append(networkMonotask.resultBlockId)
         fetchMonotasks.append(networkMonotask)
       }
     }
@@ -102,12 +102,8 @@ class NewShuffleReader[K, V, C](
         val blockMessageArray = BlockMessageArray.fromBufferMessage(bufferMessage)
         blockMessageArray.flatMap { blockMessage =>
           if (blockMessage.getType != BlockMessage.TYPE_GOT_BLOCK) {
-            // TODO: exceptions are evil. instead tell scheduler that task failed. Also right now
-            //       exceptions will be lost in the abyss (because won't interrupt the executor
-            //       thread).
             // TODO: log here where the exception came from (which block manager)
-            throw new SparkException(
-              "Unexpected message " + blockMessage.getType + " received")
+            throw new SparkException("Unexpected message " + blockMessage.getType + " received")
           }
           val blockId = blockMessage.getId
           val networkSize = blockMessage.getData.limit()
@@ -121,7 +117,6 @@ class NewShuffleReader[K, V, C](
         }
 
       case _ =>
-        // TODO: don't throw an exception!!!
         throw new SparkException("Unexpected type of shuffle ID!")
     }
 
