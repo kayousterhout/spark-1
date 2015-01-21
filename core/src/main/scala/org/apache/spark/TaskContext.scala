@@ -33,18 +33,20 @@
 
 package org.apache.spark
 
-import scala.collection.mutable.{ArrayBuffer, HashMap, Map}
+import scala.collection.mutable.{ArrayBuffer, Map}
 
 import org.apache.spark.annotation.DeveloperApi
-import org.apache.spark.executor.{ExecutorBackend, DependencyManager, TaskMetrics}
+import org.apache.spark.executor.{DependencyManager, TaskMetrics}
 import org.apache.spark.monotasks.LocalDagScheduler
 import org.apache.spark.util.TaskCompletionListener
 
 
 /**
  * :: DeveloperApi ::
- * Contextual information about a task which can be read or mutated during execution.
+ * Contextual information about a macrotask that can be read or mutated during execution.
  *
+ * @param env A SparkEnv describing the environment for the task.
+ * @param localDagScheduler The LocalDagScheduler to be used to schedule this task's monotasks.
  * @param maximumResultSizeBytes the largest size result (in bytes) that can be sent directly back
  *                               to the Spark driver. Larger results will be sent via the block
  *                               manager.
@@ -63,8 +65,8 @@ class TaskContext(
     private[spark] val taskMetrics: TaskMetrics = TaskMetrics.empty)
   extends Serializable {
 
-  /* stageId, partitionId, and accumulators are set in initialize() (which is called after the task
-   * is deserialized). */
+  /* stageId, partitionId, and accumulators are set in initialize() (which is called after the
+   * macrotask is deserialized on a executor). */
   var stageId: Int = -1
   var partitionId: Int = -1
 

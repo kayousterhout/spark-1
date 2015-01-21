@@ -269,7 +269,9 @@ private object Accumulators {
   val originals = Map[Long, Accumulable[_, _]]()
   var lastId: Long = 0
 
-  /** Accumulables that were registered (which happens during deserialization) in this thread. */
+  /**
+   * Accumulables that were registered (which happens during task deserialization) in this thread.
+   */
   val registeredAccumulables = new ThreadLocal[Map[Long, Accumulable[_, _]]] {
     override def initialValue(): Map[Long, Accumulable[_, _]] = {
       Map[Long, Accumulable[_, _]]()

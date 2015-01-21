@@ -103,11 +103,14 @@ private[spark] class SubtractedRDD[K: ClassTag, V: ClassTag, W: ClassTag](
 
     def integrate(depNum: Int, op: Product2[K, V] => Unit) = {
       dependencies(depNum) match {
-        case oneToOneDependency: OneToOneDependency[Product2[K, V]] =>
+        case oneToOneDependency: OneToOneDependency[_] =>
           val dependencyPartition = partition.narrowDeps(depNum).get.split
-          oneToOneDependency.rdd.iterator(dependencyPartition, context).foreach(op)
+          oneToOneDependency.asInstanceOf[OneToOneDependency[Product2[K, V]]].rdd
+            .iterator(dependencyPartition, context)
+            .foreach(op)
 
-        case shuffleDependency: ShuffleDependency[K, Any, V] =>
+        case dependency: ShuffleDependency[_, _, _] =>
+          val shuffleDependency = dependency.asInstanceOf[ShuffleDependency[K, _, V]]
           val iter = shuffleDependency.shuffleReader match {
             case Some(shuffleReader) =>
               shuffleReader.getDeserializedAggregatedSortedData()

@@ -142,17 +142,18 @@ class CoGroupedRDD[K](@transient var rdds: Seq[RDD[_ <: Product2[K, _]]], part: 
     val numRdds = dependencies.size
 
     // A list of (rdd iterator, dependency number) pairs
-    val rddIterators = new ArrayBuffer[(Iterator[Product2[K, Any]], Int)]
+    val rddIterators = new ArrayBuffer[(Iterator[Product2[K, _]], Int)]
     for ((dep, depNum) <- dependencies.zipWithIndex) dep match {
-      case oneToOneDependency: OneToOneDependency[Product2[K, Any]] =>
+      case oneToOneDependency: OneToOneDependency[_] =>
         val dependencyPartition = split.narrowDeps(depNum).get.split
         // Read them from the parent
-        val it = oneToOneDependency.rdd.iterator(dependencyPartition, context)
+        val it = oneToOneDependency.asInstanceOf[OneToOneDependency[Product2[K, _]]].rdd.iterator(
+          dependencyPartition, context)
         rddIterators += ((it, depNum))
 
-      case shuffleDependency: ShuffleDependency[K, Any, Any] =>
+      case shuffleDependency: ShuffleDependency[_, _, _] =>
         // Read map outputs of the shuffle
-        val it = shuffleDependency.shuffleReader match {
+        val it = shuffleDependency.asInstanceOf[ShuffleDependency[K, _, _]].shuffleReader match {
           case Some(shuffleReader) =>
             shuffleReader.getDeserializedAggregatedSortedData()
           case None =>
