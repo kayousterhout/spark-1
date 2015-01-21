@@ -45,13 +45,15 @@ import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.serializer.Serializer
 import org.apache.spark.util.collection.{AppendOnlyMap, CompactBuffer}
 
-private[spark] sealed trait CoGroupSplitDep extends Serializable
-
+/** The references to rdd and splitIndex are transient because redundant information is stored
+  * in the CoGroupedRDD object.  Because CoGroupedRDD is serialized separately from
+  * CoGrpupPartition, if rdd and splitIndex aren't transient, they'll be included twice in the
+  * task closure. */
 private[spark] case class NarrowCoGroupSplitDep(
-    rdd: RDD[_],
-    splitIndex: Int,
+    @transient rdd: RDD[_],
+    @transient splitIndex: Int,
     var split: Partition
-  ) extends CoGroupSplitDep {
+  ) extends Serializable {
 
   @throws(classOf[IOException])
   private def writeObject(oos: ObjectOutputStream) {
@@ -61,10 +63,14 @@ private[spark] case class NarrowCoGroupSplitDep(
   }
 }
 
-private[spark] case class ShuffleCoGroupSplitDep(dependency: ShuffleDependency[_, _, _])
-    extends CoGroupSplitDep
-
-private[spark] class CoGroupPartition(idx: Int, val deps: Array[CoGroupSplitDep])
+/**
+ * Stores information about the narrow dependencies used by a CoGroupedRdd.  narrowDeps maps to
+ * the dependencies variable in the parent RDD: for each one to one dependency in dependencies,
+ * narrowDeps has a NarrowCoGroupSplitDep (describing the partition for that dependency) at the
+ * corresponding index.
+ */
+private[spark] class CoGroupPartition(
+    idx: Int, val narrowDeps: Array[Option[NarrowCoGroupSplitDep]])
   extends Partition with Serializable {
   override val index: Int = idx
   override def hashCode(): Int = idx
@@ -120,9 +126,9 @@ class CoGroupedRDD[K](@transient var rdds: Seq[RDD[_ <: Product2[K, _]]], part: 
         // Assume each RDD contributed a single dependency, and get it
         dependencies(j) match {
           case s: ShuffleDependency[_, _, _] =>
-            new ShuffleCoGroupSplitDep(s)
+            None
           case _ =>
-            new NarrowCoGroupSplitDep(rdd, i, rdd.partitions(i))
+            Some(new NarrowCoGroupSplitDep(rdd, i, rdd.partitions(i)))
         }
       }.toArray)
     }
@@ -133,23 +139,25 @@ class CoGroupedRDD[K](@transient var rdds: Seq[RDD[_ <: Product2[K, _]]], part: 
 
   override def compute(s: Partition, context: TaskContext): Iterator[(K, Array[Iterable[_]])] = {
     val split = s.asInstanceOf[CoGroupPartition]
-    val numRdds = split.deps.size
+    val numRdds = dependencies.size
 
     // A list of (rdd iterator, dependency number) pairs
     val rddIterators = new ArrayBuffer[(Iterator[Product2[K, Any]], Int)]
-    for ((dep, depNum) <- split.deps.zipWithIndex) dep match {
-      case NarrowCoGroupSplitDep(rdd, _, itsSplit) =>
+    for ((dep, depNum) <- dependencies.zipWithIndex) dep match {
+      case oneToOneDependency: OneToOneDependency[Product2[K, Any]] =>
+        val dependencyPartition = split.narrowDeps(depNum).get.split
         // Read them from the parent
-        val it = rdd.iterator(itsSplit, context).asInstanceOf[Iterator[Product2[K, Any]]]
+        val it = oneToOneDependency.rdd.iterator(dependencyPartition, context)
         rddIterators += ((it, depNum))
 
-      case ShuffleCoGroupSplitDep(dependency) =>
+      case shuffleDependency: ShuffleDependency[K, Any, Any] =>
         // Read map outputs of the shuffle
-        val it = dependency.asInstanceOf[ShuffleDependency[K, Any, Any]].shuffleReader match {
+        val it = shuffleDependency.shuffleReader match {
           case Some(shuffleReader) =>
             shuffleReader.getDeserializedAggregatedSortedData()
           case None =>
-            throw new SparkException(s"No shuffle reader found for shuffle ${dependency.shuffleId}")
+            throw new SparkException(
+              s"No shuffle reader found for shuffle ${shuffleDependency.shuffleId}")
         }
         rddIterators += ((it, depNum))
     }

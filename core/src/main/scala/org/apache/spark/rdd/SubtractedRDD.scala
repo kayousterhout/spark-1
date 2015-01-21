@@ -76,9 +76,9 @@ private[spark] class SubtractedRDD[K: ClassTag, V: ClassTag, W: ClassTag](
       array(i) = new CoGroupPartition(i, Seq(rdd1, rdd2).zipWithIndex.map { case (rdd, j) =>
         dependencies(j) match {
           case s: ShuffleDependency[_, _, _] =>
-            new ShuffleCoGroupSplitDep(s)
+            None
           case _ =>
-            new NarrowCoGroupSplitDep(rdd, i, rdd.partitions(i))
+            Some(new NarrowCoGroupSplitDep(rdd, i, rdd.partitions(i)))
         }
       }.toArray)
     }
@@ -100,26 +100,29 @@ private[spark] class SubtractedRDD[K: ClassTag, V: ClassTag, W: ClassTag](
         seq
       }
     }
-    def integrate(dep: CoGroupSplitDep, op: Product2[K, V] => Unit) = dep match {
-      case NarrowCoGroupSplitDep(rdd, _, itsSplit) => {
-        rdd.iterator(itsSplit, context).asInstanceOf[Iterator[Product2[K, V]]].foreach(op)
-      }
 
-      case ShuffleCoGroupSplitDep(dependency) => {
-        // Read map outputs of the shuffle
-        val iter = dependency.asInstanceOf[ShuffleDependency[K, Any, V]].shuffleReader match {
-          case Some(shuffleReader) =>
-            shuffleReader.getDeserializedAggregatedSortedData()
-          case None =>
-            throw new SparkException("No shuffle reader found!")
-        }
-        iter.foreach(op)
+    def integrate(depNum: Int, op: Product2[K, V] => Unit) = {
+      dependencies(depNum) match {
+        case oneToOneDependency: OneToOneDependency[Product2[K, V]] =>
+          val dependencyPartition = partition.narrowDeps(depNum).get.split
+          oneToOneDependency.rdd.iterator(dependencyPartition, context).foreach(op)
+
+        case shuffleDependency: ShuffleDependency[K, Any, V] =>
+          val iter = shuffleDependency.shuffleReader match {
+            case Some(shuffleReader) =>
+              shuffleReader.getDeserializedAggregatedSortedData()
+            case None =>
+              throw new SparkException(
+                s"No shuffle reader found for shuffle ${shuffleDependency.shuffleId}")
+          }
+          iter.foreach(op)
       }
     }
+
     // the first dep is rdd1; add all values to the map
-    integrate(partition.deps(0), t => getSeq(t._1) += t._2)
+    integrate(0, t => getSeq(t._1) += t._2)
     // the second dep is rdd2; remove all of its keys
-    integrate(partition.deps(1), t => map.remove(t._1))
+    integrate(1, t => map.remove(t._1))
     map.iterator.map { t =>  t._2.iterator.map { (t._1, _) } }.flatten
   }
 
