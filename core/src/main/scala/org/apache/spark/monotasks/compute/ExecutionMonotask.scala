@@ -64,9 +64,9 @@ private[spark] abstract class ExecutionMonotask[T, U: ClassTag](
           ExecutorUncaughtExceptionHandler.uncaughtException(t)
         }
 
-        // TODO: support metrics.
+        context.taskMetrics.setMetricsOnTaskCompletion()
         val reason = ExceptionFailure(
-          t.getClass.getName, t.getMessage, t.getStackTrace, None)
+          t.getClass.getName, t.getMessage, t.getStackTrace, Some(context.taskMetrics))
         val closureSerializer = context.env.closureSerializer.newInstance()
         context.localDagScheduler.handleTaskFailure(this, closureSerializer.serialize(reason))
       }
@@ -79,9 +79,13 @@ private[spark] abstract class ExecutionMonotask[T, U: ClassTag](
     // The mysterious choice of which serializer to use when is written to be consistent with Spark.
     val closureSerializer = context.env.closureSerializer.newInstance()
     val resultSer = context.env.serializer.newInstance()
-    val valueBytes = resultSer.serialize(result)
 
-    context.taskMetrics.setJvmGCTime()
+    val serializationStartTime = System.currentTimeMillis()
+    val valueBytes = resultSer.serialize(result)
+    context.taskMetrics.resultSerializationTime =
+      System.currentTimeMillis() - serializationStartTime
+
+    context.taskMetrics.setMetricsOnTaskCompletion()
     val accumulatorValues = Accumulators.getValues(context.accumulators)
     val directResult = new DirectTaskResult(valueBytes, accumulatorValues, context.taskMetrics)
     val serializedDirectResult = closureSerializer.serialize(directResult)

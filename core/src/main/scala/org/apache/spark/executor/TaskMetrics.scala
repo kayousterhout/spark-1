@@ -65,6 +65,9 @@ class TaskMetrics extends Serializable {
    */
   var executorDeserializeTime: Long = _
 
+  /** Time when the task started running. */
+  @transient private val startingTime = System.currentTimeMillis()
+
   /**
    * Time the executor spends actually running the task (including fetching shuffle data)
    */
@@ -85,13 +88,6 @@ class TaskMetrics extends Serializable {
   }
 
   @transient private val startingGCTime = currentGCTotalMillis
-
-  /**
-   * Sets the time spent in garbage collection since the TaskMetrics was created.
-   */
-  def setJvmGCTime() {
-    jvmGCTime = currentGCTotalMillis - startingGCTime
-  }
 
   /**
    * Amount of time spent serializing the task result
@@ -136,6 +132,12 @@ class TaskMetrics extends Serializable {
    * Storage statuses of any blocks that have been updated as a result of this task.
    */
   var updatedBlocks: Option[Seq[(BlockId, BlockStatus)]] = None
+
+  /** Should be called when a macrotask completes to set metrics about the task's runtime. */
+  def setMetricsOnTaskCompletion() {
+    executorRunTime = System.currentTimeMillis() - startingTime
+    jvmGCTime = currentGCTotalMillis - startingGCTime
+  }
 
   /**
    * A task may have multiple shuffle readers for multiple dependencies. To avoid synchronization

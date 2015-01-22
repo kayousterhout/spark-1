@@ -36,9 +36,13 @@ private[spark] class PrepareMonotask(context: TaskContext, val serializedTask: B
     // TODO: This call is a little bit evil because it's synchronized, so can block and waste CPU
     // resources.
     context.dependencyManager.updateDependencies(taskFiles, taskJars)
+
+    val deserializationStartTime = System.currentTimeMillis()
     val ser = SparkEnv.get.closureSerializer.newInstance()
     val macrotask = ser.deserialize[Macrotask[Any]](
       taskBytes, context.dependencyManager.replClassLoader)
+    context.taskMetrics.executorDeserializeTime =
+      System.currentTimeMillis() - deserializationStartTime
 
     context.initialize(macrotask.stageId, macrotask.partition.index, registeredAccumulables)
 

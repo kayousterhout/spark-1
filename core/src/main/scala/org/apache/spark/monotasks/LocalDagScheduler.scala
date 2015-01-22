@@ -60,6 +60,7 @@ private[spark] class LocalDagScheduler(executorBackend: ExecutorBackend) extends
     } else {
       waitingMonotasks += monotask.taskId
     }
+    logDebug(s"Submitting monotask $monotask for macrotask ${monotask.context.taskAttemptId}")
     runningMacrotaskAttemptIds += monotask.context.taskAttemptId
   }
 
@@ -79,6 +80,8 @@ private[spark] class LocalDagScheduler(executorBackend: ExecutorBackend) extends
     completedMonotask: Monotask,
     serializedTaskResult: Option[ByteBuffer] = None)
     = synchronized {
+    logDebug(s"Monotask $completedMonotask (id: ${completedMonotask.taskId}) for " +
+      s"macrotask ${completedMonotask.context.taskAttemptId} has completed")
     completedMonotask.dependents.foreach { monotask =>
       monotask.dependencies -= completedMonotask.taskId
       if (monotask.dependencies.isEmpty) {
@@ -92,6 +95,7 @@ private[spark] class LocalDagScheduler(executorBackend: ExecutorBackend) extends
       val taskAttemptId = completedMonotask.context.taskAttemptId
       // Tell the executorBackend that the task finished, if we haven't already.
       if (runningMacrotaskAttemptIds.remove(taskAttemptId)) {
+        logDebug(s"Notfiying executorBackend about successful completion of task $taskAttemptId")
         executorBackend.statusUpdate(taskAttemptId, TaskState.FINISHED, result)
       } else {
         // This should never happen because we remove ids from runningMacrotaskAttemptIds only

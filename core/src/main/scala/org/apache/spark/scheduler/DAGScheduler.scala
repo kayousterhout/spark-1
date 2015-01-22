@@ -918,15 +918,16 @@ class DAGScheduler(
     val stageId = task.stageId
     val taskType = Utils.getFormattedClassName(task)
 
+    val stageHasBeenCancelled = !stageIdToStage.contains(task.stageId)
     // The success case is dealt with separately below, since we need to compute accumulator
     // updates before posting.
-    if (event.reason != Success) {
+    if (event.reason != Success || stageHasBeenCancelled) {
       val attemptId = stageIdToStage.get(task.stageId).map(_.latestInfo.attemptId).getOrElse(-1)
       listenerBus.post(SparkListenerTaskEnd(stageId, attemptId, taskType, event.reason,
         event.taskInfo, event.taskMetrics))
     }
 
-    if (!stageIdToStage.contains(task.stageId)) {
+    if (stageHasBeenCancelled) {
       // Skip all the actions if the stage has been cancelled.
       return
     }
