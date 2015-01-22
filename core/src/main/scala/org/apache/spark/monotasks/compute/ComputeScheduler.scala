@@ -32,6 +32,9 @@ private[spark] class ComputeScheduler() extends Logging {
       override def run(): Unit = {
         // Set the class loader for the thread, which will be used by any broadcast variables that
         // are deserialized as part of the compute monotask.
+        // TODO: Consider instead changing the thread factory, to just automatically set the class
+        //       loader each time a new thread is created (this is fine because the dependency
+        //       manager is the same for all tasks in an executor).
         Thread.currentThread.setContextClassLoader(
           monotask.context.dependencyManager.replClassLoader)
         monotask.execute()

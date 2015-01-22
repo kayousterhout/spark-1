@@ -50,6 +50,8 @@ import org.apache.spark.util.TaskCompletionListener
  * @param maximumResultSizeBytes the largest size result (in bytes) that can be sent directly back
  *                               to the Spark driver. Larger results will be sent via the block
  *                               manager.
+ * @param dependencyManager a DependencyManager used to keep track of JARs and files that may be
+ *                          used by this task.
  * @param taskAttemptId a unique identifier for the task
  * @param runningLocally whether the task is running locally in the driver JVM
  * @param taskMetrics performance metrics of the task
