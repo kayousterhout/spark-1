@@ -80,15 +80,17 @@ class TaskMetrics extends Serializable {
    */
   var jvmGCTime: Long = _
 
-  @transient private val startingGCTime =
+  private def currentGCTotalMillis: Long = {
     ManagementFactory.getGarbageCollectorMXBeans.map(_.getCollectionTime).sum
+  }
+
+  @transient private val startingGCTime = currentGCTotalMillis
 
   /**
    * Sets the time spent in garbage collection since the TaskMetrics was created.
    */
   def setJvmGCTime() {
-    val endingGCTime = ManagementFactory.getGarbageCollectorMXBeans.map(_.getCollectionTime).sum
-    jvmGCTime = endingGCTime - startingGCTime
+    jvmGCTime = currentGCTotalMillis - startingGCTime
   }
 
   /**

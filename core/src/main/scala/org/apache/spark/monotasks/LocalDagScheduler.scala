@@ -50,8 +50,8 @@ private[spark] class LocalDagScheduler(executorBackend: ExecutorBackend) extends
   val runningMonotasks = new HashSet[Long]()
 
   /* IDs for macrotasks that currently are running. Used to determine whether to notify the
-   * executor backend that a task has failed (we should only notify the executor backend once if
-   * dependent monotasks fail). */
+   * executor backend that a task has failed (used to avoid duplicate failure messages if multiple
+   * monotasks for the macrotask fail). */
   val runningMacrotaskAttemptIds = new HashSet[Long]()
 
   def submitMonotask(monotask: Monotask) = synchronized {
@@ -90,9 +90,15 @@ private[spark] class LocalDagScheduler(executorBackend: ExecutorBackend) extends
 
     serializedTaskResult.map { result =>
       val taskAttemptId = completedMonotask.context.taskAttemptId
-      // Tell the executorBackend that the task failed, if we haven't already.
+      // Tell the executorBackend that the task finished, if we haven't already.
       if (runningMacrotaskAttemptIds.remove(taskAttemptId)) {
         executorBackend.statusUpdate(taskAttemptId, TaskState.FINISHED, result)
+      } else {
+        // This should never happen because we remove ids from runningMacrotaskAttemptIds only
+        // when tasks complete successfully (which only happens once per task) or if they fail,
+        // in which case the task should not also be able to complete successfully.
+        assert(false,
+          s"Task $taskAttemptId finished multiple times. Possible bug in dependency tracking!")
       }
     }
   }
@@ -131,6 +137,8 @@ private[spark] class LocalDagScheduler(executorBackend: ExecutorBackend) extends
      * We could fix this problem by cleaning up the dependencies / dependents when a task fails
      * to remove tasks that have failed or should never run due to a failure.  Alternately, we could
      * set an "isZombie" flag in the monotask to signal to schedulers not to run it.
+     *
+     * We also don't interrupt monotasks that are already running.
      */
     monotask.dependents.foreach { dependentMonotask =>
       logDebug(s"Failing monotask ${dependentMonotask.taskId} because it dependended on monotask " +
