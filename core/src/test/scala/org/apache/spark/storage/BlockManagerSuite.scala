@@ -24,7 +24,6 @@ import java.util.concurrent.TimeUnit
 import akka.actor._
 import akka.pattern.ask
 import akka.util.Timeout
-import org.apache.spark.shuffle.hash.HashShuffleManager
 
 import org.mockito.invocation.InvocationOnMock
 import org.mockito.Matchers.any
@@ -62,7 +61,6 @@ class BlockManagerSuite extends FunSuite with Matchers with BeforeAndAfter
   conf.set("spark.authenticate", "false")
   val securityMgr = new SecurityManager(conf)
   val mapOutputTracker = new MapOutputTrackerMaster(conf)
-  val shuffleManager = new HashShuffleManager(conf)
 
   // Reuse a serializer across tests to avoid creating a new thread-local buffer on each test
   conf.set("spark.kryoserializer.buffer.mb", "1")
@@ -74,7 +72,7 @@ class BlockManagerSuite extends FunSuite with Matchers with BeforeAndAfter
 
   private def makeBlockManager(maxMem: Long, name: String = "<driver>"): BlockManager = {
     new BlockManager(name, actorSystem, master, serializer, maxMem, conf, securityMgr,
-      mapOutputTracker, shuffleManager)
+      mapOutputTracker)
   }
 
   before {
@@ -793,7 +791,7 @@ class BlockManagerSuite extends FunSuite with Matchers with BeforeAndAfter
   test("block store put failure") {
     // Use Java serializer so we can create an unserializable error.
     store = new BlockManager("<driver>", actorSystem, master, new JavaSerializer(conf), 1200, conf,
-      securityMgr, mapOutputTracker, shuffleManager)
+      securityMgr, mapOutputTracker)
 
     // The put should fail since a1 is not serializable.
     class UnserializableClass
@@ -1006,7 +1004,7 @@ class BlockManagerSuite extends FunSuite with Matchers with BeforeAndAfter
 
   test("return error message when error occurred in BlockManagerWorker#onBlockMessageReceive") {
     store = new BlockManager("<driver>", actorSystem, master, serializer, 1200, conf,
-      securityMgr, mapOutputTracker, shuffleManager)
+      securityMgr, mapOutputTracker)
 
     val worker = spy(new BlockManagerWorker(store))
     val connManagerId = mock(classOf[ConnectionManagerId])
@@ -1053,7 +1051,7 @@ class BlockManagerSuite extends FunSuite with Matchers with BeforeAndAfter
 
   test("return ack message when no error occurred in BlocManagerWorker#onBlockMessageReceive") {
     store = new BlockManager("<driver>", actorSystem, master, serializer, 1200, conf,
-      securityMgr, mapOutputTracker, shuffleManager)
+      securityMgr, mapOutputTracker)
 
     val worker = spy(new BlockManagerWorker(store))
     val connManagerId = mock(classOf[ConnectionManagerId])

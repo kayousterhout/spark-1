@@ -18,18 +18,17 @@ package org.apache.spark.monotasks.compute
 
 import java.nio.ByteBuffer
 
-import scala.collection.mutable.HashMap
 import scala.reflect.ClassTag
 
 import org.apache.spark._
 import org.apache.spark.executor.ExecutorUncaughtExceptionHandler
 import org.apache.spark.rdd.RDD
 import org.apache.spark.scheduler.{DirectTaskResult, IndirectTaskResult}
+import org.apache.spark.shuffle.FetchFailedException
 import org.apache.spark.storage.{StorageLevel, TaskResultBlockId}
 import org.apache.spark.util.Utils
-import org.apache.spark.shuffle.FetchFailedException
 
-/** Monotask that handles executing the compute part of a macro task. */
+/** Monotask that handles executing the core computation of a macro task. */
 private[spark] abstract class ExecutionMonotask[T, U: ClassTag](
     context: TaskContext,
     val rdd: RDD[T],

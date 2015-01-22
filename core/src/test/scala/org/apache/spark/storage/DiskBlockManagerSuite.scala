@@ -19,8 +19,6 @@ package org.apache.spark.storage
 
 import java.io.{File, FileWriter}
 
-import org.apache.spark.shuffle.hash.HashShuffleManager
-
 import scala.collection.mutable
 import scala.language.reflectiveCalls
 
@@ -43,8 +41,6 @@ class DiskBlockManagerSuite extends FunSuite with BeforeAndAfterEach with Before
   // This suite focuses primarily on consolidation features,
   // so we coerce consolidation if not already enabled.
   testConf.set("spark.shuffle.consolidateFiles", "true")
-
-  private val shuffleManager = new HashShuffleManager(testConf.clone)
 
   var diskBlockManager: DiskBlockManager = _
 

@@ -20,7 +20,7 @@ import java.nio.ByteBuffer
 
 import scala.collection.mutable.HashSet
 
-import org.apache.spark.{TaskState, Logging}
+import org.apache.spark.{Logging, TaskState}
 import org.apache.spark.executor.ExecutorBackend
 import org.apache.spark.monotasks.compute.{ComputeMonotask, ComputeScheduler}
 import org.apache.spark.monotasks.network.{NetworkMonotask, NetworkScheduler}

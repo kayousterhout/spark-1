@@ -16,15 +16,14 @@
 
 package org.apache.spark.monotasks.network
 
-import scala.util.Success
-import scala.util.Failure
+import scala.util.{Success, Failure}
 
 import org.apache.spark._
+import org.apache.spark.monotasks.Monotask
 import org.apache.spark.network.{BufferMessage, ConnectionManagerId}
 import org.apache.spark.storage.{BlockManagerId, BlockId, BlockMessage, BlockMessageArray,
   GetBlock, MonotaskResultBlockId, ShuffleBlockId}
 import org.apache.spark.util.Utils
-import org.apache.spark.monotasks.Monotask
 
 
 /**
@@ -62,7 +61,8 @@ private[spark] class NetworkMonotask(
 
     // TODO: This execution context should not go through the block manager (should be handled by
     // the network monotask scheduler -- since it is the thread used to execute the network
-    // callbacks).
+    // callbacks).  Or consider integrating this with compute monotasks -- since this is
+    // computation?
     implicit val futureExecContext = context.env.blockManager.futureExecContext
     future.onComplete {
       case Success(message) => {

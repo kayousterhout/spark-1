@@ -90,7 +90,6 @@ private[spark] class Executor(
   }
 
   // Create our DependencyManager, which manages the class loader.
-  // do this after SparkEnv creation so can access the SecurityManager
   private val dependencyManager = new DependencyManager(env, conf)
 
   // If a task result is larger than this, we use the block manager to send the task result back.

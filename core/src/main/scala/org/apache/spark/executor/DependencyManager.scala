@@ -20,12 +20,12 @@ import java.io.File
 
 import scala.collection.mutable.HashMap
 
-import org.apache.spark.{SparkConf, SparkEnv, SparkFiles, Logging}
+import org.apache.spark.{Logging, SparkConf, SparkEnv, SparkFiles}
 import org.apache.spark.util.Utils
 
 /**
  * Manages the dependencies that have been fetched by a single Executor. Exposes a class loader
- * that includes all classes that have been included in tasks run through this executor.
+ * that includes all classes that have been loaded by tasks run through this executor.
  */
 private[spark] class DependencyManager(env: SparkEnv, conf: SparkConf) extends Logging {
   // Application dependencies (added through SparkContext) that we've fetched so far on this node.
@@ -34,7 +34,7 @@ private[spark] class DependencyManager(env: SparkEnv, conf: SparkConf) extends L
   private val currentJars: HashMap[String, Long] = new HashMap[String, Long]()
 
   // Create our ClassLoader
-  // do this after SparkEnv creation so can access the SecurityManager
+  // This must be done after SparkEnv creation so it can access the SecurityManager
   private val urlClassLoader = createClassLoader()
   val replClassLoader = addReplClassLoaderIfNeeded(urlClassLoader)
 
