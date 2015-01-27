@@ -271,6 +271,9 @@ private object Accumulators {
 
   /**
    * Accumulables that were registered (which happens during task deserialization) in this thread.
+   *
+   * Whenever task execution starts in a new thread, this should be set to the accumulables for
+   * the macrotask (from the TaskContext).
    */
   val registeredAccumulables = new ThreadLocal[Map[Long, Accumulable[_, _]]] {
     override def initialValue(): Map[Long, Accumulable[_, _]] = {
@@ -292,12 +295,12 @@ private object Accumulators {
   }
 
   /**
-   * Convenience method that takes a map of accumulable id to accumulables, and returns a map
-   * of accumulable id to the local value.
+   * Returns the values of accumulators (in the form of a map of accumulable id to the local
+   * value) used in this thread.
    */
-  def getValues(accumulables: Map[Long, Accumulable[_, _]]): Map[Long, Any] = {
+  def getValues: Map[Long, Any] = {
    val ret = Map[Long, Any]()
-   for ((id, accum) <- accumulables) {
+   for ((id, accum) <- registeredAccumulables.get()) {
      ret(id) = accum.localValue
    }
    return ret

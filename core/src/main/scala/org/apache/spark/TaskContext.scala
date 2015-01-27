@@ -73,7 +73,7 @@ class TaskContext(
   var partitionId: Int = -1
 
   // The accumulators used by this macrotask (passed back to the driver when the task completes).
-  var accumulators: Map[Long, Accumulable[_, _]] = null
+  var accumulators = Map[Long, Accumulable[_, _]]()
 
   @deprecated("use partitionId", "0.8.1")
   def splitId = partitionId
@@ -87,10 +87,9 @@ class TaskContext(
   // Whether the task has completed.
   @volatile private var completed: Boolean = false
 
-  def initialize(stageId: Int, partitionId: Int, accumulators: Map[Long, Accumulable[_, _]]) {
+  def initialize(stageId: Int, partitionId: Int) {
     this.stageId = stageId
     this.partitionId = partitionId
-    this.accumulators = accumulators
   }
 
   /** Checks whether the task has completed. */

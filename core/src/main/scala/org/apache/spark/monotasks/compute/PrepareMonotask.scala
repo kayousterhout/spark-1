@@ -30,8 +30,7 @@ private[spark] class PrepareMonotask(context: TaskContext, val serializedTask: B
   extends ComputeMonotask(context) {
 
   override def execute() = {
-    val registeredAccumulables = Accumulators.registeredAccumulables.get()
-    registeredAccumulables.clear()
+    Accumulators.registeredAccumulables.set(context.accumulators)
     val (taskFiles, taskJars, taskBytes) = Macrotask.deserializeWithDependencies(serializedTask)
     // TODO: This call is a little bit evil because it's synchronized, so can block and waste CPU
     // resources.
@@ -44,7 +43,7 @@ private[spark] class PrepareMonotask(context: TaskContext, val serializedTask: B
     context.taskMetrics.executorDeserializeTime =
       System.currentTimeMillis() - deserializationStartTime
 
-    context.initialize(macrotask.stageId, macrotask.partition.index, registeredAccumulables)
+    context.initialize(macrotask.stageId, macrotask.partition.index)
 
     // TODO: what is the point of this?
     SparkEnv.get.mapOutputTracker.updateEpoch(macrotask.epoch)

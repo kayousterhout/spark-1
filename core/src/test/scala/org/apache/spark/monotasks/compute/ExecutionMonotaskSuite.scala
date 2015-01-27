@@ -39,6 +39,7 @@ class ExecutionMonotaskSuite extends FunSuite with LocalSparkContext with Before
 
     localDagScheduler = mock(classOf[LocalDagScheduler])
     taskContext = new TaskContext(SparkEnv.get, localDagScheduler, 500, null, 12)
+    taskContext.initialize(0, 0)
   }
 
   test("execute tells DAG scheduler and marks task as completed when task completes successfully") {
