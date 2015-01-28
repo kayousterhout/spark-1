@@ -95,7 +95,8 @@ private[spark] object CheckpointRDD extends Logging {
 
     val finalOutputName = splitIdToFile(ctx.partitionId)
     val finalOutputPath = new Path(outputDir, finalOutputName)
-    val tempOutputPath = new Path(outputDir, "." + finalOutputName + "-attempt-" + ctx.taskAttemptId)
+    val tempOutputPath =
+      new Path(outputDir, "." + finalOutputName + "-attempt-" + ctx.taskAttemptId)
 
     if (fs.exists(tempOutputPath)) {
       throw new IOException("Checkpoint failed: temporary path " +
