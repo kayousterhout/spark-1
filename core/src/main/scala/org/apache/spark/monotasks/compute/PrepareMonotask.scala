@@ -20,7 +20,6 @@ import java.nio.ByteBuffer
 
 import org.apache.spark.{SparkEnv, TaskContext}
 import org.apache.spark.scheduler.Macrotask
-import org.apache.spark.shuffle.FetchFailedException
 
 /**
  * A ComputeMonotask responsible for preparing the rest of the monotasks corresponding to the
@@ -47,15 +46,7 @@ private[spark] class PrepareMonotask(context: TaskContext, val serializedTask: B
     // TODO: what is the point of this?
     SparkEnv.get.mapOutputTracker.updateEpoch(macrotask.epoch)
 
-    try {
-      context.localDagScheduler.submitMonotasks(macrotask.getMonotasks(context))
-      context.localDagScheduler.handleTaskCompletion(this)
-    } catch {
-      case ffe: FetchFailedException => {
-        /* A FetchFailedException can be thrown when getting the input monotasks, if some of
-         * the input monotasks need to fetch shuffle data that is missing. */
-        context.localDagScheduler.handleTaskFailure(this, ser.serialize(ffe.toTaskEndReason))
-      }
-    }
+    context.localDagScheduler.submitMonotasks(macrotask.getMonotasks(context))
+    context.localDagScheduler.handleTaskCompletion(this)
   }
 }

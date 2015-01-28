@@ -26,7 +26,7 @@ import org.apache.spark.executor.TaskMetrics
 import org.apache.spark.monotasks.LocalDagScheduler
 import org.apache.spark.scheduler.LiveListenerBus
 
-class ExecutionMonotaskSuite extends FunSuite with BeforeAndAfterEach {
+class ComputeMonotaskSuite extends FunSuite with BeforeAndAfterEach {
 
   var localDagScheduler: LocalDagScheduler = _
   var taskContext: TaskContext = _
@@ -43,19 +43,9 @@ class ExecutionMonotaskSuite extends FunSuite with BeforeAndAfterEach {
     taskContext.initialize(0, 0)
   }
 
-  test("execute tells DAG scheduler and marks task as completed when task completes successfully") {
-    val monotask = new ExecutionMonotask[Int, Int](taskContext, null, null) {
-      override def getResult(): Int = 15
-    }
-
-    monotask.executeAndHandleExceptions()
-    verify(localDagScheduler).handleTaskCompletion(meq(monotask), any())
-    assert(taskContext.isCompleted)
-  }
-
-  test("execute tells DAG scheduler and marks task as completed when task throws exceptions") {
-    val monotask = new ExecutionMonotask[Int, Int](taskContext, null, null) {
-      override def getResult(): Int = {
+  test("executeAndHandleExceptions handles exceptions and notifies LocalDagScheduler of failure") {
+    val monotask = new ComputeMonotask(taskContext) {
+      override def execute() {
         throw new Exception("task failed")
       }
     }

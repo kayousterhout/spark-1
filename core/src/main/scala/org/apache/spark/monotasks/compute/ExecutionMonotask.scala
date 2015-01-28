@@ -21,14 +21,13 @@ import java.nio.ByteBuffer
 import scala.reflect.ClassTag
 
 import org.apache.spark._
-import org.apache.spark.executor.ExecutorUncaughtExceptionHandler
 import org.apache.spark.rdd.RDD
 import org.apache.spark.scheduler.{DirectTaskResult, IndirectTaskResult}
-import org.apache.spark.shuffle.FetchFailedException
 import org.apache.spark.storage.{StorageLevel, TaskResultBlockId}
-import org.apache.spark.util.Utils
 
-/** Monotask that handles executing the core computation of a macro task. */
+/**
+ * Monotask that handles executing the core computation of a macro task and serializing the result.
+ */
 private[spark] abstract class ExecutionMonotask[T, U: ClassTag](
     context: TaskContext,
     val rdd: RDD[T],
@@ -38,41 +37,10 @@ private[spark] abstract class ExecutionMonotask[T, U: ClassTag](
   /** Subclasses should define this to return a macrotask result to be sent to the driver. */
   def getResult(): U
 
-  override def execute() = {
-    try {
-      val result = getResult()
-      val serializedResult = serializeResult(result)
-      context.localDagScheduler.handleTaskCompletion(this, Some(serializedResult))
-    } catch {
-      case ffe: FetchFailedException => {
-        /* A FetchFailedException can be thrown by compute monotasks when local shuffle data
-        * is missing from the block manager. */
-        val closureSerializer = context.env.closureSerializer.newInstance()
-        context.localDagScheduler.handleTaskFailure(
-          this, closureSerializer.serialize(ffe.toTaskEndReason))
-      }
-
-      case t: Throwable => {
-        // Attempt to exit cleanly by informing the driver of our failure.
-        // If anything goes wrong (or this was a fatal exception), we will delegate to
-        // the default uncaught exception handler, which will terminate the Executor.
-        logError(s"Exception in TID ${context.taskAttemptId}", t)
-
-        // Don't forcibly exit unless the exception was inherently fatal, to avoid
-        // stopping other tasks unnecessarily.
-        if (Utils.isFatalError(t)) {
-          ExecutorUncaughtExceptionHandler.uncaughtException(t)
-        }
-
-        context.taskMetrics.setMetricsOnTaskCompletion()
-        val reason = ExceptionFailure(
-          t.getClass.getName, t.getMessage, t.getStackTrace, Some(context.taskMetrics))
-        val closureSerializer = context.env.closureSerializer.newInstance()
-        context.localDagScheduler.handleTaskFailure(this, closureSerializer.serialize(reason))
-      }
-    } finally {
-      context.markTaskCompleted()
-    }
+  override protected def execute() = {
+    val result = getResult()
+    val serializedResult = serializeResult(result)
+    context.localDagScheduler.handleTaskCompletion(this, Some(serializedResult))
   }
 
   private def serializeResult(result: U): ByteBuffer = {

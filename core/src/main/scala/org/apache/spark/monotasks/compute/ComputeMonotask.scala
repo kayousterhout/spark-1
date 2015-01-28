@@ -16,11 +16,51 @@
 
 package org.apache.spark.monotasks.compute
 
-import org.apache.spark.TaskContext
+import org.apache.spark.{Accumulators, ExceptionFailure, Logging, TaskContext}
+import org.apache.spark.executor.ExecutorUncaughtExceptionHandler
 import org.apache.spark.monotasks.Monotask
+import org.apache.spark.shuffle.FetchFailedException
+import org.apache.spark.util.Utils
 
 private[spark] abstract class ComputeMonotask(context: TaskContext)
-  extends Monotask(context) {
+  extends Monotask(context) with Logging {
 
-  def execute()
+  protected def execute()
+
+  /** Runs the execute methods and handles common exceptions thrown by ComputeMonotasks. */
+  def executeAndHandleExceptions() {
+    try {
+      Accumulators.registeredAccumulables.set(context.accumulators)
+      execute()
+    } catch {
+      case ffe: FetchFailedException => {
+        /* A FetchFailedException can be thrown by compute monotasks when local shuffle data
+        * is missing from the block manager. */
+        val closureSerializer = context.env.closureSerializer.newInstance()
+        context.localDagScheduler.handleTaskFailure(
+          this, closureSerializer.serialize(ffe.toTaskEndReason))
+      }
+
+      case t: Throwable => {
+        // Attempt to exit cleanly by informing the driver of our failure.
+        // If anything goes wrong (or this was a fatal exception), we will delegate to
+        // the default uncaught exception handler, which will terminate the Executor.
+        logError(s"Exception in TID ${context.taskAttemptId}", t)
+
+        // Don't forcibly exit unless the exception was inherently fatal, to avoid
+        // stopping other tasks unnecessarily.
+        if (Utils.isFatalError(t)) {
+          ExecutorUncaughtExceptionHandler.uncaughtException(t)
+        }
+
+        context.taskMetrics.setMetricsOnTaskCompletion()
+        val reason = ExceptionFailure(
+          t.getClass.getName, t.getMessage, t.getStackTrace, Some(context.taskMetrics))
+        val closureSerializer = context.env.closureSerializer.newInstance()
+        context.localDagScheduler.handleTaskFailure(this, closureSerializer.serialize(reason))
+      }
+    } finally {
+      context.markTaskCompleted()
+    }
+  }
 }
