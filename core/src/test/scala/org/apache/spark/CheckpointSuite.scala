@@ -29,7 +29,7 @@ import org.apache.spark.storage.{BlockId, StorageLevel, TestBlockId}
 import org.apache.spark.util.Utils
 
 // TODO: Re-enable these tests once checkpointing is supported for monotasks:
-// https://github.com/NetSys/spark-monotasks/issues/9
+//       https://github.com/NetSys/spark-monotasks/issues/9
 @Ignore class CheckpointSuite extends FunSuite with LocalSparkContext with Logging {
   var checkpointDir: File = _
   val partitioner = new HashPartitioner(2)

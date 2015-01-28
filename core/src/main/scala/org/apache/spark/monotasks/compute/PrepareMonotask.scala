@@ -33,7 +33,7 @@ private[spark] class PrepareMonotask(context: TaskContext, val serializedTask: B
     Accumulators.registeredAccumulables.set(context.accumulators)
     val (taskFiles, taskJars, taskBytes) = Macrotask.deserializeWithDependencies(serializedTask)
     // TODO: This call is a little bit evil because it's synchronized, so can block and waste CPU
-    // resources.
+    //       resources.
     context.dependencyManager.updateDependencies(taskFiles, taskJars)
 
     val deserializationStartTime = System.currentTimeMillis()

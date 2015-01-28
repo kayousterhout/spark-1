@@ -60,9 +60,9 @@ private[spark] class NetworkMonotask(
         connectionManagerId, blockMessageArray.toBufferMessage)
 
     // TODO: This execution context should not go through the block manager (should be handled by
-    // the network monotask scheduler -- since it is the thread used to execute the network
-    // callbacks).  Or consider integrating this with compute monotasks -- since this is
-    // computation?
+    //       the network monotask scheduler -- since it is the thread used to execute the network
+    //       callbacks).  Or consider integrating this with compute monotasks -- since this is
+    //       computation?
     implicit val futureExecContext = context.env.blockManager.futureExecContext
     future.onComplete {
       case Success(message) => {

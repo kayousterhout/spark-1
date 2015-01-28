@@ -109,7 +109,7 @@ private[spark] class Executor(
   }
 
   def killTask(taskId: Long, interruptThread: Boolean) {
-    // TODO: Support killing tasks.
+    // TODO: Support killing tasks: https://github.com/NetSys/spark-monotasks/issues/4
   }
 
   def stop() {

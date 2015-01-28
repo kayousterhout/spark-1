@@ -48,7 +48,7 @@ private[spark] abstract class ExecutionMonotask[T, U: ClassTag](
       case ffe: FetchFailedException => {
         /* A FetchFailedException can be thrown by compute monotasks when local shuffle data
         * is missing from the block manager. */
-        val closureSerializer = SparkEnv.get.closureSerializer.newInstance()
+        val closureSerializer = context.env.closureSerializer.newInstance()
         context.localDagScheduler.handleTaskFailure(
           this, closureSerializer.serialize(ffe.toTaskEndReason))
       }

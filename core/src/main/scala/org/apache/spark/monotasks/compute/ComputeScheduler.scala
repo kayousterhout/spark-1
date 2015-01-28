@@ -22,8 +22,8 @@ import org.apache.spark.util.Utils
 private[spark] class ComputeScheduler() extends Logging {
   private val threads = Runtime.getRuntime.availableProcessors()
 
-  /* TODO: This threadpool currently uses a single FIFO queue when the number of tasks exceeds the
-   *       number of threads; eventually, we'll want a smarter queueing strategy. */
+  // TODO: This threadpool currently uses a single FIFO queue when the number of tasks exceeds the
+  //      number of threads; eventually, we'll want a smarter queueing strategy.
   private val computeThreadpool = Utils.newDaemonFixedThreadPool(threads, "compute-monotask-thread")
 
   logInfo(s"Started ComputeScheduler with $threads parallel threads")

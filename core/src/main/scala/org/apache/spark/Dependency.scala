@@ -183,20 +183,19 @@ private[spark] object Dependency {
 
   /**
    * Returns a mapping of NarrowDependencies to the partitions of the parent RDD for that
-   * dependency. This should
-   * include all NarrowDependencies that will be traversed as part of completing this macrotask and
-   * all associated partitions for each NarrowDependency. This is necessary for
-   * computing the monotasks for this macrotask: in order to compute the monotasks, we need to walk
-   * through all of the rdds and associated partitions that will be computed as part of this task.
-   * The NarrowDependency includes a pointer to the associated parent RDD, but the pointer to the
-   * parent Partition is stored as part of the child Partition in formats specific to the Partition
-   * subclasses, hence the need for this additional mapping.
+   * dependency. This should include all NarrowDependencies that will be traversed as part of
+   * completing this macrotask and all associated partitions for each NarrowDependency. This is
+   * necessary for computing the monotasks for this macrotask: in order to compute the monotasks,
+   * we need to walk through all of the rdds and associated partitions that will be computed as part
+   * of this task. The NarrowDependency includes a pointer to the associated parent RDD, but the
+   * pointer to the parent Partition is stored as part of the child Partition in formats specific
+   * to the Partition subclasses, hence the need for this additional mapping.
    *
-   * Indexed on the Dependency id rather than directly on the dependency because of the way
-   * serialization happens. This object is serialized separately from the RDD object, so if
-   * Dependency objects were used as keys here, they will end up being different than the
-   * Dependency objects in the RDD class, so this mapping would no longer be valid once
-   * deserialized.
+   * The resulting map is indexed on the Dependency id rather than directly on the dependency
+   * because of the way serialization happens. This object is serialized with the Partition,
+   * separately from the RDD object, so if Dependency objects were used as keys here, they will end
+   * up being different than the Dependency objects in the RDD class, so this mapping would no
+   * longer be valid once deserialized.
    */
   // TODO: Write unit test for this!
   def getDependencyIdToPartitions(rdd: RDD[_], partitionIndex: Int)

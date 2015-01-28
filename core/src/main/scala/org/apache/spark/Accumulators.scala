@@ -272,14 +272,10 @@ private object Accumulators {
   /**
    * Accumulables that were registered (which happens during task deserialization) in this thread.
    *
-   * Whenever task execution starts in a new thread, this should be set to the accumulables for
-   * the macrotask (from the TaskContext).
+   * Whenever task execution starts in a new thread, this should be set to the accumulables stored
+   * in the TaskContext for the Macrotask.
    */
-  val registeredAccumulables = new ThreadLocal[Map[Long, Accumulable[_, _]]] {
-    override def initialValue(): Map[Long, Accumulable[_, _]] = {
-      Map[Long, Accumulable[_, _]]()
-    }
-  }
+  val registeredAccumulables = new ThreadLocal[Map[Long, Accumulable[_, _]]]()
 
   def newId: Long = synchronized {
     lastId += 1
@@ -304,11 +300,6 @@ private object Accumulators {
      ret(id) = accum.localValue
    }
    return ret
-  }
-
-  // Clear the local (non-original) accumulators for the current thread
-  def clear() {
-    registeredAccumulables.get().clear()
   }
 
   // Add values to the original accumulators with some given IDs

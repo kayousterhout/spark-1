@@ -101,8 +101,8 @@ class ShuffleReader[K, V, C](
           .asInstanceOf[BufferMessage]
         // Remove the data from the memory store.
         // TODO: This should be handled by the LocalDagScheduler, so that it can ensure results
-        // get deleted in all possible failure scenarios.
-        // https://github.com/NetSys/spark-monotasks/issues/8
+        //       get deleted in all possible failure scenarios.
+        //       https://github.com/NetSys/spark-monotasks/issues/8
         context.env.blockManager.memoryStore.remove(monotaskResultBlockId)
         val blockMessageArray = BlockMessageArray.fromBufferMessage(bufferMessage)
         blockMessageArray.flatMap { blockMessage =>

@@ -31,8 +31,8 @@ import org.apache.spark.monotasks.network.{NetworkMonotask, NetworkScheduler}
  * to the appropriate scheduler to be executed once sufficient resources are available.
  *
  * TODO: The LocalDagScheduler should implement thread safety using an actor or event loop, rather
- * than having all methods be synchronized (which can lead to monotasks that block waiting for the
- * local dag scheduler).
+ *       than having all methods be synchronized (which can lead to monotasks that block waiting
+ *       for the local dag scheduler).
  */
 private[spark] class LocalDagScheduler(executorBackend: ExecutorBackend) extends Logging {
 
@@ -128,21 +128,23 @@ private[spark] class LocalDagScheduler(executorBackend: ExecutorBackend) extends
 
   private def failDependentMonotasks(monotask: Monotask, originalFailedTaskId: Long) {
     /* TODO: Right now, this may still result in some unnecessary monotasks being run. For example,
-     * given the following dependency tree:
+     *       given the following dependency tree:
      *
-     * A --> B --> C
-     *             ^
-     *             |
-     *             D
+     *       A --> B --> C
+     *                   ^
+     *                   |
+     *                   D
      *
-     * If D fails, C will never be run (because it will forever have an unsatisfied dependency
-     * on D).  But, if A is running when D fails, B will still be run (which is wasted effort).
+     *       If D fails, C will never be run (because it will forever have an unsatisfied dependency
+     *       on D).  But, if A is running when D fails, B will still be run (which is wasted
+     *       effort).
      *
-     * We could fix this problem by cleaning up the dependencies / dependents when a task fails
-     * to remove tasks that have failed or should never run due to a failure.  Alternately, we could
-     * set an "isZombie" flag in the monotask to signal to schedulers not to run it.
+     *       We could fix this problem by cleaning up the dependencies / dependents when a task
+     *       fails to remove tasks that have failed or should never run due to a failure.
+     *       Alternately, we could set an "isZombie" flag in the monotask to signal to schedulers
+     *       not to run it.
      *
-     * We also don't interrupt monotasks that are already running.
+     *       We also don't interrupt monotasks that are already running.
      */
     monotask.dependents.foreach { dependentMonotask =>
       logDebug(s"Failing monotask ${dependentMonotask.taskId} because it dependended on monotask " +

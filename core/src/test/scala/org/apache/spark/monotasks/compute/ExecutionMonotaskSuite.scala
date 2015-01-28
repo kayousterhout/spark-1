@@ -21,24 +21,25 @@ import org.mockito.Matchers.{any, eq => meq}
 
 import org.scalatest.{BeforeAndAfterEach, FunSuite}
 
-import org.apache.spark.{LocalSparkContext, SparkContext, SparkEnv, TaskContext}
+import org.apache.spark._
 import org.apache.spark.executor.TaskMetrics
 import org.apache.spark.monotasks.LocalDagScheduler
+import org.apache.spark.scheduler.LiveListenerBus
 
-class ExecutionMonotaskSuite extends FunSuite with LocalSparkContext with BeforeAndAfterEach {
+class ExecutionMonotaskSuite extends FunSuite with BeforeAndAfterEach {
 
   var localDagScheduler: LocalDagScheduler = _
   var taskContext: TaskContext = _
   val taskMetrics: TaskMetrics = new TaskMetrics()
 
   override def beforeEach() {
-    /* Need to create a local spark context so that SparkEnv gets initialized (which is used
-     * in ExecutionMonotask). */
-     //TODO: why not env in TaskContext??
-     sc = new SparkContext("local", "test")
+    // Create a sparkEnv to be used to serialize results in ExecutionMonotasks.
+    val listenerBus = new LiveListenerBus
+    val sparkEnv = SparkEnv.create(
+      new SparkConf(true), "testExecutor", "localhost", 30000, true, true, listenerBus)
 
     localDagScheduler = mock(classOf[LocalDagScheduler])
-    taskContext = new TaskContext(SparkEnv.get, localDagScheduler, 500, null, 12)
+    taskContext = new TaskContext(sparkEnv, localDagScheduler, 500, null, 12)
     taskContext.initialize(0, 0)
   }
 

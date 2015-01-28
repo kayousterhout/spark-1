@@ -253,8 +253,8 @@ abstract class RDD[T: ClassTag](
     context: TaskContext)
     : Seq[Monotask] = {
     // TODO: Check here for whether RDD is already loaded in memory (much of the logic from
-    // the iterator() method, which checks whether the RDD is already stored in the CacheManager,
-    // should ultimately move here).
+    //       the iterator() method, which checks whether the RDD is already stored in the
+    //       CacheManager, should ultimately move here).
     dependencies.flatMap(_.getMonotasks(partition, dependencyIdToPartitions, context))
   }
 
