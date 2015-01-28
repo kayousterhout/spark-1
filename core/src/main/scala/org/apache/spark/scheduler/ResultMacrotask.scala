@@ -18,6 +18,7 @@ package org.apache.spark.scheduler
 
 import java.nio.ByteBuffer
 
+import scala.collection.mutable.{HashMap, HashSet}
 import scala.reflect.ClassTag
 
 import org.apache.spark.{Logging, Partition, TaskContext}
@@ -34,10 +35,11 @@ private[spark] class ResultMacrotask[T, U: ClassTag](
     stageId: Int,
     taskBinary: Broadcast[Array[Byte]],
     partition: Partition,
-    rdd: RDD[_],
+    dependencyIdToPartitions: HashMap[Long, HashSet[Partition]],
     @transient locs: Seq[TaskLocation],
     val outputId: Int)
-  extends Macrotask[U](stageId, partition, rdd) with Serializable with Logging {
+  extends Macrotask[U](stageId, partition, dependencyIdToPartitions) with Serializable
+  with Logging {
 
   @transient private[this] val preferredLocs: Seq[TaskLocation] = {
     if (locs == null) Nil else locs.toSet.toSeq

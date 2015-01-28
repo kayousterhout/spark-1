@@ -180,4 +180,49 @@ private[spark] object Dependency {
   val nextId = new AtomicLong(0)
 
   def newId(): Long = nextId.getAndIncrement()
+
+  /**
+   * Returns a mapping of NarrowDependencies to the partitions of the parent RDD for that
+   * dependency. This should
+   * include all NarrowDependencies that will be traversed as part of completing this macrotask and
+   * all associated partitions for each NarrowDependency. This is necessary for
+   * computing the monotasks for this macrotask: in order to compute the monotasks, we need to walk
+   * through all of the rdds and associated partitions that will be computed as part of this task.
+   * The NarrowDependency includes a pointer to the associated parent RDD, but the pointer to the
+   * parent Partition is stored as part of the child Partition in formats specific to the Partition
+   * subclasses, hence the need for this additional mapping.
+   *
+   * Indexed on the Dependency id rather than directly on the dependency because of the way
+   * serialization happens. This object is serialized separately from the RDD object, so if
+   * Dependency objects were used as keys here, they will end up being different than the
+   * Dependency objects in the RDD class, so this mapping would no longer be valid once
+   * deserialized.
+   */
+  // TODO: Write unit test for this!
+  def getDependencyIdToPartitions(rdd: RDD[_], partitionIndex: Int)
+    : HashMap[Long, HashSet[Partition]] = {
+    val dependencyIdToPartitions = new HashMap[Long, HashSet[Partition]]()
+    getDependencyIdToPartitionsHelper(rdd, partitionIndex, dependencyIdToPartitions)
+    dependencyIdToPartitions
+  }
+
+  private def getDependencyIdToPartitionsHelper(
+    rdd: RDD[_], partitionIndex: Int, dependencyIdToPartitions: HashMap[Long, HashSet[Partition]]) {
+    rdd.dependencies.foreach {
+      case narrowDependency: NarrowDependency[_] =>
+        val parentPartitions = dependencyIdToPartitions.getOrElseUpdate(
+          narrowDependency.id, new HashSet[Partition])
+
+        narrowDependency.getParents(partitionIndex).foreach { parentPartitionIndex =>
+          val parentPartition = narrowDependency.rdd.partitions(parentPartitionIndex)
+          if (parentPartitions.add(parentPartition)) {
+            getDependencyIdToPartitionsHelper(
+              narrowDependency.rdd, parentPartitionIndex, dependencyIdToPartitions)
+          }
+        }
+
+      case _ =>
+       // Do nothing: only need partitions for NarrowDependencies.
+    }
+  }
 }

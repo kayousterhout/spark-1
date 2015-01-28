@@ -18,6 +18,7 @@ package org.apache.spark.scheduler
 
 import java.nio.ByteBuffer
 
+import scala.collection.mutable.{HashMap, HashSet}
 import scala.language.existentials
 
 import org.apache.spark.{Partition, ShuffleDependency, TaskContext}
@@ -35,9 +36,9 @@ private[spark] class ShuffleMapMacrotask(
     stageId: Int,
     taskBinary: Broadcast[Array[Byte]],
     partition: Partition,
-    rdd: RDD[_],
+    dependencyIdToPartitions: HashMap[Long, HashSet[Partition]],
     @transient private var locs: Seq[TaskLocation])
-  extends Macrotask[MapStatus](stageId, partition, rdd) {
+  extends Macrotask[MapStatus](stageId, partition, dependencyIdToPartitions) {
 
   @transient private val preferredLocs: Seq[TaskLocation] = {
     if (locs == null) Nil else locs.toSet.toSeq

@@ -21,7 +21,7 @@ import org.apache.spark.TaskContext
 import org.apache.spark.monotasks.Monotask
 
 class FakeTask(stageId: Int, prefLocs: Seq[TaskLocation] = Nil)
-  extends Macrotask[Int](stageId, null) {
+  extends Macrotask[Int](stageId, null, null) {
   override def getMonotasks(context: TaskContext): Seq[Monotask] = Seq.empty
 
   override def preferredLocations: Seq[TaskLocation] = prefLocs

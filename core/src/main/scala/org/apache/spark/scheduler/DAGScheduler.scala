@@ -860,15 +860,17 @@ class DAGScheduler(
       partitionsToCompute.map { id =>
         val locs = getPreferredLocs(stage.rdd, id)
         val part = stage.rdd.partitions(id)
-        new ShuffleMapMacrotask(stage.id, taskBinary, part, stage.rdd, locs)
+        val dependencyIdToPartitions = Dependency.getDependencyIdToPartitions(stage.rdd, part.index)
+        new ShuffleMapMacrotask(stage.id, taskBinary, part, dependencyIdToPartitions, locs)
       }
     } else {
       val job = stage.resultOfJob.get
       partitionsToCompute.map { id =>
         val p: Int = job.partitions(id)
         val part = stage.rdd.partitions(p)
+        val dependencyIdToPartitions = Dependency.getDependencyIdToPartitions(stage.rdd, part.index)
         val locs = getPreferredLocs(stage.rdd, p)
-        new ResultMacrotask(stage.id, taskBinary, part, stage.rdd, locs, id)
+        new ResultMacrotask(stage.id, taskBinary, part, dependencyIdToPartitions, locs, id)
       }
     }
 
