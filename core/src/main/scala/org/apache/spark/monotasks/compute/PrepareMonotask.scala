@@ -18,7 +18,7 @@ package org.apache.spark.monotasks.compute
 
 import java.nio.ByteBuffer
 
-import org.apache.spark.{Accumulators, SparkEnv, TaskContext}
+import org.apache.spark.{SparkEnv, TaskContext}
 import org.apache.spark.scheduler.Macrotask
 import org.apache.spark.shuffle.FetchFailedException
 
