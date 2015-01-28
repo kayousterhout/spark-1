@@ -30,7 +30,6 @@ private[spark] class PrepareMonotask(context: TaskContext, val serializedTask: B
   extends ComputeMonotask(context) {
 
   override def execute() = {
-    Accumulators.registeredAccumulables.set(context.accumulators)
     val (taskFiles, taskJars, taskBytes) = Macrotask.deserializeWithDependencies(serializedTask)
     // TODO: This call is a little bit evil because it's synchronized, so can block and waste CPU
     //       resources.

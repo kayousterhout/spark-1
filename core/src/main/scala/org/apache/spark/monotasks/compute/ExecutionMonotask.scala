@@ -40,7 +40,6 @@ private[spark] abstract class ExecutionMonotask[T, U: ClassTag](
 
   override def execute() = {
     try {
-      Accumulators.registeredAccumulables.set(context.accumulators)
       val result = getResult()
       val serializedResult = serializeResult(result)
       context.localDagScheduler.handleTaskCompletion(this, Some(serializedResult))
@@ -74,17 +73,6 @@ private[spark] abstract class ExecutionMonotask[T, U: ClassTag](
     } finally {
       context.markTaskCompleted()
     }
-  }
-
-
-  /**
-   * Registers all of the accumulables that were registered during task de-serialization (these
-   * need to be re-registered because task de-serialization may have run in a different thread,
-   * because it happened as a separate ComputeMonotask).
-   */
-  private def registerAccumulables() {
-    Accumulators.registeredAccumulables.get().clear()
-    context.accumulators.foreach(a => Accumulators.register(a._2, false))
   }
 
   private def serializeResult(result: U): ByteBuffer = {

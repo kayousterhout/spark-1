@@ -16,7 +16,7 @@
 
 package org.apache.spark.monotasks.compute
 
-import org.apache.spark.Logging
+import org.apache.spark.{Accumulators, Logging}
 import org.apache.spark.util.Utils
 
 private[spark] class ComputeScheduler() extends Logging {
@@ -26,7 +26,7 @@ private[spark] class ComputeScheduler() extends Logging {
   //      number of threads; eventually, we'll want a smarter queueing strategy.
   private val computeThreadpool = Utils.newDaemonFixedThreadPool(threads, "compute-monotask-thread")
 
-  logInfo(s"Started ComputeScheduler with $threads parallel threads")
+  logDebug(s"Started ComputeScheduler with $threads parallel threads")
 
   def submitTask(monotask: ComputeMonotask) {
     computeThreadpool.execute(new Runnable {
@@ -38,6 +38,7 @@ private[spark] class ComputeScheduler() extends Logging {
         //       manager is the same for all tasks in an executor).
         Thread.currentThread.setContextClassLoader(
           monotask.context.dependencyManager.replClassLoader)
+        Accumulators.registeredAccumulables.set(monotask.context.accumulators)
         monotask.execute()
       }
     })
