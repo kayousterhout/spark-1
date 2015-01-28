@@ -27,7 +27,7 @@ import org.apache.spark.util.CompletionIterator
 
 /**
  * Handles creating network monotasks to read shuffle data over the network. Also provides
- * provides functionality for deserializing, aggregating, and sorting the result.
+ * functionality for deserializing, aggregating, and sorting the result.
  *
  * Each task that performs a shuffle should create one instance of this class.  The class stores
  * the intermediate block IDs used to store the shuffle data in the memory store after network
@@ -99,6 +99,11 @@ class ShuffleReader[K, V, C](
         // TODO: handle case where the block doesn't exist.
         val bufferMessage = context.env.blockManager.memoryStore.getValue(monotaskResultBlockId).get
           .asInstanceOf[BufferMessage]
+        // Remove the data from the memory store.
+        // TODO: This should be handled by the LocalDagScheduler, so that it can ensure results
+        // get deleted in all possible failure scenarios.
+        // https://github.com/NetSys/spark-monotasks/issues/8
+        context.env.blockManager.memoryStore.remove(monotaskResultBlockId)
         val blockMessageArray = BlockMessageArray.fromBufferMessage(bufferMessage)
         blockMessageArray.flatMap { blockMessage =>
           if (blockMessage.getType != BlockMessage.TYPE_GOT_BLOCK) {

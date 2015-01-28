@@ -21,14 +21,16 @@ import java.io.File
 
 import scala.reflect.ClassTag
 
-import org.scalatest.FunSuite
+import org.scalatest.{FunSuite, Ignore}
 
 import org.apache.spark.SparkContext._
 import org.apache.spark.rdd._
 import org.apache.spark.storage.{BlockId, StorageLevel, TestBlockId}
 import org.apache.spark.util.Utils
 
-class CheckpointSuite extends FunSuite with LocalSparkContext with Logging {
+// TODO: Re-enable these tests once checkpointing is supported for monotasks:
+// https://github.com/NetSys/spark-monotasks/issues/9
+@Ignore class CheckpointSuite extends FunSuite with LocalSparkContext with Logging {
   var checkpointDir: File = _
   val partitioner = new HashPartitioner(2)
 
