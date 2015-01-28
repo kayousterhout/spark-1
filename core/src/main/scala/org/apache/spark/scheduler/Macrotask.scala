@@ -19,10 +19,11 @@ package org.apache.spark.scheduler
 import java.io.{DataInputStream, DataOutputStream, ByteArrayOutputStream}
 import java.nio.ByteBuffer
 
-import scala.collection.mutable.HashMap
+import scala.collection.mutable.{HashMap, HashSet}
 
 import org.apache.spark._
 import org.apache.spark.monotasks.Monotask
+import org.apache.spark.rdd.RDD
 import org.apache.spark.serializer.SerializerInstance
 import org.apache.spark.util.ByteBufferInputStream
 
@@ -40,9 +41,44 @@ import org.apache.spark.util.ByteBufferInputStream
  * ShuffleMapMacroTask executes the task and divides the task output to multiple buckets (based on
  * the task's partitioner).
  */
-private[spark] abstract class Macrotask[T](val stageId: Int, val partition: Partition)
+private[spark] abstract class Macrotask[T](val stageId: Int, val partition: Partition,
+    rdd: RDD[_])
   extends Serializable with Logging {
   def preferredLocations: Seq[TaskLocation] = Nil
+
+  /**
+   * Maps NarrowDependencies to the partitions of the parent RDD for that dependency. This should
+   * include all NarrowDependencies that will be traversed as part of completing this macrotask and
+   * all associated partitions for each NarrowDependency. This is necessary for
+   * computing the monotasks for this macrotask: in order to compute the monotasks, we need to walk
+   * through all of the rdds and associated partitions that will be computed as part of this task.
+   * The NarrowDependency includes a pointer to the associated parent RDD, but the pointer to the
+   * parent Partition is stored as part of the child Partition in formats specific to the Partition
+   * subclasses, hence the need for this additional mapping.
+   *
+   * Indexed on the Dependency id rather than directly on the dependency because of the way
+   * serialization happens. This object is serialized separately from the RDD object, so if
+   * Dependency objects were used as keys here, they will end up being different than the
+   * Dependency objects in the RDD class, so this mapping would no longer be valid once
+   * deserialized.
+   */
+  val dependencyIdToPartitions = new HashMap[Long, HashSet[Partition]]()
+  constructDependencyToPartitionsMap(rdd, partition.index)
+
+  private def constructDependencyToPartitionsMap(rdd: RDD[_], partitionIndex: Int) {
+    rdd.dependencies.foreach {
+      case narrowDependency: NarrowDependency[_] =>
+        val parentPartitions = dependencyIdToPartitions.getOrElseUpdate(
+          narrowDependency.id, new HashSet[Partition])
+
+        narrowDependency.getParents(partitionIndex).foreach { parentPartitionIndex =>
+          val parentPartition = narrowDependency.rdd.partitions(parentPartitionIndex)
+          if (parentPartitions.add(parentPartition)) {
+            constructDependencyToPartitionsMap(narrowDependency.rdd, parentPartitionIndex)
+          }
+        }
+    }
+  }
 
   // Map output tracker epoch. Will be set by TaskScheduler.
   var epoch: Long = -1

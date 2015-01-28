@@ -34,9 +34,10 @@ private[spark] class ResultMacrotask[T, U: ClassTag](
     stageId: Int,
     taskBinary: Broadcast[Array[Byte]],
     partition: Partition,
+    rdd: RDD[_],
     @transient locs: Seq[TaskLocation],
     val outputId: Int)
-  extends Macrotask[U](stageId, partition) with Serializable with Logging {
+  extends Macrotask[U](stageId, partition, rdd) with Serializable with Logging {
 
   @transient private[this] val preferredLocs: Seq[TaskLocation] = {
     if (locs == null) Nil else locs.toSet.toSeq
@@ -55,7 +56,7 @@ private[spark] class ResultMacrotask[T, U: ClassTag](
       ByteBuffer.wrap(taskBinary.value), context.dependencyManager.replClassLoader)
 
     val inputMonotasks: Seq[Monotask] =
-      rdd.dependencies.flatMap(_.getMonotasks(context, partition.index))
+      rdd.getInputMonotasks(partition, dependencyIdToPartitions, context)
     val computeMonotask = new ResultMonotask(context, rdd, partition, func)
     // Create dependency graph: compute monotask depends on all input monotasks.
     inputMonotasks.foreach(computeMonotask.addDependency(_))

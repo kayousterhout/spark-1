@@ -35,8 +35,9 @@ private[spark] class ShuffleMapMacrotask(
     stageId: Int,
     taskBinary: Broadcast[Array[Byte]],
     partition: Partition,
+    rdd: RDD[_],
     @transient private var locs: Seq[TaskLocation])
-  extends Macrotask[MapStatus](stageId, partition) {
+  extends Macrotask[MapStatus](stageId, partition, rdd) {
 
   @transient private val preferredLocs: Seq[TaskLocation] = {
     if (locs == null) Nil else locs.toSet.toSeq
@@ -51,7 +52,7 @@ private[spark] class ShuffleMapMacrotask(
       ByteBuffer.wrap(taskBinary.value), context.dependencyManager.replClassLoader)
 
     val inputMonotasks: Seq[Monotask] =
-      rdd.dependencies.flatMap(_.getMonotasks(context, partition.index))
+      rdd.getInputMonotasks(partition, dependencyIdToPartitions, context)
     val computeMonotask = new ShuffleMapMonotask(context, rdd, partition, dep)
 
     // Create dependency graph: compute monotask depends on all input monotasks.

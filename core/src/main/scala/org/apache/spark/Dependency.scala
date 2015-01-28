@@ -33,6 +33,10 @@
 
 package org.apache.spark
 
+import java.util.concurrent.atomic.AtomicLong
+
+import scala.collection.mutable.{HashMap, HashSet}
+
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.monotasks.Monotask
 import org.apache.spark.rdd.RDD
@@ -45,6 +49,8 @@ import org.apache.spark.shuffle.ShuffleReader
  */
 @DeveloperApi
 abstract class Dependency[T] extends Serializable {
+  val id = Dependency.newId()
+
   def rdd: RDD[T]
 
   /**
@@ -52,9 +58,13 @@ abstract class Dependency[T] extends Serializable {
    *
    * Current, all implementations assume that the monotasks for a dependency do not depend
    * on one another, and that the only dependency is that the compute monotask for the RDD
-   * being computed depends on the monotasks for its dependencies. This assumption will break
-   * once we add support for monotasks to, for example, cache intermediate data. */
-  def getMonotasks(context: TaskContext, partitionId: Int): Seq[Monotask]
+   * being computed depends on the monotasks for its dependencies.
+   */
+  def getMonotasks(
+    partition: Partition,
+    dependencyIdToPartitions: HashMap[Long, HashSet[Partition]],
+    context: TaskContext)
+    : Seq[Monotask]
 }
 
 
@@ -74,11 +84,19 @@ abstract class NarrowDependency[T](_rdd: RDD[T]) extends Dependency[T] {
 
   override def rdd: RDD[T] = _rdd
 
-  override def getMonotasks(context: TaskContext, partitionId: Int): Seq[Monotask] = {
+  override def getMonotasks(
+    partition: Partition,
+    dependencyIdToPartitions: HashMap[Long, HashSet[Partition]],
+    context: TaskContext)
+    : Seq[Monotask] = {
     // For each of the parent partitions, get the input monotasks to generate that partition.
-    getParents(partitionId).flatMap { parentPartitionId =>
-      rdd.dependencies.flatMap { dependency =>
-        dependency.getMonotasks(context, parentPartitionId)
+    val partitions = dependencyIdToPartitions.get(this.id)
+    if (partitions.isEmpty) {
+      throw new SparkException("Missing parent partition information for partition " +
+        s"${partition.index} of dependency $this (should have been set in DAGScheduler)")
+    } else {
+      partitions.get.toArray.flatMap { parentPartition =>
+        rdd.getInputMonotasks(parentPartition, dependencyIdToPartitions, context)
       }
     }
   }
@@ -115,9 +133,13 @@ class ShuffleDependency[K, V, C](
   /** Helps with reading the shuffle data associated with this dependency. Set by getMonotasks(). */
   var shuffleReader: Option[ShuffleReader[K, V, C]] = None
 
-  override def getMonotasks(context: TaskContext, partitionId: Int): Seq[Monotask] = {
+  override def getMonotasks(
+    partition: Partition,
+    dependencyIdToPartitions: HashMap[Long, HashSet[Partition]],
+    context: TaskContext)
+    : Seq[Monotask] = {
     // TODO: should the shuffle reader code just be part of the dependency?
-    shuffleReader = Some(new ShuffleReader(this, partitionId, context))
+    shuffleReader = Some(new ShuffleReader(this, partition.index, context))
     shuffleReader.get.getReadMonotasks()
   }
 }
@@ -152,4 +174,10 @@ class RangeDependency[T](rdd: RDD[T], inStart: Int, outStart: Int, length: Int)
       Nil
     }
   }
+}
+
+private[spark] object Dependency {
+  val nextId = new AtomicLong(0)
+
+  def newId(): Long = nextId.getAndIncrement()
 }
