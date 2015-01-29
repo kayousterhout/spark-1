@@ -24,7 +24,8 @@ import org.apache.spark.scheduler.Macrotask
 /**
  * A ComputeMonotask responsible for preparing the rest of the monotasks corresponding to the
  * macrotask (e.g., by first deserializing the byte buffer to determine what kind of macro
- * task this is). */
+ * task this is).
+ */
 private[spark] class PrepareMonotask(context: TaskContext, val serializedTask: ByteBuffer)
   extends ComputeMonotask(context) {
 
@@ -43,7 +44,6 @@ private[spark] class PrepareMonotask(context: TaskContext, val serializedTask: B
 
     context.initialize(macrotask.stageId, macrotask.partition.index)
 
-    // TODO: what is the point of this?
     SparkEnv.get.mapOutputTracker.updateEpoch(macrotask.epoch)
 
     context.localDagScheduler.submitMonotasks(macrotask.getMonotasks(context))

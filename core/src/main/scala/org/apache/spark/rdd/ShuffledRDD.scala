@@ -17,13 +17,9 @@
 
 package org.apache.spark.rdd
 
-import scala.Some
-import scala.collection.mutable.ArrayBuffer
-
 import org.apache.spark._
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.serializer.Serializer
-import org.apache.spark.storage._
 
 private[spark] class ShuffledRDDPartition(val idx: Int) extends Partition {
   override val index = idx
@@ -89,11 +85,14 @@ class ShuffledRDD[K, V, C](
   }
 
   override def compute(split: Partition, context: TaskContext): Iterator[(K, C)] = {
-    dependencies.head.asInstanceOf[ShuffleDependency[K, V, C]].shuffleReader match {
+    val shuffleDependency = dependencies.head.asInstanceOf[ShuffleDependency[K, V, C]]
+    shuffleDependency.shuffleReader match {
       case Some(shuffleReader) =>
         shuffleReader.getDeserializedAggregatedSortedData().asInstanceOf[Iterator[(K, C)]]
       case None =>
-        throw new SparkException("No shuffle reader found!")
+        throw new SparkException(
+          s"No shuffle reader found for shuffle ${shuffleDependency.shuffleId} (should have " +
+            "been set when creating the monotasks for this Macrotask)")
     }
   }
 

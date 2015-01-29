@@ -52,18 +52,4 @@ class ExecutionMonotaskSuite extends FunSuite with BeforeAndAfterEach {
     verify(localDagScheduler).handleTaskCompletion(meq(monotask), any())
     assert(taskContext.isCompleted)
   }
-
-  test("execute tells DAG scheduler and marks task as completed when task throws exceptions") {
-    val monotask = new ExecutionMonotask[Int, Int](taskContext, null, null) {
-      override def getResult(): Int = {
-        throw new Exception("task failed")
-      }
-    }
-
-    monotask.executeAndHandleExceptions()
-    /* When an exception is thrown, the execute() method should still mark the task context as
-     * completed, and should notify the local DAG scheduler that the task has failed. */
-    assert(taskContext.isCompleted)
-    verify(localDagScheduler).handleTaskFailure(meq(monotask), any())
-  }
 }

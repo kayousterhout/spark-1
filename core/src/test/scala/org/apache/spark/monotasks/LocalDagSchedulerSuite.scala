@@ -18,14 +18,13 @@ package org.apache.spark.monotasks
 
 import java.nio.ByteBuffer
 
-import org.mockito.Mockito._
 import org.mockito.Matchers.{any, eq => meq}
+import org.mockito.Mockito._
 
 import org.scalatest.{BeforeAndAfterEach, FunSuite, Matchers}
 
 import org.apache.spark.TaskState
 import org.apache.spark.executor.ExecutorBackend
-import scala.Some
 
 class LocalDagSchedulerSuite extends FunSuite with Matchers with BeforeAndAfterEach {
   private var executorBackend: ExecutorBackend = _

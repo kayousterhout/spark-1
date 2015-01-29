@@ -24,7 +24,6 @@ import org.scalatest.FunSuite
 import org.apache.spark.SparkContext._
 
 class DependencySuite extends FunSuite with SharedSparkContext {
-
   test("getDependencyIdToPartitions: empty map returned for RDDs with no dependencies") {
     val numPartitions = 5
     val rdd = sc.makeRDD(List[(Int, Int)]((1, 2), (1, 4), (3, 1), (4, 5)))
@@ -35,7 +34,7 @@ class DependencySuite extends FunSuite with SharedSparkContext {
 
   test("getDependencyIdToPartitions: empty map returned for ShuffleDependency") {
     val numPartitions = 2
-    // Create a ShuffledRDD and ensure that getDependencIdToPartitions returns an empty map.
+    // Create a ShuffledRDD and ensure that getDependencyIdToPartitions returns an empty map.
     val rdd = sc.makeRDD(List[(Int, Int)]((1, 2), (1, 4), (3, 1), (4, 5)))
     val shuffledRdd = rdd.reduceByKey(_ + _)
 

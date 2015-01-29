@@ -37,7 +37,6 @@ import scala.language.existentials
 
 import java.io.{IOException, ObjectOutputStream}
 
-import scala.Some
 import scala.collection.mutable.ArrayBuffer
 
 import org.apache.spark._
@@ -47,7 +46,7 @@ import org.apache.spark.util.collection.{AppendOnlyMap, CompactBuffer}
 
 /** The references to rdd and splitIndex are transient because redundant information is stored
   * in the CoGroupedRDD object.  Because CoGroupedRDD is serialized separately from
-  * CoGrpupPartition, if rdd and splitIndex aren't transient, they'll be included twice in the
+  * CoGroupPartition, if rdd and splitIndex aren't transient, they'll be included twice in the
   * task closure. */
 private[spark] case class NarrowCoGroupSplitDep(
     @transient rdd: RDD[_],
@@ -65,7 +64,7 @@ private[spark] case class NarrowCoGroupSplitDep(
 
 /**
  * Stores information about the narrow dependencies used by a CoGroupedRdd.  narrowDeps maps to
- * the dependencies variable in the parent RDD: for each one to one dependency in dependencies,
+ * the dependencies variable in the parent RDD: for each OneToOneDependency in dependencies,
  * narrowDeps has a NarrowCoGroupSplitDep (describing the partition for that dependency) at the
  * corresponding index.
  */
@@ -89,7 +88,7 @@ private[spark] class CoGroupPartition(
  */
 @DeveloperApi
 class CoGroupedRDD[K](@transient var rdds: Seq[RDD[_ <: Product2[K, _]]], part: Partitioner)
-  extends RDD[(K, Array[Iterable[_]])](rdds.head.context, Nil) with Logging {
+  extends RDD[(K, Array[Iterable[_]])](rdds.head.context, Nil) {
 
   // For example, `(k, a) cogroup (k, b)` produces k -> Seq(ArrayBuffer as, ArrayBuffer bs).
   // Each ArrayBuffer is represented as a CoGroup, and the resulting Seq as a CoGroupCombiner.
@@ -158,7 +157,8 @@ class CoGroupedRDD[K](@transient var rdds: Seq[RDD[_ <: Product2[K, _]]], part: 
             shuffleReader.getDeserializedAggregatedSortedData()
           case None =>
             throw new SparkException(
-              s"No shuffle reader found for shuffle ${shuffleDependency.shuffleId}")
+              s"No shuffle reader found for shuffle ${shuffleDependency.shuffleId} (should have " +
+                "been set when creating the monotasks for this Macrotask)")
         }
         rddIterators += ((it, depNum))
     }

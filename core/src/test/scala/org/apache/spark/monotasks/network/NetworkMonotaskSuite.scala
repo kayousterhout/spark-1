@@ -78,46 +78,4 @@ class NetworkMonotaskSuite extends FunSuite with Matchers {
     verify(memoryStore).putValue(networkMonotask.resultBlockId, bufferMessage)
     verify(localDagScheduler).handleTaskCompletion(networkMonotask)
   }
-
-  /*
-  test("execute(): on failure, localDagScheduler notified") {
-    // Create the TaskContext used the the NetworkMonotask.
-    val env = mock(classOf[SparkEnv])
-    val localDagScheduler = mock(classOf[LocalDagScheduler])
-    val context = new TaskContext(env, localDagScheduler, 0, null, 0, false)
-
-    // Create the Network Monotask.
-    val testBlockManagerId = BlockManagerId("test-client", "test-client", 1)
-    val blockIds = Array[(BlockId, Long)](
-      (ShuffleBlockId(0,0,0), 5),
-      (ShuffleBlockId(0,1,0), 12),
-      (ShuffleBlockId(0,2,0), 15))
-    val networkMonotask = new NetworkMonotask(context, testBlockManagerId, blockIds, 15)
-
-    // Create the future (signaling failure) to give to the monotask for the network call.
-    val f = future {
-      throw new IOException("Send failed or we received an error ACK")
-    }
-
-    // Set up all the mocks so that the call to send a message (from the NetworkMonotask) returns
-    // the future defined above.
-    val blockManager = mock(classOf[BlockManager])
-    when(env.blockManager).thenReturn(blockManager)
-    val connectionManager = mock(classOf[ConnectionManager])
-    when(blockManager.connectionManager).thenReturn(connectionManager)
-    when(connectionManager.sendMessageReliably(any(), any())).thenReturn(f)
-    when(blockManager.futureExecContext).thenReturn(global)
-    //val memoryStore = mock(classOf[MemoryStore])
-    //when(blockManager.memoryStore).thenReturn(memoryStore)
-    // TODO: JUST MAKE THESE TESTS END-TO-END?? Basically worthless as a standalone test --
-    // have to mock out everything.
-
-    // Execute the network monotask and wait for the future to complete.
-    networkMonotask.execute()
-    Await.result(f, 5000 millis);
-
-    // This is the important part of the test: making sure the LocalDagScheduler was notified
-    // that the task failed.
-    verify(localDagScheduler).handleTaskFailure(meq(networkMonotask), any())
-  }*/
 }

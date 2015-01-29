@@ -16,8 +16,8 @@
 
 package org.apache.spark.monotasks.compute
 
-import org.mockito.Mockito._
 import org.mockito.Matchers.{any, eq => meq}
+import org.mockito.Mockito._
 
 import org.scalatest.{BeforeAndAfterEach, FunSuite}
 

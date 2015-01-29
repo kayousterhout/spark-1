@@ -16,7 +16,7 @@
 
 package org.apache.spark.scheduler
 
-import java.io.{DataInputStream, DataOutputStream, ByteArrayOutputStream}
+import java.io.{ByteArrayOutputStream, DataInputStream, DataOutputStream}
 import java.nio.ByteBuffer
 
 import scala.collection.mutable.{HashMap, HashSet}
@@ -37,11 +37,11 @@ import org.apache.spark.util.ByteBufferInputStream
  * A spark job consists of one or more stages. The very last stage in a job consists of multiple
  * ResultMacrotasks, while earlier stages consist of ShuffleMapMacrotasks. A ResultMacroTask
  * executes the task and sends the task output back to the driver application. A
- * ShuffleMapMacroTask executes the task and divides the task output to multiple buckets (based on
+ * ShuffleMapMacrotask executes the task and divides the task output to multiple buckets (based on
  * the task's partitioner).
  */
 private[spark] abstract class Macrotask[T](val stageId: Int, val partition: Partition,
-    dependencyIdToPartitions: HashMap[Long, HashSet[Partition]])
+    val dependencyIdToPartitions: HashMap[Long, HashSet[Partition]])
   extends Serializable with Logging {
   def preferredLocations: Seq[TaskLocation] = Nil
 
