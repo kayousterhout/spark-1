@@ -96,7 +96,7 @@ private[spark] class Executor(
   private val maximumResultSizeBytes =
     AkkaUtils.maxFrameSizeBytes(conf) - AkkaUtils.reservedSizeBytes
 
-  private val localDagScheduler = new LocalDagScheduler(executorBackend)
+  private val localDagScheduler = new LocalDagScheduler(executorBackend, env.blockManager)
 
   def launchTask(taskAttemptId: Long, taskName: String, serializedTask: ByteBuffer) {
     // TODO: Do we really need to propogate this task started message back to the scheduler?

@@ -79,6 +79,7 @@ private[spark] class BlockManager(
 
   private val port = conf.getInt("spark.blockManager.port", 0)
   val diskBlockManager = new DiskBlockManager(conf)
+  val blockFileManager = new BlockFileManager(conf)
   val connectionManager =
     new ConnectionManager(port, conf, securityManager, "Connection manager for block manager")
 
@@ -231,9 +232,8 @@ private[spark] class BlockManager(
       val memSize = if (memoryStore.contains(blockId)) memoryStore.getSize(blockId) else 0L
       val isOnDisk = diskStore.contains(blockId)
       val diskSize = if (isOnDisk) diskStore.getSize(blockId) else 0L
-      val diskId = if (isOnDisk) info.diskId else None
       // Assume that block is not in Tachyon
-      BlockStatus(info.level, memSize, diskSize, 0L, diskId)
+      BlockStatus(info.level, memSize, diskSize, 0L, info.diskId)
     }
   }
 
@@ -267,6 +267,23 @@ private[spark] class BlockManager(
       asyncReregister()
     }
     logDebug(s"Told master about block $blockId")
+  }
+
+  /**
+   * Tells the master about the current storage status of the specified block, if this BlockManager
+   * knows about it. This is a wrapper for the reportBlockStatus() above.
+   */
+  private def reportBlockStatus(blockId: BlockId) {
+    if (blockInfo.contains(blockId)) {
+      val info = blockInfo(blockId)
+      // Prevent concurrent access to a block's BlockInfo object.
+      info.synchronized {
+        val status = getCurrentBlockStatus(blockId, info)
+        if (status.storageLevel != StorageLevel.NONE) {
+          reportBlockStatus(blockId, info, status)
+        }
+      }
+    }
   }
 
   /**
@@ -990,6 +1007,25 @@ private[spark] class BlockManager(
 
     val stream = wrapForCompression(blockId, new ByteBufferInputStream(bytes, true))
     serializer.newInstance().deserializeStream(stream).asIterator
+  }
+
+  /**
+   * Updates the specified block's BlockInfo object to reflect that the block is now stored on a
+   * particular disk. If the BlockManager does not have a BlockInfo object corresponding to the
+   * block, one is created.
+   */
+  def updateBlockInfoOnWrite(blockId: BlockId, diskId: String) {
+    if (blockInfo.contains(blockId)) {
+      val info = blockInfo(blockId)
+      // Prevent concurrent access to a block's BlockInfo object.
+      info.synchronized {
+        info.diskId = Some(diskId)
+      }
+      // TODO: Update info.level to indicate that the block is now stored on disk.
+    } else {
+      blockInfo(blockId) = new BlockInfo(StorageLevel.DISK_ONLY, true, Some(diskId))
+    }
+    reportBlockStatus(blockId)
   }
 
   def stop(): Unit = {

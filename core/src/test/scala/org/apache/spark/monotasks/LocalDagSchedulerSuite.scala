@@ -23,16 +23,22 @@ import org.mockito.Mockito._
 
 import org.scalatest.{BeforeAndAfterEach, FunSuite, Matchers}
 
-import org.apache.spark.TaskState
+import org.apache.spark.{LocalSparkContext, SparkConf, SparkContext, SparkEnv, TaskState}
 import org.apache.spark.executor.ExecutorBackend
 
-class LocalDagSchedulerSuite extends FunSuite with Matchers with BeforeAndAfterEach {
+class LocalDagSchedulerSuite extends FunSuite with BeforeAndAfterEach with LocalSparkContext
+  with Matchers {
+
   private var executorBackend: ExecutorBackend = _
   private var localDagScheduler: LocalDagScheduler = _
 
   override def beforeEach() {
+    /* This is required because the LocalDagScheduler takes as input a BlockManager, which is
+     * obtained from SparkEnv. Pass in false to the SparkConf constructor so that the same
+     * configuration is loaded regardless of the system properties. */
+    sc = new SparkContext("local", "test", new SparkConf(false))
     executorBackend = mock(classOf[ExecutorBackend])
-    localDagScheduler = new LocalDagScheduler(executorBackend)
+    localDagScheduler = new LocalDagScheduler(executorBackend, SparkEnv.get.blockManager)
   }
 
   test("submitMonotasks: tasks with no dependencies are run immediately") {

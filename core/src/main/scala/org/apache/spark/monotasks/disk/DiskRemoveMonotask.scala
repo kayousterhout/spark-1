@@ -14,20 +14,18 @@
  * limitations under the License.
  */
 
-package org.apache.spark.monotasks
+package org.apache.spark.monotasks.disk
 
-import scala.collection.mutable.HashSet
+import org.apache.spark.TaskContext
+import org.apache.spark.storage.BlockId
 
-import org.scalatest.{FunSuite, Matchers}
+/** Contains the parameters and logic necessary to remove a single block from a single disk. */
+private[spark] class DiskRemoveMonotask(
+    context: TaskContext,
+    blockId: BlockId,
+    val diskId: String)
+  extends DiskMonotask(context, blockId) {
 
-class MonotaskSuite extends FunSuite with Matchers {
-  test("monotasks are assigned unique IDs") {
-    val numMonotasks = 10
-    val monotaskList = Array.fill[Monotask](numMonotasks)(new SimpleMonotask(0))
-
-    // Make sure that all of the IDs are unique.
-    val monotaskIdSet = new HashSet[Long]()
-    monotaskList.foreach(monotaskIdSet += _.taskId)
-    assert(numMonotasks === monotaskIdSet.size)
-  }
+  override def execute(): Boolean =
+    blockManager.blockFileManager.getBlockFile(blockId, diskId).map(_.delete()).getOrElse(false)
 }

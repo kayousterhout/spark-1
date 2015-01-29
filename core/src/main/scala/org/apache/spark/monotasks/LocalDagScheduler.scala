@@ -23,7 +23,9 @@ import scala.collection.mutable.HashSet
 import org.apache.spark.{Logging, TaskState}
 import org.apache.spark.executor.ExecutorBackend
 import org.apache.spark.monotasks.compute.{ComputeMonotask, ComputeScheduler}
+import org.apache.spark.monotasks.disk.{DiskMonotask, DiskScheduler}
 import org.apache.spark.monotasks.network.{NetworkMonotask, NetworkScheduler}
+import org.apache.spark.storage.BlockManager
 
 /**
  * LocalDagScheduler tracks running and waiting monotasks. When all of a monotask's
@@ -34,12 +36,13 @@ import org.apache.spark.monotasks.network.{NetworkMonotask, NetworkScheduler}
  *       than having all methods be synchronized (which can lead to monotasks that block waiting
  *       for the local dag scheduler).
  */
-private[spark] class LocalDagScheduler(executorBackend: ExecutorBackend) extends Logging {
+private[spark] class LocalDagScheduler(
+    executorBackend: ExecutorBackend, val blockManager: BlockManager)
+  extends Logging {
 
   val computeScheduler = new ComputeScheduler
   val networkScheduler = new NetworkScheduler
-  // TODO: Comment this back in once the disk scheduler has been added.
-  // val diskScheduler = new DiskScheduler
+  val diskScheduler = new DiskScheduler(blockManager)
 
   /* IDs of monotasks that are waiting for dependencies to be satisfied. This exists solely for
    * debugging/testing and is not needed for maintaining correctness. */
@@ -163,8 +166,7 @@ private[spark] class LocalDagScheduler(executorBackend: ExecutorBackend) extends
     monotask match {
       case computeMonotask: ComputeMonotask => computeScheduler.submitTask(computeMonotask)
       case networkMonotask: NetworkMonotask => networkScheduler.submitTask(networkMonotask)
-      // TODO: Comment this in once the disk scheduler has been added.
-      // case diskMonotask: DiskMonotask => diskScheduler.submitTask(diskMonotask)
+      case diskMonotask: DiskMonotask => diskScheduler.submitTask(diskMonotask)
       case _ => logError("Received unexpected type of monotask")
     }
     /* Add the monotask to runningMonotasks before removing it from waitingMonotasks to avoid
