@@ -155,16 +155,18 @@ class TaskMetrics extends Serializable {
    * Aggregates shuffle read metrics for all registered dependencies into shuffleReadMetrics.
    */
   private[spark] def updateShuffleReadMetrics() = synchronized {
-    val merged = new ShuffleReadMetrics()
-    for (depMetrics <- depsShuffleReadMetrics) {
-      merged.fetchWaitTime += depMetrics.fetchWaitTime
-      merged.localBlocksFetched += depMetrics.localBlocksFetched
-      merged.remoteBlocksFetched += depMetrics.remoteBlocksFetched
-      merged.remoteBytesRead += depMetrics.remoteBytesRead
-      merged.localReadBytes += depMetrics.localReadBytes
-      merged.localReadTime += depMetrics.localReadTime
+    if (!depsShuffleReadMetrics.isEmpty) {
+      val merged = new ShuffleReadMetrics()
+      for (depMetrics <- depsShuffleReadMetrics) {
+        merged.fetchWaitTime += depMetrics.fetchWaitTime
+        merged.localBlocksFetched += depMetrics.localBlocksFetched
+        merged.remoteBlocksFetched += depMetrics.remoteBlocksFetched
+        merged.remoteBytesRead += depMetrics.remoteBytesRead
+        merged.localReadBytes += depMetrics.localReadBytes
+        merged.localReadTime += depMetrics.localReadTime
+      }
+      _shuffleReadMetrics = Some(merged)
     }
-    _shuffleReadMetrics = Some(merged)
   }
 
   /**
