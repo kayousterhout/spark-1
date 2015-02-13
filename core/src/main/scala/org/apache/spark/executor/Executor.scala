@@ -185,6 +185,7 @@ private[spark] class Executor(
         val (taskFiles, taskJars, taskBytes) = Task.deserializeWithDependencies(serializedTask)
         updateDependencies(taskFiles, taskJars)
         task = ser.deserialize[Task[Any]](taskBytes, Thread.currentThread.getContextClassLoader)
+        val broadcastAfterDeserialization = Broadcast.blockedNanos.get()
 
         // If this task has been killed before we deserialized it, let's quit now. Otherwise,
         // continue executing the task.
@@ -236,6 +237,9 @@ private[spark] class Executor(
           m.executorDeserializeTime = taskStart - deserializeStartTime
           m.executorRunTime = taskFinish - taskStart
           m.broadcastBlockedNanos = Broadcast.blockedNanos.get()
+          logInfo(
+            s"KBRO: total ${Broadcast.blockedNanos.get()}; after deser: " +
+            s"$broadcastAfterDeserialization")
           m.jvmGCTime = gcTime - startGCTime
           m.resultSerializationTime = afterSerialization - beforeSerialization
           // Read the output write time for all tasks, even though they may not have written output
