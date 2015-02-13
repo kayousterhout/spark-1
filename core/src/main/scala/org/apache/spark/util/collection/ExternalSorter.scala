@@ -374,10 +374,12 @@ private[spark] class ExternalSorter[K, V, C](
     // Create our file writers if we haven't done so yet
     if (partitionWriters == null) {
       curWriteMetrics = new ShuffleWriteMetrics()
+      val openStartTime = System.nanoTime
       partitionWriters = Array.fill(numPartitions) {
         val (blockId, file) = diskBlockManager.createTempBlock()
         blockManager.getDiskWriter(blockId, file, ser, fileBufferSize, curWriteMetrics).open()
       }
+      curWriteMetrics.shuffleOpenTimeNanos += System.nanoTime - openStartTime
     }
 
     val it = collection.iterator  // No need to sort stuff, just write each element out
