@@ -43,3 +43,4 @@ class CpuUtilization(startCounters: CpuCounters, endCounters: CpuCounters) exten
 
   def this(startCounters: CpuCounters) = this(startCounters, new CpuCounters())
 }
+
