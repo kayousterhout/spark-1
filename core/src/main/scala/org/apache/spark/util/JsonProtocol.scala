@@ -249,11 +249,13 @@ private[spark] object JsonProtocol {
     ("Result Serialization Time" -> taskMetrics.resultSerializationTime) ~
     ("Memory Bytes Spilled" -> taskMetrics.memoryBytesSpilled) ~
     ("Disk Bytes Spilled" -> taskMetrics.diskBytesSpilled) ~
-    ("Broadcast Time") -> taskMetrics.broadcastBlockedNanos ~
+    ("Broadcast Time" -> taskMetrics.broadcastBlockedNanos ~
     ("Shuffle Read Metrics" -> shuffleReadMetrics) ~
     ("Shuffle Write Metrics" -> shuffleWriteMetrics) ~
     ("Input Metrics" -> inputMetrics) ~
-    ("Updated Blocks" -> updatedBlocks)
+    ("Updated Blocks" -> updatedBlocks) ~
+    ("Output Write Blocked Nanos" -> taskMetrics.outputWriteBlockedNanos) ~
+    ("Output Bytes" -> taskMetrics.outputBytes)
   }
 
   def shuffleReadMetricsToJson(shuffleReadMetrics: ShuffleReadMetrics): JValue = {
@@ -274,7 +276,10 @@ private[spark] object JsonProtocol {
 
   def inputMetricsToJson(inputMetrics: InputMetrics): JValue = {
     ("Data Read Method" -> inputMetrics.readMethod.toString) ~
-    ("Bytes Read" -> inputMetrics.bytesRead)
+    ("Bytes Read" -> inputMetrics.bytesRead) ~
+    ("Packets Read" -> inputMetrics.numPackets) ~
+    ("Read Time Nanos" -> inputMetrics.readTimeNanos) ~
+    ("Hdfs Open Time Nanos" -> inputMetrics.openTimeNanos)
   }
 
   def taskEndReasonToJson(taskEndReason: TaskEndReason): JValue = {
