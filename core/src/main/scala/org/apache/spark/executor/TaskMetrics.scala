@@ -307,4 +307,10 @@ class ShuffleWriteMetrics extends Serializable {
    * Not included in shuffleWriteTime.
    */
   @volatile var shuffleOpenTimeNanos: Long = _
+
+  /**
+   * Time spent cleaning up after writing the shuffle files (e.g., deleting intermediate files
+   * used in the sort-based shuffle).
+   */
+  @volatile var shuffleCloseTimeNanos: Long = _
 }

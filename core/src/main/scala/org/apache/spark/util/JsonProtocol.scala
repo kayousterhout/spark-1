@@ -321,7 +321,8 @@ private[spark] object JsonProtocol {
   def shuffleWriteMetricsToJson(shuffleWriteMetrics: ShuffleWriteMetrics): JValue = {
     ("Shuffle Bytes Written" -> shuffleWriteMetrics.shuffleBytesWritten) ~
     ("Shuffle Write Time" -> shuffleWriteMetrics.shuffleWriteTime) ~
-    ("Shuffle Open Time" -> shuffleWriteMetrics.shuffleOpenTimeNanos)
+    ("Shuffle Open Time" -> shuffleWriteMetrics.shuffleOpenTimeNanos) ~
+    ("Shuffle Close Time" -> shuffleWriteMetrics.shuffleCloseTimeNanos)
   }
 
   def inputMetricsToJson(inputMetrics: InputMetrics): JValue = {
