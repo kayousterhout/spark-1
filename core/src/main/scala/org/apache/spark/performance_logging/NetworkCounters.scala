@@ -25,7 +25,11 @@ case class NetworkCounters() extends Serializable {
   var receivedPackets = 0L
   var transmittedBytes = 0L
   var transmittedPackets = 0L
-  Source.fromFile(s"/proc/${Utils.getPid()}/net/dev").getLines().foreach { line =>
+  // Could also read per-process counters from s"/proc/${Utils.getPid()}/net/dev", but (a) this
+  // doesn't work on m2.4xlarge instances (it's just the same as the total counters) and (b) if it
+  // did work, it wouldn't include the HDFS network data (because that happens in a separate
+  // process) which can be important to understanding utilization.
+  Source.fromFile(s"/proc/net/dev").getLines().foreach { line =>
     if (line.contains(":") && !line.contains("lo")) {
       val counts = line.split(":")(1).split(" ").filter(_.length > 0).map(_.toLong)
       receivedBytes += counts(NetworkCounters.RECEIVED_BYTES_INDEX)
