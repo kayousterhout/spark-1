@@ -170,6 +170,10 @@ private[spark] class Executor(
     }
 
     override def run() {
+      val startCpuCounters = new CpuCounters()
+      val startNetworkCounters = new NetworkCounters()
+      val startDiskCounters = new DiskCounters()
+
       val deserializeStartTime = System.currentTimeMillis()
       Thread.currentThread.setContextClassLoader(replClassLoader)
       val ser = SparkEnv.get.closureSerializer.newInstance()
@@ -211,10 +215,6 @@ private[spark] class Executor(
         org.apache.hadoop.hdfs.DFSOutputStream.bytesWritten.set(0L)
         org.apache.hadoop.hdfs.RemoteBlockReader2.readTimeNanos.set(0L)
         org.apache.hadoop.hdfs.RemoteBlockReader2.openTimeNanos.set(0L)
-
-        val startCpuCounters = new CpuCounters()
-        val startNetworkCounters = new NetworkCounters()
-        val startDiskCounters = new DiskCounters()
 
         val value = task.run(taskId.toInt)
         val taskFinish = System.currentTimeMillis()
