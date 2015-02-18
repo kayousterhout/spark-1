@@ -1,5 +1,5 @@
-// This is a hack until parquet has better support for partitioning.
-package org.apache.spark.sql.parquet
+// scalastyle:off
+package org.apache.spark.sql.parquet // This is a hack until parquet has better support for partitioning.
 
 import java.io.File
 import java.text.SimpleDateFormat
@@ -7,27 +7,37 @@ import java.util.Date
 
 import _root_.parquet.hadoop.ParquetOutputFormat
 import _root_.parquet.hadoop.util.ContextUtil
+import org.apache.hadoop.fs.Path
 import org.apache.hadoop.mapreduce._
+import org.apache.hadoop.mapred.{FileOutputFormat, JobConf}
+import org.apache.hadoop.mapreduce.lib.input.{FileInputFormat => NewFileInputFormat}
 import org.apache.hadoop.mapreduce.lib.output.{FileOutputFormat => NewFileOutputFormat}
 import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.hadoop.conf.Configuration
 
+import org.apache.spark.Logging
 import org.apache.spark.SerializableWritable
 import org.apache.spark.mapreduce.SparkHadoopMapReduceUtil
 import org.apache.spark.sql._
-import org.apache.spark.sql.catalyst.analysis.UnresolvedRelation
+import org.apache.spark.sql.catalyst.analysis.{UnresolvedRelation, Star}
 import org.apache.spark.sql.catalyst.expressions._
+import org.apache.spark.sql.catalyst.planning.ExtractEquiJoinKeys
+import org.apache.spark.sql.catalyst.plans.Inner
+import org.apache.spark.sql.hive.HiveShim
 import org.apache.spark.sql.hive.HiveMetastoreTypes
+import org.apache.spark.storage.StorageLevel
+
+import org.apache.spark.sql.catalyst.{ScalaReflection, planning}
 
 import scala.sys.process._
 import scala.concurrent._
+import scala.concurrent.duration._
 import ExecutionContext.Implicits.global
 
 abstract class TableType
 case object DimensionTable extends TableType
 case class FactTable(partitionColumn: String) extends TableType
 
-// scalastyle: off
 case class BenchmarkConfiguration(
     scaleFactor: Int,
     useDecimal: Boolean,
@@ -65,8 +75,17 @@ class TPCDS(
     resultsLocation: String = "/databricks/perf/tpcds/",
     partitionFactTables: Boolean = true,
     useDecimal: Boolean = true,
-    maxRowsPerPartitions: Int = 20 * 1000 * 1000) extends Serializable with SparkHadoopMapReduceUtil {
+    maxRowsPerPartitions: Int = 20 * 1000 * 1000) extends Serializable with Logging with SparkHadoopMapReduceUtil {
   import sqlContext._
+
+ /* REQUIRED SETUP on DB CLOUD...
+dbutils.fs.put("/databricks/init/tpcds.setup",
+"""
+apt-get install -y wget
+wget http://databricks-michael.s3.amazonaws.com/tpcds-kit.tgz
+tar zxvf tpcds-kit.tgz
+""", true)
+   */
 
   def baseDir = s"$dataLocation/scaleFactor=$scaleFactor/useDecimal=$useDecimal"
 
@@ -247,6 +266,10 @@ class TPCDS(
     }
   }
 
+  /**
+   * Registers all of the tables (should only be called after data has been loaded using
+   * checkData()).
+   */
   def parquetTables(): Unit = {
     tables.foreach(_.createTempTable())
   }
@@ -274,7 +297,6 @@ class TPCDS(
         val parallel = if (partitions > 1) s"-parallel $partitions -child $i" else ""
         val commands = Seq(
           "bash", "-c",
-          s"cd $localToolsDir && ./dsdgen -table $name -filter Y -scale $scaleFactor $parallel")
           s"cd $localToolsDir && ./dsdgen -table $name -filter Y -scale $scaleFactor $parallel")
         println(commands)
         commands.lines
@@ -365,6 +387,7 @@ class TPCDS(
       sql(s"ANALYZE TABLE $name COMPUTE STATISTICS noscan")
     }
 
+    /** Registers the given table. */
     def createTempTable(): Unit = {
       sql(
         s"""
@@ -401,6 +424,16 @@ class TPCDS(
               output.find(_.name == partitioningColumn).get,
               output)
 
+          val formatter = new SimpleDateFormat("yyyyMMddHHmm")
+          val jobTrackerId = formatter.format(new Date())
+          // TODO: this 0 is a bad idea -- need a unique stage id?
+          val stageId = 15
+          val jobAttemptId = newTaskAttemptID(jobTrackerId, stageId, isMap=true, 0, 0)
+          val outputFormat = job.getOutputFormatClass.newInstance()
+          val jobTaskContext = newTaskAttemptContext(conf.value, jobAttemptId)
+          val jobCommitter = outputFormat.getOutputCommitter(jobTaskContext)
+          jobCommitter.setupJob(jobTaskContext)
+
 
           // TODO: clusterBy would be faster than orderBy
           convertedData.where(IsNotNull(partitioningColumn.attr)).orderBy(partitioningColumn.attr.asc).queryExecution.toRdd.foreachPartition { iter =>
@@ -423,6 +456,7 @@ class TPCDS(
                 println(s"Starting partition $partition")
                 if (writer != null) {
                   writer.close(hadoopContext)
+                  logInfo("KMI Committing task")
                   committer.commitTask(hadoopContext)
                 }
                 writer = null
@@ -434,25 +468,24 @@ class TPCDS(
                 currentPartition = getPartition.currentValue.copy()
                 if (writer != null) {
                   writer.close(hadoopContext)
+                  logInfo("KMI Committing task 2")
                   committer.commitTask(hadoopContext)
                 }
 
-                val job = new Job(conf.value)
+                val job = new JobConf(conf.value)
                 val keyType = classOf[Void]
                 job.setOutputKeyClass(keyType)
                 job.setOutputValueClass(classOf[Row])
-                NewFileOutputFormat.setOutputPath(
+                FileOutputFormat.setOutputPath(
                   job,
                   new Path(s"$outputDir/$partitioningColumn=${currentPartition(0)}"))
-                val wrappedConf = new SerializableWritable(job.getConfiguration)
                 val formatter = new SimpleDateFormat("yyyyMMddHHmm")
                 val jobtrackerID = formatter.format(new Date())
-                val stageId = partition
 
                 val attemptNumber = 1
                 /* "reduce task" <split #> <attempt # = spark task #> */
-                val attemptId = newTaskAttemptID(jobtrackerID, partition, isMap = false, partition, attemptNumber)
-                hadoopContext = newTaskAttemptContext(wrappedConf.value, attemptId)
+                val attemptId = newTaskAttemptID("kay", 15, isMap=false, partition, attemptNumber)
+                hadoopContext = newTaskAttemptContext(job, attemptId)
                 val format = new ParquetOutputFormat[Row]
                 committer = format.getOutputCommitter(hadoopContext)
                 committer.setupTask(hadoopContext)
@@ -465,10 +498,25 @@ class TPCDS(
             }
             if (writer != null) {
               writer.close(hadoopContext)
+              logInfo("KMI committing task 3")
               committer.commitTask(hadoopContext)
             }
           }
+
           val fs = FileSystem.get(new java.net.URI(outputDir), new Configuration())
+          fs.listStatus(new Path(outputDir)).map { dir =>
+            val job = new JobConf(conf.value)
+            FileOutputFormat.setOutputPath(job, dir.getPath)
+            logInfo(s"KMI committing output for job ${dir.getPath}")
+            val attemptId = newTaskAttemptID("kay", 15, isMap = true, 0, 0)
+            val hadoopContext = newTaskAttemptContext(job, attemptId)
+            val format = new ParquetOutputFormat[Row]
+            val committer = format.getOutputCommitter(hadoopContext)
+            val jobTaskContext = newTaskAttemptContext(conf.value, attemptId)
+            committer.commitJob(jobTaskContext)
+          }
+          logInfo("KMI committing job")
+          jobCommitter.commitJob(jobTaskContext)
           fs.create(new Path(s"$outputDir/_SUCCESS")).close()
         case _ => convertedData.saveAsParquetFile(outputDir)
       }
@@ -2273,5 +2321,4 @@ class TPCDS(
 
   val query = queries.map(q => (q.name, q)).toMap
 }
-
-// scalastyle:on
+// scalatyle:off
