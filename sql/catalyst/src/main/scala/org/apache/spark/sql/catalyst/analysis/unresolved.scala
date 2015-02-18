@@ -40,7 +40,7 @@ case class UnresolvedRelation(
   override lazy val resolved = false
 }
 
-/**
+/**TPCDS.sc
  * Holds the name of an attribute that has yet to be resolved.
  */
 case class UnresolvedAttribute(name: String) extends Attribute with trees.LeafNode[Expression] {

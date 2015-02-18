@@ -1,4 +1,5 @@
-package org.apache.spark.sql.parquet // This is a hack until parquet has better support for partitioning.
+// This is a hack until parquet has better support for partitioning.
+package org.apache.spark.sql.parquet
 
 import java.io.File
 import java.text.SimpleDateFormat
@@ -6,9 +7,7 @@ import java.util.Date
 
 import _root_.parquet.hadoop.ParquetOutputFormat
 import _root_.parquet.hadoop.util.ContextUtil
-import org.apache.hadoop.fs.Path
 import org.apache.hadoop.mapreduce._
-import org.apache.hadoop.mapreduce.lib.input.{FileInputFormat => NewFileInputFormat}
 import org.apache.hadoop.mapreduce.lib.output.{FileOutputFormat => NewFileOutputFormat}
 import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.hadoop.conf.Configuration
@@ -16,25 +15,19 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.spark.SerializableWritable
 import org.apache.spark.mapreduce.SparkHadoopMapReduceUtil
 import org.apache.spark.sql._
-import org.apache.spark.sql.catalyst.analysis.{UnresolvedRelation, Star}
+import org.apache.spark.sql.catalyst.analysis.UnresolvedRelation
 import org.apache.spark.sql.catalyst.expressions._
-import org.apache.spark.sql.catalyst.planning.ExtractEquiJoinKeys
-import org.apache.spark.sql.catalyst.plans.Inner
-import org.apache.spark.sql.hive.HiveShim
 import org.apache.spark.sql.hive.HiveMetastoreTypes
-import org.apache.spark.storage.StorageLevel
-
-import org.apache.spark.sql.catalyst.{ScalaReflection, planning}
 
 import scala.sys.process._
 import scala.concurrent._
-import scala.concurrent.duration._
 import ExecutionContext.Implicits.global
 
 abstract class TableType
 case object DimensionTable extends TableType
 case class FactTable(partitionColumn: String) extends TableType
 
+// scalastyle: off
 case class BenchmarkConfiguration(
     scaleFactor: Int,
     useDecimal: Boolean,
@@ -75,18 +68,9 @@ class TPCDS(
     maxRowsPerPartitions: Int = 20 * 1000 * 1000) extends Serializable with SparkHadoopMapReduceUtil {
   import sqlContext._
 
- /* REQUIRED SETUP on DB CLOUD...
-dbutils.fs.put("/databricks/init/tpcds.setup",
-"""
-apt-get install -y wget
-wget http://databricks-michael.s3.amazonaws.com/tpcds-kit.tgz
-tar zxvf tpcds-kit.tgz
-""", true)
-   */
-
   def baseDir = s"$dataLocation/scaleFactor=$scaleFactor/useDecimal=$useDecimal"
 
-  val toolsDir = "tpcds-kit/tools"
+  val toolsDir = "/root/tpcds-kit/tools"
   val dsdgen = s"$toolsDir/dsdgen"
 
   def allResults =
@@ -290,6 +274,7 @@ tar zxvf tpcds-kit.tgz
         val parallel = if (partitions > 1) s"-parallel $partitions -child $i" else ""
         val commands = Seq(
           "bash", "-c",
+          s"cd $localToolsDir && ./dsdgen -table $name -filter Y -scale $scaleFactor $parallel")
           s"cd $localToolsDir && ./dsdgen -table $name -filter Y -scale $scaleFactor $parallel")
         println(commands)
         commands.lines
@@ -736,9 +721,9 @@ tar zxvf tpcds-kit.tgz
       case k if k.nodeName contains "Join" => k.nodeName
     }
 
-    val tablesInvolved = schemaRDD.queryExecution.logical collect {
-      case UnresolvedRelation(_, tableName, _) => tableName
-    }
+    val tablesInvolved = schemaRDD.queryExecution.logical.collect {
+      case UnresolvedRelation(_, tableNames) => tableNames
+    }.flatten
 
     /*
     Rewrite the queries by doing the join with data_dim before computing the partitions to prune.
@@ -2288,3 +2273,5 @@ tar zxvf tpcds-kit.tgz
 
   val query = queries.map(q => (q.name, q)).toMap
 }
+
+// scalastyle:on
