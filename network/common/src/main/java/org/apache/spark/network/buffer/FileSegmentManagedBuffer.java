@@ -30,6 +30,7 @@ import com.google.common.io.ByteStreams;
 import io.netty.channel.DefaultFileRegion;
 
 import org.apache.spark.network.util.JavaUtils;
+import org.apache.spark.network.util.LazyBufferedInputStream;
 import org.apache.spark.network.util.LimitedInputStream;
 import org.apache.spark.network.util.TransportConf;
 
@@ -41,6 +42,8 @@ public final class FileSegmentManagedBuffer extends ManagedBuffer {
   private final File file;
   private final long offset;
   private final long length;
+
+  private long readTimeNanos = 0L;
 
   public FileSegmentManagedBuffer(TransportConf conf, File file, long offset, long length) {
     this.conf = conf;
@@ -97,7 +100,8 @@ public final class FileSegmentManagedBuffer extends ManagedBuffer {
     try {
       is = new FileInputStream(file);
       ByteStreams.skipFully(is, offset);
-      return new LimitedInputStream(is, length);
+      InputStream baseStream = new LimitedInputStream(is, length);
+      return new LazyBufferedInputStream(new TimeTrackingInputStream(baseStream), 32*1024);
     } catch (IOException e) {
       try {
         if (is != null) {
@@ -137,6 +141,13 @@ public final class FileSegmentManagedBuffer extends ManagedBuffer {
     }
   }
 
+  /**
+   * Returns the nanoseconds spent blocked on disk while processing this buffer.
+   */
+  public Long diskReadNanos() {
+    return readTimeNanos;
+  }
+
   public File getFile() { return file; }
 
   public long getOffset() { return offset; }
@@ -150,5 +161,33 @@ public final class FileSegmentManagedBuffer extends ManagedBuffer {
       .add("offset", offset)
       .add("length", length)
       .toString();
+  }
+
+
+
+  private class TimeTrackingInputStream extends InputStream {
+    private InputStream original;
+
+    public TimeTrackingInputStream(InputStream original) {
+      this.original = original;
+    }
+
+    @Override
+    public int read() throws IOException {
+      throw new IOException("read() should never be called on TimeTrackingInputStream because it " +
+        "should always be used under a BufferedInputStream");
+    }
+
+    @Override
+    public int read(byte[] b, int off, int len) throws IOException {
+      Long startTime = System.nanoTime();
+      int bytesRead = 0;
+      try {
+        bytesRead = original.read(b, off, len);
+      } finally {
+        readTimeNanos += System.nanoTime() - startTime;
+      }
+      return bytesRead;
+    }
   }
 }

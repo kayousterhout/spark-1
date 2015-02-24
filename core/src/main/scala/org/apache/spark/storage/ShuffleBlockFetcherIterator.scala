@@ -26,7 +26,7 @@ import scala.util.{Failure, Success, Try}
 import org.apache.spark.{Logging, TaskContext}
 import org.apache.spark.network.BlockTransferService
 import org.apache.spark.network.shuffle.{BlockFetchingListener, ShuffleClient}
-import org.apache.spark.network.buffer.ManagedBuffer
+import org.apache.spark.network.buffer.{FileSegmentManagedBuffer, ManagedBuffer}
 import org.apache.spark.serializer.Serializer
 import org.apache.spark.util.{CompletionIterator, Utils}
 
@@ -228,7 +228,7 @@ final class ShuffleBlockFetcherIterator(
    * track in-memory are the ManagedBuffer references themselves.
    */
   private[this] def fetchLocalBlocks() {
-    val startTimeMillis = System.currentTimeMillis
+    val startTimeNanos = System.nanoTime
     val iter = localBlocks.iterator
     while (iter.hasNext) {
       val blockId = iter.next()
@@ -246,7 +246,10 @@ final class ShuffleBlockFetcherIterator(
           return
       }
     }
-    shuffleMetrics.localReadTime += System.currentTimeMillis - startTime
+    // We don't need to worry about double-counting here because all of the skipping for the
+    // LimitedInputStream (and possible resulting reading) is done before we create the
+    // TimeTrackingInputStream.
+    shuffleMetrics.localReadTime = System.nanoTime - startTimeNanos
   }
 
   private[this] def initialize(): Unit = {
@@ -303,10 +306,17 @@ final class ShuffleBlockFetcherIterator(
           val is = blockManager.wrapForCompression(blockId, is0)
           val iter = serializer.newInstance().deserializeStream(is).asIterator
           CompletionIterator[Any, Iterator[Any]](iter, {
-            // Once the iterator is exhausted, release the buffer and set currentResult to null
-            // so we don't release it again in cleanup.
+            // Once the iterator is exhausted, release the buffer, collect metrics about read
+            // time for data read locally, and set currentResult to null so we don't release it
+            // again in cleanup.
             currentResult = null
             buf.release()
+            buf match {
+              case fileBuffer: FileSegmentManagedBuffer =>
+                shuffleMetrics.localReadTime += fileBuffer.diskReadNanos()
+              case _ =>
+                // Do nothing.
+            }
           })
         }
     }
