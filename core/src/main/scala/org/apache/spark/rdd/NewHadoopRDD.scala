@@ -170,6 +170,11 @@ class NewHadoopRDD[K, V](
       private def close() {
         try {
           reader.close()
+          inputMetrics.openTimeNanos =
+            org.apache.hadoop.hdfs.RemoteBlockReader2.openTimeNanos.get()
+          inputMetrics.readTimeNanos =
+            (org.apache.hadoop.hdfs.RemoteBlockReader2.readTimeNanos.get() +
+              inputMetrics.openTimeNanos)
 
           // Update metrics with final amount
           if (bytesReadCallback.isDefined) {
