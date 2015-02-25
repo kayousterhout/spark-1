@@ -267,6 +267,8 @@ class HadoopRDD[K, V](
             (org.apache.hadoop.hdfs.RemoteBlockReader2.readTimeNanos.get() +
               inputMetrics.openTimeNanos)
           inputMetrics.numPackets = org.apache.hadoop.hdfs.RemoteBlockReader2.totalPacketsRead.get()
+          inputMetrics.hadoopBytesRead =
+            org.apache.hadoop.hdfs.RemoteBlockReader2.totalBytesRead.get()
           reader.close()
           if (bytesReadCallback.isDefined) {
             val bytesReadFn = bytesReadCallback.get

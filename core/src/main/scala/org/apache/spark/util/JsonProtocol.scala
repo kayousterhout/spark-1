@@ -328,6 +328,7 @@ private[spark] object JsonProtocol {
   def inputMetricsToJson(inputMetrics: InputMetrics): JValue = {
     ("Data Read Method" -> inputMetrics.readMethod.toString) ~
     ("Bytes Read" -> inputMetrics.bytesRead) ~
+    ("Hadoop Bytes Read" -> inputMetrics.hadoopBytesRead) ~
     ("Packets Read" -> inputMetrics.numPackets) ~
     ("Read Time Nanos" -> inputMetrics.readTimeNanos) ~
     ("Hdfs Open Time Nanos" -> inputMetrics.openTimeNanos)
