@@ -1,3 +1,23 @@
+/*
+ * Copyright 2013 The Regents of The University California
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/*
+ * This harness is based on (and mostly unchanged from) a TPCDS harness written by Michael Ambrust.
+ */
+
 // scalastyle:off
 package org.apache.spark.sql.parquet // This is a hack until parquet has better support for partitioning.
 
@@ -72,20 +92,11 @@ class TPCDS(
     @transient sqlContext: SQLContext,
     scaleFactor: Int = 1,
     dataLocation: String = "/data/tpcds",
-    resultsLocation: String = "/databricks/perf/tpcds/",
+    resultsLocation: String = "/perf/tpcds/",
     partitionFactTables: Boolean = true,
     useDecimal: Boolean = true,
     maxRowsPerPartitions: Int = 20 * 1000 * 1000) extends Serializable with Logging with SparkHadoopMapReduceUtil {
   import sqlContext._
-
- /* REQUIRED SETUP on DB CLOUD...
-dbutils.fs.put("/databricks/init/tpcds.setup",
-"""
-apt-get install -y wget
-wget http://databricks-michael.s3.amazonaws.com/tpcds-kit.tgz
-tar zxvf tpcds-kit.tgz
-""", true)
-   */
 
   def baseDir = s"$dataLocation/scaleFactor=$scaleFactor/useDecimal=$useDecimal"
 
@@ -120,19 +131,6 @@ tar zxvf tpcds-kit.tgz
   }
 
   def bashCommands(cmds: String*) = bashCommand(cmds.mkString(" && "))
-
-  def installDsdgen(): Unit = {
-    if (!new File(dsdgen).exists()) {
-      val logger = ProcessLogger(
-        (o: String) => println("out " + o),
-        (e: String) => println("err " + e))
-
-      bashCommands(
-        "apt-get install -y wget",
-        "wget http://databricks-michael.s3.amazonaws.com/tpcds-kit.tgz",
-        "tar zxvf tpcds-kit.tgz")
-    }
-  }
 
   val storedAsParquet = "0.12.0" match { // Change based on HiveVersion.
     case "0.12.0" =>
