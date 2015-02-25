@@ -215,7 +215,7 @@ case class InputMetrics(readMethod: DataReadMethod.Value) {
    * Total bytes read, as measured by Hadoop (may be a subset of the above, when the above is an
    * incorrect estimate).
    */
-  var hadoopBytesRead: Int = 0L
+  var hadoopBytesRead: Long = 0L
 
   /**
    * Read time.
