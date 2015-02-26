@@ -174,7 +174,8 @@ class NewHadoopRDD[K, V](
             org.apache.hadoop.hdfs.RemoteBlockReader2.openTimeNanos.get()
           inputMetrics.readTimeNanos =
             (org.apache.hadoop.hdfs.RemoteBlockReader2.readTimeNanos.get() +
-          inputMetrics.openTimeNanos)inputMetrics.numPackets =
+            inputMetrics.openTimeNanos)
+          inputMetrics.numPackets =
             org.apache.hadoop.hdfs.RemoteBlockReader2.totalPacketsRead.get()
           inputMetrics.hadoopBytesRead =
             org.apache.hadoop.hdfs.RemoteBlockReader2.totalBytesRead.get()
