@@ -559,7 +559,7 @@ def setup_cluster(conn, master_nodes, slave_nodes, opts, deploy_ssh_key):
         opts=opts,
         command="rm -rf spark-ec2"
         + " && "
-        + "git clone https://github.com/mesos/spark-ec2.git -b {b}".format(b=MESOS_SPARK_EC2_BRANCH)
+        + "git clone https://github.com/kayousterhout/spark-ec2.git -b branch-1.2-measurement"
     )
 
     print "Deploying files to master..."
