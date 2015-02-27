@@ -172,7 +172,7 @@ class TPCDS(
    * SF 100000: 19 users
    */
   def runConcurrentUserStreams(numUsers: Int, iterationsPerUser: Int = 1) {
-    val futures = (1 to 2).map { i =>
+    val futures = (1 to numUsers).map { i =>
       future {
         val shuffled = scala.util.Random.shuffle(queries)
         // This is a hack to force the user ID to come up in the job description, which
