@@ -144,6 +144,48 @@ class TPCDS(
 
   def allStats = tables.map(_.stats).reduceLeft(_.unionAll(_))
 
+  /**
+   * This should be called before running any experiments, to make sure that the data is loaded,
+   * the temporary tables have been created, and the small tables have been set to broadcast.
+   */
+  def setupExperiment(): Unit = {
+    logInfo(s"Setting up experiment with scale factor $scaleFactor")
+    checkData()
+    parquetTables()
+    setupBroadcast()
+  }
+
+  /**
+   * Runs numUsers concurrent query streams that each subset TPC-DS queries in a random order.
+   *
+   * You should ideally run a single experiment before doing this one, to warmup the JVM and
+   * get some of the code to run these queries JIT-ed.
+   *
+   * The TPC-DS spec defines the appropriate amount of concurrency based on the scale factor as
+   * follows:
+   * SF 100: 7 users
+   * SF 300: 9 users
+   * SF 1000: 11 users
+   * SF 3000: 13 users
+   * SF 10000: 15 users
+   * SF 30000: 17 users
+   * SF 100000: 19 users
+   */
+  def runConcurrentUserStreams(numUsers: Int, iterationsPerUser: Int = 1) {
+    val futures = (1 to 2).map { i =>
+      future {
+        val shuffled = scala.util.Random.shuffle(queries)
+        // This is a hack to force the user ID to come up in the job description, which
+        // makes it easier to parse the logs for each job.
+        val variationWithUserId = Seq(Variation("user", Seq(i)){_ =>})
+        runExperiment(
+          iterations = iterationsPerUser,
+          queriesToRun = shuffled,
+          variations = variationWithUserId)
+    }}
+    futures.foreach(Await.result(_, Duration.Inf))
+  }
+
   def runExperiment(
       iterations: Int = 3,
       queriesToRun: Seq[Query] = queries,
