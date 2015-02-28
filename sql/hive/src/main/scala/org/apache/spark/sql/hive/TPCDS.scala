@@ -196,8 +196,8 @@ class TPCDS(
               }
               currentResults ++= singleResult
               singleResult
-            })
-          }
+            }
+          )
         }
       }
     })
