@@ -54,6 +54,7 @@ import scala.sys.process._
 import scala.concurrent._
 import scala.concurrent.duration._
 import ExecutionContext.Implicits.global
+import org.apache.spark.util.Utils
 
 abstract class TableType
 case object DimensionTable extends TableType
@@ -172,25 +173,42 @@ class TPCDS(
    * SF 100000: 19 users
    */
   def runConcurrentUserStreams(numUsers: Int, iterationsPerUser: Int = 1) {
-    val futures = (1 to numUsers).map { i =>
-      future {
+    val experimentExecutor = Utils.newDaemonFixedThreadPool(
+      numUsers, "tpcds-executor")
+    experimentExecutor.execute(new Runnable {
+      override def run() {
         val shuffled = scala.util.Random.shuffle(queries)
-        // This is a hack to force the user ID to come up in the job description, which
-        // makes it easier to parse the logs for each job.
-        val variationWithUserId = Seq(Variation("user", Seq(i)){_ =>})
-        runExperiment(
-          iterations = iterationsPerUser,
-          queriesToRun = shuffled,
-          variations = variationWithUserId)
-    }}
-    futures.foreach(Await.result(_, Duration.Inf))
+        (1 to iterationsPerUser).flatMap { i =>
+          ExperimentRun(
+            timestamp = timestamp,
+            iteration = i,
+            tags = currentOptions.toMap ++ tags,
+            configuration = currentConfiguration,
+            shuffled.flatMap { q =>
+              val setup = s"iteration: $i, ${currentOptions.map { case (k, v) => s"$k=$v"}.mkString(", ")}"
+              currentMessages += s"Running query ${q.name} $setup"
+
+              currentQuery = q.name
+              val singleResult = try q.benchmark(setup, userId) :: Nil catch {
+                case e: Exception =>
+                  currentMessages += s"Failed to run query ${q.name}: $e"
+                  Nil
+              }
+              currentResults ++= singleResult
+              singleResult
+            })
+          }
+        }
+      }
+    })
   }
 
   def runExperiment(
       iterations: Int = 3,
       queriesToRun: Seq[Query] = queries,
       variations: Seq[Variation[_]] = Seq(Variation("StandardRun", Seq("")) { _ => {} }),
-      tags: Map[String, String] = Map.empty) = {
+      tags: Map[String, String] = Map.empty,
+      userId: String = "TPCDS-user") = {
 
     class ExperimentStatus {
       val currentResults = new collection.mutable.ArrayBuffer[BenchmarkResult]()
@@ -221,7 +239,7 @@ class TPCDS(
                 currentMessages += s"Running query ${q.name} $setup"
 
                 currentQuery = q.name
-                val singleResult = try q.benchmark(setup) :: Nil catch {
+                val singleResult = try q.benchmark(setup, userId) :: Nil catch {
                   case e: Exception =>
                     currentMessages += s"Failed to run query ${q.name}: $e"
                     Nil
@@ -839,9 +857,10 @@ class TPCDS(
     }
     */
 
-    def benchmark(description: String = "") = {
+    def benchmark(description: String = "", userId: String) = {
       try {
-        sparkContext.setJobDescription(s"TPCDS: $name, $description")
+        sparkContext.setLocalProperty("spark.scheduler.pool", userId)
+        sparkContext.setJobDescription(s"TPCDS ($userId): $name, $description")
         val queryExecution = schemaRDD.queryExecution
         BenchmarkResult(
           name = name,
