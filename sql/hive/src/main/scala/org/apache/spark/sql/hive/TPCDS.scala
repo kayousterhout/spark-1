@@ -178,26 +178,17 @@ class TPCDS(
     experimentExecutor.execute(new Runnable {
       override def run() {
         val shuffled = scala.util.Random.shuffle(queries)
-        (1 to iterationsPerUser).flatMap { i =>
-          ExperimentRun(
-            timestamp = timestamp,
-            iteration = i,
-            tags = currentOptions.toMap ++ tags,
-            configuration = currentConfiguration,
-            shuffled.flatMap { q =>
-              val setup = s"iteration: $i, ${currentOptions.map { case (k, v) => s"$k=$v"}.mkString(", ")}"
-              currentMessages += s"Running query ${q.name} $setup"
+        (1 to iterationsPerUser).foreach { i =>
+          shuffled.foreach { q =>
+            val setup = s"iteration: $i"
 
-              currentQuery = q.name
-              val singleResult = try q.benchmark(setup, userId) :: Nil catch {
-                case e: Exception =>
-                  currentMessages += s"Failed to run query ${q.name}: $e"
-                  Nil
-              }
-              currentResults ++= singleResult
-              singleResult
+            try {
+              q.benchmark(setup, s"TPCDS-user-$i")
+            } catch {
+              case e: Exception =>
+                logError(s"Failed to run query ${q.name}: $e")
             }
-          )
+          }
         }
       }
     })
