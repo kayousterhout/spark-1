@@ -175,23 +175,25 @@ class TPCDS(
   def runConcurrentUserStreams(numUsers: Int, iterationsPerUser: Int = 1) {
     val experimentExecutor = Utils.newDaemonFixedThreadPool(
       numUsers, "tpcds-executor")
-    experimentExecutor.execute(new Runnable {
-      override def run() {
-        val shuffled = scala.util.Random.shuffle(queries)
-        (1 to iterationsPerUser).foreach { i =>
-          shuffled.foreach { q =>
-            val setup = s"iteration: $i"
+    (1 to numUsers).foreach { userId =>
+      experimentExecutor.execute(new Runnable {
+        override def run() {
+          val shuffled = scala.util.Random.shuffle(queries)
+          (1 to iterationsPerUser).foreach { i =>
+            shuffled.foreach { q =>
+              val setup = s"iteration: $i"
 
-            try {
-              q.benchmark(setup, s"TPCDS-user-$i")
-            } catch {
-              case e: Exception =>
-                logError(s"Failed to run query ${q.name}: $e")
+              try {
+                q.benchmark(setup, s"TPCDS-user-$userId")
+              } catch {
+                case e: Exception =>
+                  logError(s"Failed to run query ${q.name}: $e")
+              }
             }
           }
         }
-      }
-    })
+      })
+    }
   }
 
   def runExperiment(
