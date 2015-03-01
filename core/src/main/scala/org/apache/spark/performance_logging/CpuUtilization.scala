@@ -27,18 +27,19 @@ object CpuUtilization {
  * utilized, the CPU utilization will be equal to the number of cores (i.e., it will typically
  * be greater than 1).
  */
-class CpuUtilization(startCounters: CpuCounters, endCounters: CpuCounters) extends Serializable {
-  val elapsedMillis = endCounters.timeMillis - startCounters.timeMillis
-  val elapsedJiffies = CpuUtilization.JIFFIES_PER_SECOND * (elapsedMillis * 1.0 / 1000)
+class CpuUtilization(val startCounters: CpuCounters, val endCounters: CpuCounters)
+    extends Serializable {
+  def elapsedMillis = endCounters.timeMillis - startCounters.timeMillis
+  def elapsedJiffies = CpuUtilization.JIFFIES_PER_SECOND * (elapsedMillis * 1.0 / 1000)
 
-  val processUserUtilization =
+  def processUserUtilization =
     ((endCounters.processUserJiffies - startCounters.processUserJiffies).toFloat / elapsedJiffies)
-  val processSystemUtilization =
+  def processSystemUtilization =
     ((endCounters.processSystemJiffies - startCounters.processSystemJiffies).toFloat /
       elapsedJiffies)
-  val totalUserUtilization =
+  def totalUserUtilization =
     ((endCounters.totalUserJiffies - startCounters.totalUserJiffies).toFloat / elapsedJiffies)
-  val totalSystemUtilization =
+  def totalSystemUtilization =
     ((endCounters.totalSystemJiffies - startCounters.totalSystemJiffies).toFloat / elapsedJiffies)
 
   def this(startCounters: CpuCounters) = this(startCounters, new CpuCounters())

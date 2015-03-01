@@ -28,8 +28,7 @@ import org.json4s.JsonAST._
 
 
 import org.apache.spark.executor._
-import org.apache.spark.performance_logging.{BlockDeviceUtilization, CpuUtilization,
-  DiskUtilization, NetworkUtilization}
+import org.apache.spark.performance_logging._
 import org.apache.spark.scheduler._
 import org.apache.spark.storage._
 import org.apache.spark._
@@ -284,10 +283,20 @@ private[spark] object JsonProtocol {
   }
 
   def cpuUtilizationToJson(cpuUtilization: CpuUtilization): JValue = {
+    ("Start Counters" -> cpuCountersToJson(cpuUtilization.startCounters)) ~
+    ("End Counters" -> cpuCountersToJson(cpuUtilization.endCounters)) ~
     ("Process User Utilization" -> cpuUtilization.processUserUtilization) ~
     ("Process System Utilization" -> cpuUtilization.processSystemUtilization) ~
     ("Total User Utilization" -> cpuUtilization.totalUserUtilization) ~
     ("Total System Utilization" -> cpuUtilization.totalSystemUtilization)
+  }
+
+  def cpuCountersToJson(cpuCounters: CpuCounters): JValue = {
+    ("Time Milliseconds" -> cpuCounters.timeMillis) ~
+    ("Process User Jiffies" -> cpuCounters.processUserJiffies) ~
+    ("Process System Jiffies" -> cpuCounters.processSystemJiffies) ~
+    ("Total User Jiffies" -> cpuCounters.totalUserJiffies) ~
+    ("Total System Jiffies" -> cpuCounters.totalSystemJiffies)
   }
 
   def blockDeviceUtilizationToJson(blockDeviceUtilization: BlockDeviceUtilization): JValue = {
