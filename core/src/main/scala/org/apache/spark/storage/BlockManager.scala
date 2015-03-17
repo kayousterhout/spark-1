@@ -106,10 +106,6 @@ private[spark] class BlockManager(
   val blockManagerId = BlockManagerId(
     executorId, connectionManager.id.host, connectionManager.id.port)
 
-  // Max megabytes of data to keep in flight per reducer (to avoid over-allocating memory
-  // for receiving shuffle outputs)
-  val maxBytesInFlight = conf.getLong("spark.reducer.maxMbInFlight", 48) * 1024 * 1024
-
   // Whether to compress broadcast variables that are stored
   private val compressBroadcast = conf.getBoolean("spark.broadcast.compress", true)
   // Whether to compress shuffle output that are stored
