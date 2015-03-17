@@ -40,20 +40,24 @@ private[spark] class NetworkMonotask(
   extends Monotask(context) with Logging {
 
   val resultBlockId = new MonotaskResultBlockId(taskId)
+  val totalResultSize = blocks.map(_._2).sum
 
   // These are initialized here, rather than in execute(), in order to minimize the amount
   // of computation that happens in execute() (since this is a NetworkMonotask, so should include
   // primarily network use, and not computation).
-  private val size = blocks.map(_._2).sum
   private val connectionManagerId = new ConnectionManagerId(remoteAddress.host, remoteAddress.port)
   // TODO: this fromGetBlock stuff is crap (why make a GetBlock just to call fromGetBlock?). Fix it.
   private val blockMessageArray = new BlockMessageArray(blocks.map {
     case (blockId, size) => BlockMessage.fromGetBlock(GetBlock(blockId))
   })
 
-  def execute() {
-    logDebug(s"Sending request for ${blocks.size} blocks (${Utils.bytesToString(size)}}) " +
-      s"to $remoteAddress")
+  /**
+   * Launches a request to fetch remote data. This method is non-blocking; when the remote data
+   * is received, the NetworkScheduler is notified asynchronously.
+   */
+  def launch(scheduler: NetworkScheduler) {
+    logDebug(s"Sending request for ${blocks.size} blocks " +
+      s"(${Utils.bytesToString(totalResultSize)}}) to $remoteAddress")
     val future = context.env.blockManager.connectionManager.sendMessageReliably(
         connectionManagerId, blockMessageArray.toBufferMessage)
 
@@ -66,6 +70,7 @@ private[spark] class NetworkMonotask(
       case Success(message) => {
         context.env.blockManager.cacheSingle(
           resultBlockId, message.asInstanceOf[BufferMessage], StorageLevel.MEMORY_ONLY, false)
+        scheduler.bytesReceived(totalResultSize)
         context.localDagScheduler.handleTaskCompletion(this)
       }
 
@@ -91,6 +96,7 @@ private[spark] class NetworkMonotask(
                 Some(context.taskMetrics))
               context.env.closureSerializer.newInstance().serialize(reason)
           }
+          scheduler.bytesReceived(totalResultSize)
           context.localDagScheduler.handleTaskFailure(this, serializedFailureReason)
         }
       }

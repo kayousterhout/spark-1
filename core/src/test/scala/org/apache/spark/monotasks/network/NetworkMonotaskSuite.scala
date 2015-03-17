@@ -83,9 +83,10 @@ class NetworkMonotaskSuite extends FunSuite with Matchers {
     when(blockManager.futureExecContext).thenReturn(global)
     val result = Seq((mock(classOf[BlockId]), mock(classOf[BlockStatus])))
     when(blockManager.cacheSingle(any(), any(), any(), any())).thenReturn(result)
+    val networkScheduler = mock(classOf[NetworkScheduler])
 
     // Execute the network monotask and wait for the future to complete.
-    networkMonotask.execute()
+    networkMonotask.launch(networkScheduler)
     Await.result(f, 5000 millis);
 
     // This is the important part of the test: making sure the resulting data was put in the
@@ -93,5 +94,6 @@ class NetworkMonotaskSuite extends FunSuite with Matchers {
     verify(blockManager).cacheSingle(
       networkMonotask.resultBlockId, bufferMessage, StorageLevel.MEMORY_ONLY, tellMaster = false)
     verify(localDagScheduler).handleTaskCompletion(networkMonotask)
+    verify(networkScheduler).bytesReceived(32)
   }
 }

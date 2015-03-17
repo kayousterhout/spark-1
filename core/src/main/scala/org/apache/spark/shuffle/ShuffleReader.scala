@@ -73,6 +73,7 @@ class ShuffleReader[K, V, C](
       } else {
         val networkMonotask = new NetworkMonotask(context, address, nonEmptyBlocks)
         localBlockIds.append(networkMonotask.resultBlockId)
+        // TODO: Make a separate fetch monotask for each block? Set some maximum size?
         fetchMonotasks.append(networkMonotask)
       }
     }

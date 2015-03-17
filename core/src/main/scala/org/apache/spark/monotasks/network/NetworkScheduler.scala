@@ -16,23 +16,47 @@
 
 package org.apache.spark.monotasks.network
 
+import scala.collection.mutable.Queue
+
 import org.apache.spark.Logging
-import org.apache.spark.util.Utils
 
+/**
+ * Scheduler for network monotasks.
+ *
+ * Threading model: all of the methods in the NetworkScheduler need to be synchronized, because
+ * they may be called by the LocalDagScheduler (e.g., submitMonotask) or by a NetworkMonotask
+ * when data is received over the network.
+ */
 private[spark] class NetworkScheduler() extends Logging {
-  // TODO: Change this to instead launch a new network task iff there is spare network capacity.
-  // TODO: this doesn't really do anything now, because the network call is launched asynchronously
-  //       in NetworkMonotask.
-  private val threads = Runtime.getRuntime.availableProcessors()
-  logInfo(s"Started NetworkScheduler with $threads parallel threads")
 
-  // TODO: This threadpool currently uses a single FIFO queue when the number of tasks exceeds the
-  //       number of threads; eventually, we'll want a smarter queueing strategy.
-  private val networkThreadpool = Utils.newDaemonFixedThreadPool(threads, "network-monotask-thread")
+  private[spark] val maxOutstandingBytes = 100 * 1024 * 1024
+  private var currentOutstandingBytes = 0L
 
-  def submitTask(monotask: NetworkMonotask) {
-    networkThreadpool.execute(new Runnable {
-      override def run(): Unit = monotask.execute()
-    })
+  private val monotaskQueue = new Queue[NetworkMonotask]()
+
+  def submitTask(monotask: NetworkMonotask) = synchronized {
+    monotaskQueue += monotask
+    maybeLaunchTasks()
+  }
+
+  def bytesReceived(totalBytes: Long) = synchronized {
+    currentOutstandingBytes -= totalBytes
+    maybeLaunchTasks()
+  }
+
+  private[spark] def maybeLaunchTasks() {
+    monotaskQueue.headOption.map { monotask =>
+      if (currentOutstandingBytes == 0L ||
+        currentOutstandingBytes + monotask.totalResultSize < maxOutstandingBytes) {
+        if (monotask.totalResultSize > maxOutstandingBytes) {
+          logWarning(s"NetworkMonotask ${monotask.taskId} has request size of " +
+            s"${monotask.totalResultSize}, which is larger than the maximum number of " +
+            s"outstanding bytes ($maxOutstandingBytes)")
+        }
+        currentOutstandingBytes += monotask.totalResultSize
+        monotask.launch(this)
+        monotaskQueue.dequeue()
+      }
+    }
   }
 }
