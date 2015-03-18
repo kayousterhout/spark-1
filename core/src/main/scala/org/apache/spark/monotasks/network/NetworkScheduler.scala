@@ -72,7 +72,8 @@ private[spark] class NetworkScheduler(conf: SparkConf) extends Logging {
       incrementCurrentIndex()
     }
 
-    val monotaskQueue = blockManagerIdToMonotasks(blockManagerIds(currentIndex))
+    val blockManagerId = blockManagerIds(currentIndex)
+    val monotaskQueue = blockManagerIdToMonotasks(blockManagerId)
     monotaskQueue.headOption.map { monotask =>
       if (currentOutstandingBytes == 0L ||
         currentOutstandingBytes + monotask.totalResultSize <= maxOutstandingBytes) {
@@ -83,7 +84,8 @@ private[spark] class NetworkScheduler(conf: SparkConf) extends Logging {
         }
         currentOutstandingBytes += monotask.totalResultSize
         logInfo(s"Launching monotask ${monotask.taskId} for macrotask " +
-          s"${monotask.context.taskAttemptId}")
+          s"${monotask.context.taskAttemptId} on block manager $blockManagerId " +
+          s"($currentOutstandingBytes bytes outstanding)")
         monotask.launch(this)
         monotaskQueue.dequeue()
         incrementCurrentIndex()
