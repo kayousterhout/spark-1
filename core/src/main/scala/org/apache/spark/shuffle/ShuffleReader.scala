@@ -72,7 +72,8 @@ class ShuffleReader[K, V, C](
       } else {
         nonEmptyBlocks.foreach {
           case (blockId, size) =>
-            val networkMonotask = new NetworkMonotask(context, address, nonEmptyBlocks)
+            // TODO: if keep this structure, should change networkMonotask not to accept sequence.
+            val networkMonotask = new NetworkMonotask(context, address, Seq((blockId, size)))
             localBlockIds.append(networkMonotask.resultBlockId)
             // TODO: coalesce these at all? Also this is currently weird structure for this;
             // if we keep this code path, should kill the blocksByAddress grouping above.
