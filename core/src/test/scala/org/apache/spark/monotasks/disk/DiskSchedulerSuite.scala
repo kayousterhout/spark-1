@@ -57,7 +57,7 @@ class DiskSchedulerSuite extends FunSuite with BeforeAndAfter {
       conf.set("spark.local.dir", newLocalDirs)
     }
     when(blockManager.blockFileManager).thenReturn(new BlockFileManager(conf))
-    localDagScheduler = new LocalDagScheduler(null, blockManager)
+    localDagScheduler = new LocalDagScheduler(null, conf, blockManager)
     when(taskContext.localDagScheduler).thenReturn(localDagScheduler)
   }
 

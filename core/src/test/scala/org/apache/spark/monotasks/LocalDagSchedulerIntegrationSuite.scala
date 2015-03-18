@@ -47,7 +47,7 @@ class LocalDagSchedulerIntegrationSuite extends FunSuite with BeforeAndAfter
     // configuration is loaded regardless of the system properties.
     sc = new SparkContext("local", "test", new SparkConf(false))
     blockManager = SparkEnv.get.blockManager
-    localDagScheduler = new LocalDagScheduler(mock(classOf[ExecutorBackend]), blockManager)
+    localDagScheduler = new LocalDagScheduler(mock(classOf[ExecutorBackend]), sc.conf, blockManager)
 
     taskContext = mock(classOf[TaskContext])
     when(taskContext.localDagScheduler).thenReturn(localDagScheduler)
