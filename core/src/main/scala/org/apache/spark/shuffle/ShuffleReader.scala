@@ -68,13 +68,16 @@ class ShuffleReader[K, V, C](
       totalBlocks += blockInfos.size
       val nonEmptyBlocks = blockInfos.filter(_._2 != 0)
       if (address == context.env.blockManager.blockManagerId) {
-        // Filter out zero-sized blocks
         localBlockIds ++= nonEmptyBlocks.map(_._1)
       } else {
-        val networkMonotask = new NetworkMonotask(context, address, nonEmptyBlocks)
-        localBlockIds.append(networkMonotask.resultBlockId)
-        // TODO: Make a separate fetch monotask for each block? Set some maximum size?
-        fetchMonotasks.append(networkMonotask)
+        nonEmptyBlocks.foreach {
+          case (blockId, size) =>
+            val networkMonotask = new NetworkMonotask(context, address, nonEmptyBlocks)
+            localBlockIds.append(networkMonotask.resultBlockId)
+            // TODO: coalesce these at all? Also this is currently weird structure for this;
+            // if we keep this code path, should kill the blocksByAddress grouping above.
+            fetchMonotasks.append(networkMonotask)
+        }
       }
     }
     fetchMonotasks

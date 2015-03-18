@@ -16,9 +16,11 @@
 
 package org.apache.spark.monotasks.network
 
-import scala.collection.mutable.Queue
+import scala.collection.mutable.{HashMap, Queue}
 
 import org.apache.spark.{Logging, SparkConf}
+import org.apache.spark.storage.BlockManagerId
+import scala.collection.mutable
 
 /**
  * Scheduler for network monotasks.
@@ -35,10 +37,22 @@ private[spark] class NetworkScheduler(conf: SparkConf) extends Logging {
   val maxOutstandingBytes = conf.getLong("spark.reducer.maxMbInFlight", 48) * 1024 * 1024
   private var currentOutstandingBytes = 0L
 
-  private val monotaskQueue = new Queue[NetworkMonotask]()
+  // Do simple round robin. In the future, could do something more sophisticated, like should
+  // ideally take request size into account.
+  // TODO: currently nothing deleted from this ever.
+  private val blockManagerIdToMonotasks = new HashMap[BlockManagerId, Queue[NetworkMonotask]]()
+  // So we can reliably index in.
+  private var blockManagerIds = Seq.empty[BlockManagerId]
+  private var currentIndex = 0
 
   def submitTask(monotask: NetworkMonotask) = synchronized {
-    monotaskQueue += monotask
+    if (!blockManagerIdToMonotasks.contains(monotask.remoteAddress)) {
+      blockManagerIdToMonotasks(monotask.remoteAddress) = new Queue[NetworkMonotask]()
+      blockManagerIds = blockManagerIdToMonotasks.keys.toSeq
+      // Set to the new one. not perfect.
+      currentIndex = blockManagerIds.indexOf(monotask.remoteAddress)
+    }
+    blockManagerIdToMonotasks(monotask.remoteAddress) += monotask
     maybeLaunchTasks()
   }
 
@@ -47,10 +61,21 @@ private[spark] class NetworkScheduler(conf: SparkConf) extends Logging {
     maybeLaunchTasks()
   }
 
+  private def incrementCurrentIndex() {
+    val before = currentIndex
+    currentIndex = (currentIndex + 1) % blockManagerIds.size
+  }
+
   private[spark] def maybeLaunchTasks() {
+    // Move currentIndex to the next block manager that we have monotasks for.
+    while (blockManagerIdToMonotasks(blockManagerIds(currentIndex)).isEmpty) {
+      incrementCurrentIndex()
+    }
+
+    val monotaskQueue = blockManagerIdToMonotasks(blockManagerIds(currentIndex))
     monotaskQueue.headOption.map { monotask =>
       if (currentOutstandingBytes == 0L ||
-        currentOutstandingBytes + monotask.totalResultSize < maxOutstandingBytes) {
+        currentOutstandingBytes + monotask.totalResultSize <= maxOutstandingBytes) {
         if (monotask.totalResultSize > maxOutstandingBytes) {
           logWarning(s"NetworkMonotask ${monotask.taskId} has request size of " +
             s"${monotask.totalResultSize}, which is larger than the maximum number of " +
@@ -61,6 +86,7 @@ private[spark] class NetworkScheduler(conf: SparkConf) extends Logging {
           s"${monotask.context.taskAttemptId}")
         monotask.launch(this)
         monotaskQueue.dequeue()
+        incrementCurrentIndex()
       }
     }
   }
