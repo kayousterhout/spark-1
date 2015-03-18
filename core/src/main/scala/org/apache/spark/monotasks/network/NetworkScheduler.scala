@@ -45,7 +45,11 @@ private[spark] class NetworkScheduler(conf: SparkConf) extends Logging {
   private var blockManagerIds = Seq.empty[BlockManagerId]
   private var currentIndex = 0
 
+  // Used only for monitoring and debugging.
+  private var numWaitingMonotasks = 0
+
   def submitTask(monotask: NetworkMonotask) = synchronized {
+    numWaitingMonotasks += 1
     if (!blockManagerIdToMonotasks.contains(monotask.remoteAddress)) {
       blockManagerIdToMonotasks(monotask.remoteAddress) = new Queue[NetworkMonotask]()
       blockManagerIds = blockManagerIdToMonotasks.keys.toSeq
@@ -86,10 +90,12 @@ private[spark] class NetworkScheduler(conf: SparkConf) extends Logging {
         logInfo(s"Launching monotask ${monotask.taskId} for macrotask " +
           s"${monotask.context.taskAttemptId} on block manager $blockManagerId " +
           s"($currentOutstandingBytes bytes outstanding)")
+        numWaitingMonotasks -= 1
         monotask.launch(this)
         monotaskQueue.dequeue()
         incrementCurrentIndex()
       }
     }
+    logInfo(s"$numWaitingMonotasks remaining monotasks waiting to be scheduled")
   }
 }

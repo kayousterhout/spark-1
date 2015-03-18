@@ -17,6 +17,7 @@
 package org.apache.spark.shuffle
 
 import scala.collection.mutable.{ArrayBuffer, HashMap}
+import scala.util.Random
 
 import org.apache.spark.{InterruptibleIterator, Logging, ShuffleDependency, SparkEnv,
   SparkException, TaskContext}
@@ -81,7 +82,8 @@ class ShuffleReader[K, V, C](
         }
       }
     }
-    fetchMonotasks
+    // Slightly improve load balancing
+    Random.shuffle(fetchMonotasks)
   }
 
   def getDeserializedAggregatedSortedData(): Iterator[Product2[K, C]] = {
