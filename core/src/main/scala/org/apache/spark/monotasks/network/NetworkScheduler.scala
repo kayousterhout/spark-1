@@ -58,7 +58,7 @@ private[spark] class NetworkScheduler(conf: SparkConf) extends Logging {
         }
         currentOutstandingBytes += monotask.totalResultSize
         logInfo(s"Launching monotask ${monotask.taskId} for macrotask " +
-          "${monotask.context.taskAttemptId}")
+          s"${monotask.context.taskAttemptId}")
         monotask.launch(this)
         monotaskQueue.dequeue()
       }
