@@ -17,6 +17,7 @@
 package org.apache.spark.shuffle
 
 import scala.collection.mutable.{ArrayBuffer, HashMap}
+import scala.util.Random
 
 import org.apache.spark.{InterruptibleIterator, Logging, ShuffleDependency, SparkEnv,
   SparkException, TaskContext}
@@ -62,7 +63,7 @@ class ShuffleReader[K, V, C](
     }
 
     // Split local and remote blocks.
-    val fetchMonotasks = new ArrayBuffer[NetworkMonotask]
+    val fetchMonotasks = new ArrayBuffer[Monotask]
     var totalBlocks = 0
     for ((address, blockInfos) <- blocksByAddress) {
       totalBlocks += blockInfos.size
@@ -81,7 +82,7 @@ class ShuffleReader[K, V, C](
         }
       }
     }
-    fetchMonotasks
+    Random.shuffle(fetchMonotasks)
   }
 
   def getDeserializedAggregatedSortedData(): Iterator[Product2[K, C]] = {
