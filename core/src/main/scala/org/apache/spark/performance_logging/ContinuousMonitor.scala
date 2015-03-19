@@ -18,6 +18,7 @@ package org.apache.spark.performance_logging
 
 import java.util.concurrent.TimeUnit
 
+import scala.collection.JavaConversions._
 import scala.concurrent.duration.Duration
 
 import org.json4s.JsonAST.JValue
