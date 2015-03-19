@@ -71,6 +71,10 @@ private[spark] class NetworkScheduler(conf: SparkConf) extends Logging {
   }
 
   private[spark] def maybeLaunchTasks() {
+    if (numWaitingMonotasks == 0) {
+      return
+    }
+
     // Move currentIndex to the next block manager that we have monotasks for.
     while (blockManagerIdToMonotasks(blockManagerIds(currentIndex)).isEmpty) {
       incrementCurrentIndex()
