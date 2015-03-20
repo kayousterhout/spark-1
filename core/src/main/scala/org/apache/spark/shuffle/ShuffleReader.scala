@@ -88,6 +88,7 @@ class ShuffleReader[K, V, C](
             fetchMonotasks.append(networkMonotask)
             // TODO: just call clear?
             currentBlocks = new ArrayBuffer[(BlockId, Long)]
+            currentRequestSize = 0
           }
         }
         /*
