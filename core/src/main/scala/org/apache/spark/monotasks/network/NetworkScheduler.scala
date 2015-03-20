@@ -48,6 +48,9 @@ private[spark] class NetworkScheduler(conf: SparkConf) extends Logging {
   // Used only for monitoring and debugging.
   private var numWaitingMonotasks = 0
 
+  // This isn't synchronized since it's only used for monitoring.
+  def getOutstandingBytes: Long = currentOutstandingBytes
+
   def submitTask(monotask: NetworkMonotask) = synchronized {
     numWaitingMonotasks += 1
     if (!blockManagerIdToMonotasks.contains(monotask.remoteAddress)) {

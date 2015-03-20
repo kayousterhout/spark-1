@@ -66,6 +66,10 @@ private[spark] class LocalDagScheduler(
    * return its result until all of its monotasks have finished). */
   val macrotaskResults = new HashMap[Long, ByteBuffer]()
 
+  def getOutstandingNetworkBytes(): Long = {
+    networkScheduler.getOutstandingBytes
+  }
+
   def getNumRunningComputeMonotasks(): Int = {
     computeScheduler.numRunningTasks.get()
   }
