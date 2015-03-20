@@ -55,7 +55,8 @@ class ShuffleReader[K, V, C](
     logDebug("Fetching map output location for shuffle %d, reduce %d took %d ms".format(
       shuffleDependency.shuffleId, reduceId, System.currentTimeMillis - startTime))
 
-    val targetRequestSize = 48 * 1024 * 1024 / 5
+    val targetRequestSizeBytes =
+      context.env.conf.getInt("spark.reducer.targetRequestSizeMb", 9) * 1024 * 1024
 
     // Organize the blocks based on the block manager address.
     val blocksByAddress = new HashMap[BlockManagerId, ArrayBuffer[(BlockId, Long)]]
@@ -81,7 +82,7 @@ class ShuffleReader[K, V, C](
           currentBlocks += ((blockId, size))
           currentRequestSize += size
 
-          if (currentRequestSize >= targetRequestSize) {
+          if (currentRequestSize >= targetRequestSizeBytes) {
             val networkMonotask = new NetworkMonotask(context, address, currentBlocks)
             localBlockIds.append(networkMonotask.resultBlockId)
             fetchMonotasks.append(networkMonotask)
