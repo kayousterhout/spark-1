@@ -55,6 +55,8 @@ class ShuffleReader[K, V, C](
     logDebug("Fetching map output location for shuffle %d, reduce %d took %d ms".format(
       shuffleDependency.shuffleId, reduceId, System.currentTimeMillis - startTime))
 
+    val targetRequestSize = 48 * 1024 * 1024 / 5
+
     // Organize the blocks based on the block manager address.
     val blocksByAddress = new HashMap[BlockManagerId, ArrayBuffer[(BlockId, Long)]]
     for (((address, size), index) <- statuses.zipWithIndex) {
@@ -71,6 +73,23 @@ class ShuffleReader[K, V, C](
       if (address == context.env.blockManager.blockManagerId) {
         localBlockIds ++= nonEmptyBlocks.map(_._1)
       } else {
+        val iterator = blockInfos.iterator
+        var currentRequestSize = 0L
+        var currentBlocks = new ArrayBuffer[(BlockId, Long)]
+        while (iterator.hasNext) {
+          val (blockId, size) = iterator.next()
+          currentBlocks += ((blockId, size))
+          currentRequestSize += size
+
+          if (currentRequestSize >= targetRequestSize) {
+            val networkMonotask = new NetworkMonotask(context, address, currentBlocks)
+            localBlockIds.append(networkMonotask.resultBlockId)
+            fetchMonotasks.append(networkMonotask)
+            // TODO: just call clear?
+            currentBlocks = new ArrayBuffer[(BlockId, Long)]
+          }
+        }
+        /*
         nonEmptyBlocks.foreach {
           case (blockId, size) =>
             // TODO: if keep this structure, should change networkMonotask not to accept sequence.
@@ -79,9 +98,10 @@ class ShuffleReader[K, V, C](
             // TODO: coalesce these at all? Also this is currently weird structure for this;
             // if we keep this code path, should kill the blocksByAddress grouping above.
             fetchMonotasks.append(networkMonotask)
-        }
+        }*/
       }
     }
+    logInfo(s"getReadMonotasks created ${fetchMonotasks.size} monotasks")
     Random.shuffle(fetchMonotasks)
   }
 
