@@ -34,7 +34,7 @@ private[spark] class NetworkScheduler(conf: SparkConf) extends Logging {
   // Max megabytes of data to keep in flight (should be set to roughly saturate the network link
   // but not significantly exceed it, to ensure runtime predictability).
   // TODO: it would be better to do this based on network utilization.
-  val maxOutstandingBytes = conf.getLong("spark.reducer.maxMbInFlight", 48) * 1024 * 1024
+  val maxOutstandingBytes = conf.getLong("spark.reducer.maxMbInFlight", 384) * 1024 * 1024
   private var currentOutstandingBytes = 0L
 
   // Do simple round robin. In the future, could do something more sophisticated, like should
