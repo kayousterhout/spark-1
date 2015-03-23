@@ -49,7 +49,7 @@ object ShuffleAndComputeJob {
     import ExecutionContext.Implicits.global
     val computeRunnable = future {
       spark.parallelize(1 to 4, 4).flatMap { _ =>
-        Array.fill(itemsPerPartition * 2)(
+        Array.fill(itemsPerPartition * 10)(
           (Random.nextLong, Array.fill(longsPerValue)(Random.nextLong)))
       }.count
     }
