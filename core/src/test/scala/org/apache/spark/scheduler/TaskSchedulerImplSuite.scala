@@ -289,8 +289,8 @@ class TaskSchedulerImplSuite extends FunSuite with LocalSparkContext with Loggin
     }
 
     val numFreeCores = 1
-    val workerOffers = Seq(new WorkerOffer("executor0", "host0", numFreeCores),
-      new WorkerOffer("executor1", "host1", numFreeCores))
+    val workerOffers = Seq(new WorkerOffer("executor0", "host0", numFreeCores, 0L),
+      new WorkerOffer("executor1", "host1", numFreeCores, 0L))
     // Repeatedly try to schedule a 1-task job, and make sure that it doesn't always
     // get scheduled on the same executor. While there is a chance this test will fail
     // because the task randomly gets placed on the first executor all 1000 times, the
@@ -323,8 +323,8 @@ class TaskSchedulerImplSuite extends FunSuite with LocalSparkContext with Loggin
     }
     taskScheduler.setDAGScheduler(dagScheduler)
     // Give zero core offers. Should not generate any tasks
-    val zeroCoreWorkerOffers = Seq(new WorkerOffer("executor0", "host0", 0),
-      new WorkerOffer("executor1", "host1", 0))
+    val zeroCoreWorkerOffers = Seq(new WorkerOffer("executor0", "host0", 0, 0L),
+      new WorkerOffer("executor1", "host1", 0, 0L))
     val taskSet = FakeTask.createTaskSet(1)
     taskScheduler.submitTasks(taskSet)
     var taskDescriptions = taskScheduler.resourceOffers(zeroCoreWorkerOffers).flatten
@@ -332,16 +332,16 @@ class TaskSchedulerImplSuite extends FunSuite with LocalSparkContext with Loggin
 
     // No tasks should run as we only have 1 core free.
     val numFreeCores = 1
-    val singleCoreWorkerOffers = Seq(new WorkerOffer("executor0", "host0", numFreeCores),
-      new WorkerOffer("executor1", "host1", numFreeCores))
+    val singleCoreWorkerOffers = Seq(new WorkerOffer("executor0", "host0", numFreeCores, 0L),
+      new WorkerOffer("executor1", "host1", numFreeCores, 0L))
     taskScheduler.submitTasks(taskSet)
     taskDescriptions = taskScheduler.resourceOffers(singleCoreWorkerOffers).flatten
     assert(0 === taskDescriptions.length)
 
     // Now change the offers to have 2 cores in one executor and verify if it
     // is chosen.
-    val multiCoreWorkerOffers = Seq(new WorkerOffer("executor0", "host0", taskCpus),
-      new WorkerOffer("executor1", "host1", numFreeCores))
+    val multiCoreWorkerOffers = Seq(new WorkerOffer("executor0", "host0", taskCpus, 0L),
+      new WorkerOffer("executor1", "host1", numFreeCores, 0L))
     taskScheduler.submitTasks(taskSet)
     taskDescriptions = taskScheduler.resourceOffers(multiCoreWorkerOffers).flatten
     assert(1 === taskDescriptions.length)
