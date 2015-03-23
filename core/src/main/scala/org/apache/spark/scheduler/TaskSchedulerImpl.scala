@@ -70,6 +70,9 @@ private[spark] class TaskSchedulerImpl(
   // CPUs to request per task
   val CPUS_PER_TASK = conf.getInt("spark.task.cpus", 1)
 
+  // Max network queue
+  val MAX_NETWORK_QUEUE = conf.getLong("spark.network.thresholdKb", 2000) * 1024
+
   // TaskSetManagers are not thread safe, so any access to one should be synchronized
   // on this class.
   val activeTaskSets = new HashMap[String, TaskSetManager]
@@ -236,6 +239,7 @@ private[spark] class TaskSchedulerImpl(
     // Build a list of tasks to assign to each worker.
     val tasks = shuffledOffers.map(o => new ArrayBuffer[TaskDescription](o.cores))
     val availableCpus = shuffledOffers.map(o => o.cores).toArray
+    val queuedNetworkBytes = shuffledOffers.map(o => o.networkBytes).toArray
     val sortedTaskSets = rootPool.getSortedTaskSetQueue
     for (taskSet <- sortedTaskSets) {
       logDebug("parentName: %s, name: %s, runningTasks: %s".format(
@@ -255,7 +259,14 @@ private[spark] class TaskSchedulerImpl(
         for (i <- 0 until shuffledOffers.size) {
           val execId = shuffledOffers(i).executorId
           val host = shuffledOffers(i).host
-          if (availableCpus(i) >= CPUS_PER_TASK) {
+          val enoughResourcesToLaunchTask = {
+            if (taskSet.taskSet.hasShuffleDependency) {
+              (queuedNetworkBytes(i) <= MAX_NETWORK_QUEUE)
+            } else {
+              (availableCpus(i) >= CPUS_PER_TASK)
+            }
+          }
+          if (enoughResourcesToLaunchTask) {
             for (task <- taskSet.resourceOffer(execId, host, maxLocality)) {
               tasks(i) += task
               val tid = task.taskId

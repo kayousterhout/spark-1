@@ -47,7 +47,7 @@ private case class ReviveOffers()
 
 private case class StatusUpdate(taskId: Long, state: TaskState, serializedData: ByteBuffer)
 
-private case class UpdateFreeCores(cores: Int)
+private case class UpdateFreeCores(cores: Int, networkBytes: Long)
 
 private case class KillTask(taskId: Long, interruptThread: Boolean)
 
@@ -64,6 +64,7 @@ private[spark] class LocalActor(
   private val totalCores: Int) extends Actor with ActorLogReceive with Logging {
 
   private var freeCores = totalCores
+  private var waitingAndOutstandingNetworkBytes = 0L
 
   private val localExecutorId = "localhost"
   private val localExecutorHostname = "localhost"
@@ -82,8 +83,9 @@ private[spark] class LocalActor(
         reviveOffers()
       }
 
-    case UpdateFreeCores(cores) =>
+    case UpdateFreeCores(cores, networkBytes) =>
       freeCores = cores
+      waitingAndOutstandingNetworkBytes = networkBytes
 
     case KillTask(taskId, interruptThread) =>
       executor.killTask(taskId, interruptThread)
@@ -93,7 +95,8 @@ private[spark] class LocalActor(
   }
 
   def reviveOffers() {
-    val offers = Seq(new WorkerOffer(localExecutorId, localExecutorHostname, freeCores))
+    val offers = Seq(new WorkerOffer(
+      localExecutorId, localExecutorHostname, freeCores, waitingAndOutstandingNetworkBytes))
     for (task <- scheduler.resourceOffers(offers).flatten) {
       freeCores -= scheduler.CPUS_PER_TASK
       executor.launchTask(task.taskId, task.name, task.serializedTask)
@@ -136,7 +139,7 @@ private[spark] class LocalBackend(scheduler: TaskSchedulerImpl, val totalCores: 
     localActor ! StatusUpdate(taskId, state, serializedData)
   }
 
-  override def updateFreeCores(cores: Int) {
-    localActor ! UpdateFreeCores(cores)
+  override def updateFreeCores(cores: Int, networkBytes: Long) {
+    localActor ! UpdateFreeCores(cores, networkBytes)
   }
 }

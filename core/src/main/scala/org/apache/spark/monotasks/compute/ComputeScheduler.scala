@@ -26,7 +26,8 @@ private[spark] sealed trait RunningTasksUpdate
 private[spark] object TaskStarted extends RunningTasksUpdate
 private[spark] object TaskCompleted extends RunningTasksUpdate
 
-private[spark] class ComputeScheduler(executorBackend: ExecutorBackend) extends Logging {
+private[spark] class ComputeScheduler(
+    executorBackend: ExecutorBackend, getNetworkBytes: () => Long) extends Logging {
   private val threads = Runtime.getRuntime.availableProcessors()
 
   // TODO: This threadpool currently uses a single FIFO queue when the number of tasks exceeds the
@@ -48,7 +49,7 @@ private[spark] class ComputeScheduler(executorBackend: ExecutorBackend) extends 
     val freeCores = threads - currentlyRunningTasks - workQueue.size()
     // TODO: We may want to consider updating the driver less frequently, otherwise these messages
     //       to the driver may become a bottleneck.
-    executorBackend.updateFreeCores(freeCores)
+    executorBackend.updateFreeCores(freeCores, getNetworkBytes())
   }
 
   def submitTask(monotask: ComputeMonotask) {

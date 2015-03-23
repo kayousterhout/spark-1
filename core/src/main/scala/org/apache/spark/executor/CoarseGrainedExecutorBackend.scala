@@ -114,8 +114,8 @@ private[spark] class CoarseGrainedExecutorBackend(
     driver ! StatusUpdate(executorId, taskId, state, data)
   }
 
-  override def updateFreeCores(cores: Int): Unit = {
-    driver ! UpdateFreeCores(executorId, cores)
+  override def updateFreeCores(cores: Int, networkBytes: Long): Unit = {
+    driver ! UpdateFreeCores(executorId, cores, networkBytes)
   }
 }
 

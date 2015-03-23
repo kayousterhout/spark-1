@@ -42,6 +42,7 @@ import java.util.Properties
 private[spark] class TaskSet(
     val tasks: Array[Macrotask[_]],
     val stageId: Int,
+    val hasShuffleDependency: Boolean,
     val attempt: Int,
     val priority: Int,
     val properties: Properties) {

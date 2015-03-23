@@ -898,8 +898,17 @@ class DAGScheduler(
       logInfo("Submitting " + tasks.size + " missing tasks from " + stage + " (" + stage.rdd + ")")
       stage.pendingTasks ++= tasks
       logDebug("New pending tasks: " + stage.pendingTasks)
+      val hasShuffleDependency = stage.rdd.dependencies.contains{ dep: Dependency[_] =>
+        dep.isInstanceOf[ShuffleDependency[_, _, _]]
+      }
       taskScheduler.submitTasks(
-        new TaskSet(tasks.toArray, stage.id, stage.newAttemptId(), stage.jobId, properties))
+        new TaskSet(
+          tasks.toArray,
+          stage.id,
+          hasShuffleDependency,
+          stage.newAttemptId(),
+          stage.jobId,
+          properties))
       stage.latestInfo.submissionTime = Some(clock.getTime())
     } else {
       // Because we posted SparkListenerStageSubmitted earlier, we should post

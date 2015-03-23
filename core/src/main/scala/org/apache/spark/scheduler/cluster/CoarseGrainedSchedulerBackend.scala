@@ -69,6 +69,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, actorSystem: A
     private val executorAddress = new HashMap[String, Address]
     private val executorHost = new HashMap[String, String]
     private val freeCores = new HashMap[String, Int]
+    private val queuedNetworkBytes = new HashMap[String, Long]
     private val totalCores = new HashMap[String, Int]
     private val addressToExecutorId = new HashMap[Address, String]
 
@@ -94,6 +95,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, actorSystem: A
           executorHost(executorId) = Utils.parseHostPort(hostPort)._1
           totalCores(executorId) = cores
           freeCores(executorId) = cores
+          queuedNetworkBytes(executorId) = 0L
           executorAddress(executorId) = sender.path.address
           addressToExecutorId(sender.path.address) = executorId
           totalCoreCount.addAndGet(cores)
@@ -105,8 +107,10 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, actorSystem: A
         scheduler.statusUpdate(taskId, state, data.value)
         if (TaskState.isFinished(state)) {
           if (executorActor.contains(executorId)) {
-            freeCores(executorId) += scheduler.CPUS_PER_TASK
-            makeOffers(executorId)
+            // Don't do this anymore: it's handled by the updateCores thing.
+            //freeCores(executorId) += scheduler.CPUS_PER_TASK
+            //makeOffers(executorId)
+            // Do nothing.
           } else {
             // Ignoring the update since we don't know about the executor.
             val msg = "Ignored task status update (%d state %s) from unknown executor %s with ID %s"
@@ -114,12 +118,17 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, actorSystem: A
           }
         }
 
-      case UpdateFreeCores(executorId, cores) =>
-        if (freeCores(executorId) < cores && freeCores(executorId) < scheduler.CPUS_PER_TASK) {
-          // Now a task can be scheduled, where it couldn't have been before.
+      case UpdateFreeCores(executorId, cores, networkBytes) =>
+        // Now a task can be scheduled, where it couldn't have been before.
+        val shouldMakeOffers =
+          ((networkBytes < queuedNetworkBytes(executorId) &&
+            networkBytes < scheduler.MAX_NETWORK_QUEUE) ||
+            (freeCores(executorId) < cores && freeCores(executorId) < scheduler.CPUS_PER_TASK))
+        freeCores(executorId) = cores
+        queuedNetworkBytes(executorId) = networkBytes
+        if (shouldMakeOffers) {
           makeOffers(executorId)
         }
-        freeCores(executorId) = cores
 
       case ReviveOffers =>
         makeOffers()
@@ -156,13 +165,19 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, actorSystem: A
     // Make fake resource offers on all executors
     def makeOffers() {
       launchTasks(scheduler.resourceOffers(
-        executorHost.toArray.map {case (id, host) => new WorkerOffer(id, host, freeCores(id))}))
+        executorHost.toArray.map {case (id, host) =>
+          new WorkerOffer(id, host, freeCores(id), queuedNetworkBytes(id))
+        }))
     }
 
     // Make fake resource offers on just one executor
     def makeOffers(executorId: String) {
       launchTasks(scheduler.resourceOffers(
-        Seq(new WorkerOffer(executorId, executorHost(executorId), freeCores(executorId)))))
+        Seq(new WorkerOffer(
+          executorId,
+          executorHost(executorId),
+          freeCores(executorId),
+          queuedNetworkBytes(executorId)))))
     }
 
     // Launch tasks returned by a set of resource offers
@@ -203,6 +218,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, actorSystem: A
         executorAddress -= executorId
         totalCores -= executorId
         freeCores -= executorId
+        queuedNetworkBytes -= executorId
         totalCoreCount.addAndGet(-numCores)
         scheduler.executorLost(executorId, SlaveLost(reason))
       }

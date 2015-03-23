@@ -42,8 +42,10 @@ private[spark] class LocalDagScheduler(
     val blockManager: BlockManager)
   extends Logging {
 
-  val computeScheduler = new ComputeScheduler(executorBackend)
   val networkScheduler = new NetworkScheduler(conf)
+  val computeScheduler = new ComputeScheduler(
+    executorBackend,
+    networkScheduler.getWaitingAndOutstandingBytes)
   val diskScheduler = new DiskScheduler(blockManager)
 
   /* IDs of monotasks that are waiting for dependencies to be satisfied. This exists solely for

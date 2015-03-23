@@ -48,11 +48,17 @@ private[spark] class NetworkScheduler(conf: SparkConf) extends Logging {
   // Used only for monitoring and debugging.
   private var numWaitingMonotasks = 0
 
+  // TODO: synchronize?
+  private var waitingBytes = 0L
+
   // This isn't synchronized since it's only used for monitoring.
   def getOutstandingBytes: Long = currentOutstandingBytes
 
+  def getWaitingAndOutstandingBytes(): Long = (currentOutstandingBytes + waitingBytes)
+
   def submitTask(monotask: NetworkMonotask) = synchronized {
     numWaitingMonotasks += 1
+    waitingBytes += monotask.totalResultSize
     if (!blockManagerIdToMonotasks.contains(monotask.remoteAddress)) {
       blockManagerIdToMonotasks(monotask.remoteAddress) = new Queue[NetworkMonotask]()
       blockManagerIds = blockManagerIdToMonotasks.keys.toSeq
@@ -99,6 +105,7 @@ private[spark] class NetworkScheduler(conf: SparkConf) extends Logging {
           s"($currentOutstandingBytes bytes outstanding)")
         numWaitingMonotasks -= 1
         monotask.launch(this)
+        waitingBytes -= monotask.totalResultSize
         monotaskQueue.dequeue()
         incrementCurrentIndex()
       }

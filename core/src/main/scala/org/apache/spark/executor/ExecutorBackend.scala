@@ -32,7 +32,7 @@ private[spark] trait ExecutorBackend {
    * implies that there is currently a queue of compute monotasks on the machine (e.g., -5 means
    * that 5 compute monotasks are currently waiting to be executed).
    */
-  def updateFreeCores(cores: Int): Unit = {
+  def updateFreeCores(cores: Int, networkBytes: Long): Unit = {
     // This method is implemented but throws an exception to avoid compiler errors for types of
     // executor backends that don't currently support this method.
     // TODO: Implement this method in all subclasses of ExecutorBackend.

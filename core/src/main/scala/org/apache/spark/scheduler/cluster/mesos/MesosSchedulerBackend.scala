@@ -215,7 +215,9 @@ private[spark] class MesosSchedulerBackend(
           offerableWorkers += new WorkerOffer(
             offer.getSlaveId.getValue,
             offer.getHostname,
-            getResource(offer.getResourcesList, "cpus").toInt)
+            getResource(offer.getResourcesList, "cpus").toInt,
+          // TODO: Support the correct thing here.
+            0)
         }
 
         // Call into the TaskSchedulerImpl
