@@ -115,11 +115,11 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, actorSystem: A
         //       at once.
         if (TaskState.isUsingCore(state) && macrotasksCurrentlyComputing.add(taskId)) {
           // The task changed from not running a compute monotask to running one.
-          freeCores(executorId) += 1
+          freeCores(executorId) -= 1
           makeOffers(executorId)
         } else if (!TaskState.isUsingCore(state) && macrotasksCurrentlyComputing.remove(taskId)) {
           // The task changed from running a compute monotask to not running one.
-          freeCores(executorId) -= 1
+          freeCores(executorId) += 1
         }
 
         if (TaskState.isFinished(state)) {
