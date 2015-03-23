@@ -898,9 +898,8 @@ class DAGScheduler(
       logInfo("Submitting " + tasks.size + " missing tasks from " + stage + " (" + stage.rdd + ")")
       stage.pendingTasks ++= tasks
       logDebug("New pending tasks: " + stage.pendingTasks)
-      val hasShuffleDependency = stage.rdd.dependencies.contains{ dep: Dependency[_] =>
-        dep.isInstanceOf[ShuffleDependency[_, _, _]]
-      }
+      val hasShuffleDependency =
+        stage.rdd.dependencies.find(_.isInstanceOf[ShuffleDependency[_, _, _]]).isDefined
       taskScheduler.submitTasks(
         new TaskSet(
           tasks.toArray,
