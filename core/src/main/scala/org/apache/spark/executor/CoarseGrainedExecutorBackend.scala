@@ -110,12 +110,9 @@ private[spark] class CoarseGrainedExecutorBackend(
       context.system.shutdown()
   }
 
-  override def statusUpdate(taskId: Long, state: TaskState, data: ByteBuffer) {
-    driver ! StatusUpdate(executorId, taskId, state, data)
-  }
-
-  override def updateFreeCores(cores: Int, networkBytes: Long): Unit = {
-    driver ! UpdateFreeCores(executorId, cores, networkBytes)
+  override def statusUpdate(
+      taskId: Long, state: TaskState, data: ByteBuffer, outstandingNetworkBytes: Long) {
+    driver ! StatusUpdate(executorId, taskId, state, data, outstandingNetworkBytes)
   }
 }
 

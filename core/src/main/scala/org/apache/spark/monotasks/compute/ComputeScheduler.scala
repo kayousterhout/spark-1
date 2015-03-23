@@ -18,44 +18,25 @@ package org.apache.spark.monotasks.compute
 
 import java.util.concurrent.atomic.AtomicInteger
 
-import org.apache.spark.Logging
-import org.apache.spark.executor.ExecutorBackend
+import org.apache.spark.{Logging, TaskState}
 import org.apache.spark.util.Utils
 
-private[spark] sealed trait RunningTasksUpdate
-private[spark] object TaskStarted extends RunningTasksUpdate
-private[spark] object TaskCompleted extends RunningTasksUpdate
-
-private[spark] class ComputeScheduler(
-    executorBackend: ExecutorBackend, getNetworkBytes: () => Long) extends Logging {
+private[spark] class ComputeScheduler() extends Logging {
   private val threads = Runtime.getRuntime.availableProcessors()
 
   // TODO: This threadpool currently uses a single FIFO queue when the number of tasks exceeds the
   //       number of threads; eventually, we'll want a smarter queueing strategy.
   private val computeThreadpool = Utils.newDaemonFixedThreadPool(threads, "compute-monotask-thread")
-  private val workQueue = computeThreadpool.getQueue()
 
   val numRunningTasks = new AtomicInteger(0)
 
   logDebug(s"Started ComputeScheduler with $threads parallel threads")
 
-  private def updateRunningTasksAndNotifyBackend(updateType: RunningTasksUpdate) {
-    val currentlyRunningTasks = updateType match {
-      case TaskStarted =>
-        numRunningTasks.incrementAndGet()
-      case TaskCompleted =>
-        numRunningTasks.decrementAndGet()
-    }
-    val freeCores = threads - currentlyRunningTasks - workQueue.size()
-    // TODO: We may want to consider updating the driver less frequently, otherwise these messages
-    //       to the driver may become a bottleneck.
-    executorBackend.updateFreeCores(freeCores, getNetworkBytes())
-  }
-
   def submitTask(monotask: ComputeMonotask) {
+    monotask.context.updateTaskState(TaskState.RUNNING_COMPUTE)
     computeThreadpool.execute(new Runnable {
       override def run(): Unit = {
-        updateRunningTasksAndNotifyBackend(TaskStarted)
+        numRunningTasks.incrementAndGet()
         // Set the class loader for the thread, which will be used by any broadcast variables that
         // are deserialized as part of the compute monotask.
         // TODO: Consider instead changing the thread factory to just
@@ -64,7 +45,7 @@ private[spark] class ComputeScheduler(
         Thread.currentThread.setContextClassLoader(
           monotask.context.dependencyManager.replClassLoader)
         monotask.executeAndHandleExceptions()
-        updateRunningTasksAndNotifyBackend(TaskCompleted)
+        numRunningTasks.decrementAndGet()
       }
     })
   }

@@ -25,19 +25,6 @@ import org.apache.spark.TaskState.TaskState
  * A pluggable interface used by the Executor to send updates to the cluster scheduler.
  */
 private[spark] trait ExecutorBackend {
-  def statusUpdate(taskId: Long, state: TaskState, data: ByteBuffer)
-
-  /**
-   * Notifies the driver about how many free cores are available on the machine. A negative value
-   * implies that there is currently a queue of compute monotasks on the machine (e.g., -5 means
-   * that 5 compute monotasks are currently waiting to be executed).
-   */
-  def updateFreeCores(cores: Int, networkBytes: Long): Unit = {
-    // This method is implemented but throws an exception to avoid compiler errors for types of
-    // executor backends that don't currently support this method.
-    // TODO: Implement this method in all subclasses of ExecutorBackend.
-    //       https://github.com/NetSys/spark-monotasks/issues/19
-    throw new Exception("ExecutorBackends must implement updateFreeCores()")
-  }
+  def statusUpdate(taskId: Long, state: TaskState, data: ByteBuffer, outstandingNetworkBytes: Long)
 }
 

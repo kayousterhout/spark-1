@@ -37,15 +37,13 @@ import org.apache.spark.storage.BlockManager
  *       for the LocalDagScheduler).
  */
 private[spark] class LocalDagScheduler(
-    executorBackend: ExecutorBackend,
+    val executorBackend: ExecutorBackend,
     conf: SparkConf,
     val blockManager: BlockManager)
   extends Logging {
 
+  val computeScheduler = new ComputeScheduler()
   val networkScheduler = new NetworkScheduler(conf)
-  val computeScheduler = new ComputeScheduler(
-    executorBackend,
-    networkScheduler.getWaitingAndOutstandingBytes)
   val diskScheduler = new DiskScheduler(blockManager)
 
   /* IDs of monotasks that are waiting for dependencies to be satisfied. This exists solely for
@@ -130,7 +128,8 @@ private[spark] class LocalDagScheduler(
         serializedTaskResult.orElse(macrotaskResults.get(taskAttemptId)).map { result =>
           completedMonotask.context.markTaskCompleted()
           logDebug(s"Notfiying executorBackend about successful completion of task $taskAttemptId")
-          executorBackend.statusUpdate(taskAttemptId, TaskState.FINISHED, result)
+          executorBackend.statusUpdate(
+            taskAttemptId, TaskState.FINISHED, result, getOutstandingNetworkBytes())
 
           macrotaskRemainingMonotasks -= taskAttemptId
           macrotaskResults -= taskAttemptId
@@ -168,7 +167,8 @@ private[spark] class LocalDagScheduler(
     // Notify the executor backend that the macrotask has failed, if we didn't already.
     if (macrotaskRemainingMonotasks.remove(taskAttemptId).isDefined) {
       failedMonotask.context.markTaskCompleted()
-      executorBackend.statusUpdate(taskAttemptId, TaskState.FAILED, serializedFailureReason)
+      executorBackend.statusUpdate(
+        taskAttemptId, TaskState.FAILED, serializedFailureReason, getOutstandingNetworkBytes())
     }
 
     macrotaskResults.remove(taskAttemptId)

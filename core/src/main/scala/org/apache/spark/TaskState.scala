@@ -21,7 +21,7 @@ import org.apache.mesos.Protos.{TaskState => MesosTaskState}
 
 private[spark] object TaskState extends Enumeration {
 
-  val LAUNCHING, RUNNING, FINISHED, FAILED, KILLED, LOST = Value
+  val LAUNCHING, RUNNING_COMPUTE, RUNNING_NON_COMPUTE, FINISHED, FAILED, KILLED, LOST = Value
 
   val FINISHED_STATES = Set(FINISHED, FAILED, KILLED, LOST)
 
@@ -29,9 +29,11 @@ private[spark] object TaskState extends Enumeration {
 
   def isFinished(state: TaskState) = FINISHED_STATES.contains(state)
 
+  def isUsingCore(state: TaskState) = (state == RUNNING_COMPUTE)
+
   def toMesos(state: TaskState): MesosTaskState = state match {
     case LAUNCHING => MesosTaskState.TASK_STARTING
-    case RUNNING => MesosTaskState.TASK_RUNNING
+    case RUNNING_COMPUTE => MesosTaskState.TASK_RUNNING
     case FINISHED => MesosTaskState.TASK_FINISHED
     case FAILED => MesosTaskState.TASK_FAILED
     case KILLED => MesosTaskState.TASK_KILLED
@@ -41,7 +43,7 @@ private[spark] object TaskState extends Enumeration {
   def fromMesos(mesosState: MesosTaskState): TaskState = mesosState match {
     case MesosTaskState.TASK_STAGING => LAUNCHING
     case MesosTaskState.TASK_STARTING => LAUNCHING
-    case MesosTaskState.TASK_RUNNING => RUNNING
+    case MesosTaskState.TASK_RUNNING => RUNNING_COMPUTE
     case MesosTaskState.TASK_FINISHED => FINISHED
     case MesosTaskState.TASK_FAILED => FAILED
     case MesosTaskState.TASK_KILLED => KILLED

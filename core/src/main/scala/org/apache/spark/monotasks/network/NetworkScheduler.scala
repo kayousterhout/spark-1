@@ -18,9 +18,8 @@ package org.apache.spark.monotasks.network
 
 import scala.collection.mutable.{HashMap, Queue}
 
-import org.apache.spark.{Logging, SparkConf}
+import org.apache.spark.{Logging, SparkConf, TaskState}
 import org.apache.spark.storage.BlockManagerId
-import scala.collection.mutable
 
 /**
  * Scheduler for network monotasks.
@@ -59,6 +58,7 @@ private[spark] class NetworkScheduler(conf: SparkConf) extends Logging {
   def submitTask(monotask: NetworkMonotask) = synchronized {
     numWaitingMonotasks += 1
     waitingBytes += monotask.totalResultSize
+    monotask.context.updateTaskState(TaskState.RUNNING_NON_COMPUTE)
     if (!blockManagerIdToMonotasks.contains(monotask.remoteAddress)) {
       blockManagerIdToMonotasks(monotask.remoteAddress) = new Queue[NetworkMonotask]()
       blockManagerIds = blockManagerIdToMonotasks.keys.toSeq

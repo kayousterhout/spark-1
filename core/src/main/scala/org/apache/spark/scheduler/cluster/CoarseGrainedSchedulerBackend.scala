@@ -28,7 +28,8 @@ import akka.pattern.ask
 import akka.remote.{DisassociatedEvent, RemotingLifecycleEvent}
 
 import org.apache.spark.{SparkEnv, Logging, SparkException, TaskState}
-import org.apache.spark.scheduler.{SchedulerBackend, SlaveLost, TaskDescription, TaskSchedulerImpl, WorkerOffer}
+import org.apache.spark.scheduler.{SchedulerBackend, SlaveLost, TaskDescription, TaskSchedulerImpl,
+  WorkerOffer}
 import org.apache.spark.scheduler.cluster.CoarseGrainedClusterMessages._
 import org.apache.spark.util.{ActorLogReceive, SerializableBuffer, AkkaUtils, Utils}
 import org.apache.spark.ui.JettyUtils
@@ -69,7 +70,9 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, actorSystem: A
     private val executorAddress = new HashMap[String, Address]
     private val executorHost = new HashMap[String, String]
     private val freeCores = new HashMap[String, Int]
-    private val queuedNetworkBytes = new HashMap[String, Long]
+    // Used to keep track of how many cores are free on each machine.
+    private val macrotasksCurrentlyComputing = new HashSet[Long]
+    private val executorIdToOutstandingNetworkBytes = new HashMap[String, Long]
     private val totalCores = new HashMap[String, Int]
     private val addressToExecutorId = new HashMap[Address, String]
 
@@ -95,7 +98,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, actorSystem: A
           executorHost(executorId) = Utils.parseHostPort(hostPort)._1
           totalCores(executorId) = cores
           freeCores(executorId) = cores
-          queuedNetworkBytes(executorId) = 0L
+          executorIdToOutstandingNetworkBytes(executorId) = 0L
           executorAddress(executorId) = sender.path.address
           addressToExecutorId(sender.path.address) = executorId
           totalCoreCount.addAndGet(cores)
@@ -103,31 +106,24 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, actorSystem: A
           makeOffers()
         }
 
-      case StatusUpdate(executorId, taskId, state, data) =>
+      case StatusUpdate(executorId, taskId, state, data, outstandingNetworkBytes) =>
         scheduler.statusUpdate(taskId, state, data.value)
-        if (TaskState.isFinished(state)) {
-          if (executorActor.contains(executorId)) {
-            // Don't do this anymore: it's handled by the updateCores thing.
-            //freeCores(executorId) += scheduler.CPUS_PER_TASK
-            //makeOffers(executorId)
-            // Do nothing.
-          } else {
-            // Ignoring the update since we don't know about the executor.
-            val msg = "Ignored task status update (%d state %s) from unknown executor %s with ID %s"
-            logWarning(msg.format(taskId, state, sender, executorId))
-          }
+        executorIdToOutstandingNetworkBytes(executorId) = outstandingNetworkBytes
+
+        // Update the number of free cores.
+        // TODO: This code currently assumes that a macrotask can't be running two compute monotasks
+        //       at once.
+        if (TaskState.isUsingCore(state) && macrotasksCurrentlyComputing.add(taskId)) {
+          // The task changed from not running a compute monotask to running one.
+          freeCores(executorId) += 1
+          makeOffers(executorId)
+        } else if (!TaskState.isUsingCore(state) && macrotasksCurrentlyComputing.remove(taskId)) {
+          // The task changed from running a compute monotask to not running one.
+          freeCores(executorId) -= 1
         }
 
-      case UpdateFreeCores(executorId, cores, networkBytes) =>
-        // Now a task can be scheduled, where it couldn't have been before.
-        val shouldMakeOffers =
-          ((networkBytes < queuedNetworkBytes(executorId) &&
-            networkBytes < scheduler.MAX_NETWORK_QUEUE) ||
-            (freeCores(executorId) < cores && freeCores(executorId) < scheduler.CPUS_PER_TASK))
-        freeCores(executorId) = cores
-        queuedNetworkBytes(executorId) = networkBytes
-        if (shouldMakeOffers) {
-          makeOffers(executorId)
+        if (TaskState.isFinished(state)) {
+          macrotasksCurrentlyComputing -= taskId
         }
 
       case ReviveOffers =>
@@ -166,7 +162,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, actorSystem: A
     def makeOffers() {
       launchTasks(scheduler.resourceOffers(
         executorHost.toArray.map {case (id, host) =>
-          new WorkerOffer(id, host, freeCores(id), queuedNetworkBytes(id))
+          new WorkerOffer(id, host, freeCores(id), executorIdToOutstandingNetworkBytes(id))
         }))
     }
 
@@ -177,7 +173,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, actorSystem: A
           executorId,
           executorHost(executorId),
           freeCores(executorId),
-          queuedNetworkBytes(executorId)))))
+          executorIdToOutstandingNetworkBytes(executorId)))))
     }
 
     // Launch tasks returned by a set of resource offers
@@ -202,6 +198,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, actorSystem: A
         }
         else {
           freeCores(task.executorId) -= scheduler.CPUS_PER_TASK
+          macrotasksCurrentlyComputing += task.taskId
           executorActor(task.executorId) ! LaunchTask(new SerializableBuffer(serializedTask))
         }
       }
@@ -218,7 +215,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, actorSystem: A
         executorAddress -= executorId
         totalCores -= executorId
         freeCores -= executorId
-        queuedNetworkBytes -= executorId
+        executorIdToOutstandingNetworkBytes -= executorId
         totalCoreCount.addAndGet(-numCores)
         scheduler.executorLost(executorId, SlaveLost(reason))
       }

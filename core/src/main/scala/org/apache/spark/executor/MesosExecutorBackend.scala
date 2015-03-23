@@ -52,7 +52,8 @@ private[spark] class MesosExecutorBackend
   var executor: Executor = null
   var driver: ExecutorDriver = null
 
-  override def statusUpdate(taskId: Long, state: TaskState, data: ByteBuffer) {
+  override def statusUpdate(
+      taskId: Long, state: TaskState, data: ByteBuffer, outstandingNetworkBytes: Long) {
     val mesosTaskId = TaskID.newBuilder().setValue(taskId.toString).build()
     driver.sendStatusUpdate(MesosTaskStatus.newBuilder()
       .setTaskId(mesosTaskId)

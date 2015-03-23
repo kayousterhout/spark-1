@@ -33,6 +33,8 @@
 
 package org.apache.spark
 
+import java.nio.ByteBuffer
+
 import scala.collection.mutable.{ArrayBuffer, Map}
 
 import org.apache.spark.annotation.DeveloperApi
@@ -72,6 +74,11 @@ class TaskContext(
   var stageId: Int = -1
   var partitionId: Int = -1
 
+  // The TaskContext is created right before the task is deserialized, which will be done by a
+  // compute monotask. The code that sets this state currently assumes that monotasks do not
+  // run multiple types of monotasks concurrently, which may not actually always be true.
+  private var taskState = TaskState.RUNNING_COMPUTE
+
   // The accumulators used by this macrotask (passed back to the driver when the task completes).
   var accumulators = Map[Long, Accumulable[_, _]]()
 
@@ -90,6 +97,17 @@ class TaskContext(
   def initialize(stageId: Int, partitionId: Int) {
     this.stageId = stageId
     this.partitionId = partitionId
+  }
+
+  def updateTaskState(newTaskState: TaskState.Value) {
+    if (newTaskState != taskState) {
+      taskState = newTaskState
+      localDagScheduler.executorBackend.statusUpdate(
+        taskAttemptId,
+        taskState,
+        TaskContext.EMPTY_BYTE_BUFFER,
+        localDagScheduler.getOutstandingNetworkBytes())
+    }
   }
 
   /** Checks whether the task has completed. */
@@ -148,4 +166,8 @@ class TaskContext(
   private[spark] def markInterrupted(): Unit = {
     interrupted = true
   }
+}
+
+object TaskContext {
+  private val EMPTY_BYTE_BUFFER = ByteBuffer.wrap(new Array[Byte](0))
 }

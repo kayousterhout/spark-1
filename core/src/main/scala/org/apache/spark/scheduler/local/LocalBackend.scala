@@ -45,9 +45,8 @@ import org.apache.spark.util.ActorLogReceive
 
 private case class ReviveOffers()
 
-private case class StatusUpdate(taskId: Long, state: TaskState, serializedData: ByteBuffer)
-
-private case class UpdateFreeCores(cores: Int, networkBytes: Long)
+private case class StatusUpdate(
+    taskId: Long, state: TaskState, serializedData: ByteBuffer, outstandingNetworkBytes: Long)
 
 private case class KillTask(taskId: Long, interruptThread: Boolean)
 
@@ -76,16 +75,13 @@ private[spark] class LocalActor(
     case ReviveOffers =>
       reviveOffers()
 
-    case StatusUpdate(taskId, state, serializedData) =>
+    case StatusUpdate(taskId, state, serializedData, outstandingNetworkBytes) =>
       scheduler.statusUpdate(taskId, state, serializedData)
+      waitingAndOutstandingNetworkBytes = outstandingNetworkBytes
       if (TaskState.isFinished(state)) {
         freeCores += scheduler.CPUS_PER_TASK
         reviveOffers()
       }
-
-    case UpdateFreeCores(cores, networkBytes) =>
-      freeCores = cores
-      waitingAndOutstandingNetworkBytes = networkBytes
 
     case KillTask(taskId, interruptThread) =>
       executor.killTask(taskId, interruptThread)
@@ -135,11 +131,8 @@ private[spark] class LocalBackend(scheduler: TaskSchedulerImpl, val totalCores: 
     localActor ! KillTask(taskId, interruptThread)
   }
 
-  override def statusUpdate(taskId: Long, state: TaskState, serializedData: ByteBuffer) {
-    localActor ! StatusUpdate(taskId, state, serializedData)
-  }
-
-  override def updateFreeCores(cores: Int, networkBytes: Long) {
-    localActor ! UpdateFreeCores(cores, networkBytes)
+  override def statusUpdate(
+      taskId: Long, state: TaskState, serializedData: ByteBuffer, outstandingNetworkBytes: Long) {
+    localActor ! StatusUpdate(taskId, state, serializedData, outstandingNetworkBytes)
   }
 }

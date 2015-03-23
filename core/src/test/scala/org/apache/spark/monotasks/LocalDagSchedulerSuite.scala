@@ -99,7 +99,8 @@ class LocalDagSchedulerSuite extends FunSuite with BeforeAndAfterEach with Local
     val result = ByteBuffer.allocate(2)
     localDagScheduler.handleTaskCompletion(secondMonotask, Some(result))
     assert(secondMonotask.context.isCompleted)
-    verify(executorBackend).statusUpdate(meq(taskAttemptId), meq(TaskState.FINISHED), meq(result))
+    verify(executorBackend).statusUpdate(
+      meq(taskAttemptId), meq(TaskState.FINISHED), meq(result), any())
     assert(localDagScheduler.macrotaskRemainingMonotasks.isEmpty,
       s"Task attempt id $taskAttemptId should have been removed from running ids")
   }
@@ -193,7 +194,7 @@ class LocalDagSchedulerSuite extends FunSuite with BeforeAndAfterEach with Local
     // Since all of the monotasks have not finished yet, the macrotask should not have been
     // completed.
     assert(!monotaskB.context.isCompleted)
-    verify(executorBackend, never()).statusUpdate(taskAttemptId, TaskState.FINISHED, result)
+    verify(executorBackend, never()).statusUpdate(taskAttemptId, TaskState.FINISHED, result, any())
 
     // Verify that the macrotask result is stored in the macrotaskResults map.
     assert(localDagScheduler.macrotaskResults.contains(taskAttemptId))
@@ -204,7 +205,7 @@ class LocalDagSchedulerSuite extends FunSuite with BeforeAndAfterEach with Local
     // Now that all the monotasks have finished, the macrotask should have been marked as completed
     // and the result that was passed in earler should have been sent to the executorBackend.
     assert(monotaskC.context.isCompleted)
-    verify(executorBackend).statusUpdate(taskAttemptId, TaskState.FINISHED, result)
+    verify(executorBackend).statusUpdate(taskAttemptId, TaskState.FINISHED, result, any())
     assertDataStructuresEmpty()
   }
 
@@ -277,12 +278,12 @@ class LocalDagSchedulerSuite extends FunSuite with BeforeAndAfterEach with Local
     localDagScheduler.handleTaskFailure(monotaskB, failureReason)
     assert(monotaskB.context.isCompleted)
     verify(executorBackend).statusUpdate(
-      meq(taskAttemptId), meq(TaskState.FAILED), meq(failureReason))
+      meq(taskAttemptId), meq(TaskState.FAILED), meq(failureReason), 0L)
 
     // Another failure for the same macrotask should not trigger another status update (so including
     // the earlier time statusUpdate() was called, the total invocation count should be 1).
     localDagScheduler.handleTaskFailure(monotaskA, ByteBuffer.allocate(1))
-    verify(executorBackend).statusUpdate(any(), any(), any())
+    verify(executorBackend).statusUpdate(any(), any(), any(), 0L)
   }
 
   /**

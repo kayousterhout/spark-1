@@ -54,8 +54,6 @@ private[spark] class Executor(
     isLocal: Boolean = false)
   extends Logging
 {
-  private val EMPTY_BYTE_BUFFER = ByteBuffer.wrap(new Array[Byte](0))
-
   @volatile private var isStopped = false
 
   // No ip or host:port - just hostname
