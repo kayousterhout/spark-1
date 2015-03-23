@@ -261,11 +261,15 @@ private[spark] class TaskSchedulerImpl(
           val host = shuffledOffers(i).host
           val enoughResourcesToLaunchTask = {
             if (taskSet.taskSet.hasShuffleDependency) {
+              logInfo(
+                s"taskset has shuffle dependency; queued network bytes ${queuedNetworkBytes(i)}")
               (queuedNetworkBytes(i) <= MAX_NETWORK_QUEUE)
             } else {
+              logInfo(s"taskset has no shuffle dependency; available CPUs ${availableCpus(i)}")
               (availableCpus(i) >= CPUS_PER_TASK)
             }
           }
+          logInfo(s"enough resources to launch task: $enoughResourcesToLaunchTask")
           if (enoughResourcesToLaunchTask) {
             for (task <- taskSet.resourceOffer(execId, host, maxLocality)) {
               tasks(i) += task
