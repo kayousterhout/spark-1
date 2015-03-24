@@ -168,7 +168,10 @@ private[spark] class LocalDagScheduler(
     if (macrotaskRemainingMonotasks.remove(taskAttemptId).isDefined) {
       failedMonotask.context.markTaskCompleted()
       executorBackend.statusUpdate(
-        taskAttemptId, TaskState.FAILED, serializedFailureReason, getWaitingAndOutstandingNetworkBytes())
+        taskAttemptId,
+        TaskState.FAILED,
+        serializedFailureReason,
+        getWaitingAndOutstandingNetworkBytes())
     }
 
     macrotaskResults.remove(taskAttemptId)
