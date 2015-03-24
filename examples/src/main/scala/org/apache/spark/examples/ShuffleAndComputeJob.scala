@@ -47,11 +47,12 @@ object ShuffleAndComputeJob {
     shuffledRdd.count
 
     import ExecutionContext.Implicits.global
+    val recordsPerTaskPerSecond = 1724000
+    val targetSeconds = if (args.length > 4) args(4).toInt else 250
+    val numComputeTasks = if (args.length > 5) args(5).toInt else 4
+    val totalRecords = recordsPerTaskPerSecond * targetSeconds * numComputeTasks
     val computeRunnable = future {
-      spark.parallelize(1 to 4, 4).flatMap { _ =>
-        Array.fill(itemsPerPartition * 10)(
-          (Random.nextLong, Array.fill(longsPerValue)(Random.nextLong)))
-      }.count
+      spark.parallelize(1 to totalRecords, 4).map(java.lang.Math.tan(_)).count
     }
 
     // Now, concurrently run two experiments.
