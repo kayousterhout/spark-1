@@ -91,6 +91,13 @@ class ShuffleReader[K, V, C](
             currentRequestSize = 0
           }
         }
+
+        // Add the final request.
+        if (!currentBlocks.isEmpty) {
+          val networkMonotask = new NetworkMonotask(context, address, currentBlocks)
+          localBlockIds.append(networkMonotask.resultBlockId)
+          fetchMonotasks.append(networkMonotask)
+        }
         /*
         nonEmptyBlocks.foreach {
           case (blockId, size) =>
