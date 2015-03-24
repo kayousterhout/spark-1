@@ -66,8 +66,8 @@ private[spark] class LocalDagScheduler(
    * return its result until all of its monotasks have finished). */
   val macrotaskResults = new HashMap[Long, ByteBuffer]()
 
-  def getOutstandingNetworkBytes(): Long = {
-    networkScheduler.getOutstandingBytes
+  def getWaitingAndOutstandingNetworkBytes(): Long = {
+    networkScheduler.getWaitingAndOutstandingBytes
   }
 
   def getNumRunningComputeMonotasks(): Int = {
@@ -129,7 +129,7 @@ private[spark] class LocalDagScheduler(
           completedMonotask.context.markTaskCompleted()
           logDebug(s"Notfiying executorBackend about successful completion of task $taskAttemptId")
           executorBackend.statusUpdate(
-            taskAttemptId, TaskState.FINISHED, result, getOutstandingNetworkBytes())
+            taskAttemptId, TaskState.FINISHED, result, getWaitingAndOutstandingNetworkBytes())
 
           macrotaskRemainingMonotasks -= taskAttemptId
           macrotaskResults -= taskAttemptId
@@ -168,7 +168,7 @@ private[spark] class LocalDagScheduler(
     if (macrotaskRemainingMonotasks.remove(taskAttemptId).isDefined) {
       failedMonotask.context.markTaskCompleted()
       executorBackend.statusUpdate(
-        taskAttemptId, TaskState.FAILED, serializedFailureReason, getOutstandingNetworkBytes())
+        taskAttemptId, TaskState.FAILED, serializedFailureReason, getWaitingAndOutstandingNetworkBytes())
     }
 
     macrotaskResults.remove(taskAttemptId)

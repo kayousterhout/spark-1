@@ -106,7 +106,7 @@ class TaskContext(
         taskAttemptId,
         taskState,
         TaskContext.EMPTY_BYTE_BUFFER,
-        localDagScheduler.getOutstandingNetworkBytes())
+        localDagScheduler.getWaitingAndOutstandingNetworkBytes())
     }
   }
 

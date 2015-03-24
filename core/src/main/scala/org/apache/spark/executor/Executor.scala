@@ -101,7 +101,7 @@ private[spark] class Executor(
 
   private val continuousMonitor = new ContinuousMonitor(
     conf,
-    localDagScheduler.getOutstandingNetworkBytes,
+    localDagScheduler.getWaitingAndOutstandingNetworkBytes,
     localDagScheduler.getNumRunningComputeMonotasks,
     localDagScheduler.getNumRunningMacrotasks)
   continuousMonitor.start(env)
