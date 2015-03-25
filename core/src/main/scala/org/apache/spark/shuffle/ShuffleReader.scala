@@ -74,40 +74,9 @@ class ShuffleReader[K, V, C](
       if (address == context.env.blockManager.blockManagerId) {
         localBlockIds ++= nonEmptyBlocks.map(_._1)
       } else {
-        val iterator = blockInfos.iterator
-        var currentRequestSize = 0L
-        var currentBlocks = new ArrayBuffer[(BlockId, Long)]
-        while (iterator.hasNext) {
-          val (blockId, size) = iterator.next()
-          currentBlocks += ((blockId, size))
-          currentRequestSize += size
-
-          if (currentRequestSize >= targetRequestSizeBytes) {
-            val networkMonotask = new NetworkMonotask(context, address, currentBlocks)
-            localBlockIds.append(networkMonotask.resultBlockId)
-            fetchMonotasks.append(networkMonotask)
-            // TODO: just call clear?
-            currentBlocks = new ArrayBuffer[(BlockId, Long)]
-            currentRequestSize = 0
-          }
-        }
-
-        // Add the final request.
-        if (!currentBlocks.isEmpty) {
-          val networkMonotask = new NetworkMonotask(context, address, currentBlocks)
-          localBlockIds.append(networkMonotask.resultBlockId)
-          fetchMonotasks.append(networkMonotask)
-        }
-        /*
-        nonEmptyBlocks.foreach {
-          case (blockId, size) =>
-            // TODO: if keep this structure, should change networkMonotask not to accept sequence.
-            val networkMonotask = new NetworkMonotask(context, address, Seq((blockId, size)))
-            localBlockIds.append(networkMonotask.resultBlockId)
-            // TODO: coalesce these at all? Also this is currently weird structure for this;
-            // if we keep this code path, should kill the blocksByAddress grouping above.
-            fetchMonotasks.append(networkMonotask)
-        }*/
+        // Create exactly one monotask per remote executor.
+        val networkMonotask = new NetworkMonotask(context, address, blockInfos)
+        fetchMonotasks.append(networkMonotask)
       }
     }
     logInfo(s"getReadMonotasks created ${fetchMonotasks.size} monotasks")

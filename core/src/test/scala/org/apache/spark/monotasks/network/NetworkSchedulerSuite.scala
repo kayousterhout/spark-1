@@ -28,101 +28,98 @@ class NetworkSchedulerSuite extends FunSuite with BeforeAndAfterEach with Matche
   var networkScheduler: NetworkScheduler = _
   val maxOutstandingMegabytes = 1L
 
-  // Mocked TaskContext to use when creating NetworkMonotask (the scheduler uses the TaskContext
-  // to output log messages).
-  val taskContext = mock(classOf[TaskContext])
-  when(taskContext.taskAttemptId).thenReturn(15L)
-
   override def beforeEach() {
     val conf = new SparkConf(false)
     conf.set("spark.reducer.maxMbInFlight", maxOutstandingMegabytes.toString)
     networkScheduler = new NetworkScheduler(conf)
   }
 
-  test("submitTask: monotask isn't launched if the outstanding bytes exceeds the maximum") {
-    val monotask1 = makeMonotask(100)
-    val monotask2 = makeMonotask(100)
-    val monotask3 = makeMonotask(networkScheduler.maxOutstandingBytes - 150)
-
+  test("submitTask: task is launched when nothing is outstanding") {
+    val monotask1 = makeMonotask(100, 1)
     networkScheduler.submitTask(monotask1)
     assert(monotask1.hasLaunched)
+  }
+
+  test("submitTask: task is launched if currently running monotasks are for the same macrotask") {
+    val macrotaskId = 1
+    val monotask1 = makeMonotask(100, macrotaskId)
+    networkScheduler.submitTask(monotask1)
+    assert(monotask1.hasLaunched)
+
+    val monotask2 = makeMonotask(500, macrotaskId)
     networkScheduler.submitTask(monotask2)
     assert(monotask2.hasLaunched)
-    networkScheduler.submitTask(monotask3)
-    assert(!monotask3.hasLaunched,
-      "NetworkScheduler should ensure that the total number of outstanding bytes doesn't exceed " +
-        "the maximum allowed")
 
-    networkScheduler.bytesReceived(100)
+    val monotask3 = makeMonotask(700, macrotaskId)
+    networkScheduler.submitTask(monotask3)
     assert(monotask3.hasLaunched)
   }
 
-  test("submitTask: monotask is launched if the outstanding bytes is below the maximum") {
-    val monotask1 = makeMonotask(100)
-    val monotask2 = makeMonotask(200)
-
+  test("submitTask: task is queued if currently running monotasks for different macrotask") {
+    val monotask1 = makeMonotask(100, 1)
     networkScheduler.submitTask(monotask1)
     assert(monotask1.hasLaunched)
+
+    val monotask2 = makeMonotask(100, 2)
+    networkScheduler.submitTask(monotask2)
+    assert(!monotask2.hasLaunched)
+  }
+
+  test("bytesReceived: no more monotasks are launched until macrotask finishes") {
+    // Submit a bunch of monotasks for the first macrotask.
+    val macrotaskId = 1
+    val monotask1 = makeMonotask(100, macrotaskId)
+    networkScheduler.submitTask(monotask1)
+    assert(monotask1.hasLaunched)
+
+    val monotask2 = makeMonotask(500, macrotaskId)
     networkScheduler.submitTask(monotask2)
     assert(monotask2.hasLaunched)
+
+    val monotask3 = makeMonotask(700, macrotaskId)
+    networkScheduler.submitTask(monotask3)
+    assert(monotask3.hasLaunched)
+
+    // Submit monotasks for the 2nd macrotask (it shouldn't be launched).
+    val monotask4 = makeMonotask(100, 2)
+    networkScheduler.submitTask(monotask4)
+    assert(!monotask4.hasLaunched)
+
+    val monotask5 = makeMonotask(100, 2)
+    networkScheduler.submitTask(monotask5)
+    assert(!monotask5.hasLaunched)
+
+    networkScheduler.bytesReceived(700)
+    assert(!monotask4.hasLaunched)
+    assert(!monotask5.hasLaunched)
+
+    networkScheduler.bytesReceived(500)
+    assert(!monotask4.hasLaunched)
+    assert(!monotask5.hasLaunched)
+
+    networkScheduler.bytesReceived(100)
+    assert(monotask4.hasLaunched)
+    assert(monotask5.hasLaunched)
   }
 
-  /**
-   * This test creates a monotask with totalResultSize larger than maxOutstandingBytes. Such a
-   * monotask should only be launched if it's the only monotask running (to mitigate the fact that
-   * its size is so large).
-   */
-  test("submitTask: monotask larger than maxOutstandingBytes is eventually launched") {
-    val smallMonotask = makeMonotask(3)
-    val bigMonotask = makeMonotask(networkScheduler.maxOutstandingBytes + 1)
-
-    networkScheduler.submitTask(smallMonotask)
-    assert(smallMonotask.hasLaunched)
-
-    networkScheduler.submitTask(bigMonotask)
-    assert(!bigMonotask.hasLaunched)
-
-    networkScheduler.bytesReceived(3)
-    assert(bigMonotask.hasLaunched)
+  test("bytesReceived: does nothing when no more monotasks") {
+    val monotask1 = makeMonotask(100, 1)
+    networkScheduler.submitTask(monotask1)
+    assert(monotask1.hasLaunched)
+    networkScheduler.bytesReceived(100)
   }
 
-  test("submitTask: round robins over multiple executors") {
-    val execAMonotask0 = makeMonotask(512 * 1024, "execA")
-    val execBMonotask0 = makeMonotask(512 * 1024, "execB")
-    val execBMonotask1 = makeMonotask(512 * 1024, "execB")
-    val execCMonotask0 = makeMonotask(512 * 1024, "execC")
-
-    // Submit all of the monotasks. Only the first two should be run (to respect the
-    // maxOutstandingBytes).
-    networkScheduler.submitTask(execAMonotask0)
-    assert(execAMonotask0.hasLaunched)
-    networkScheduler.submitTask(execBMonotask0)
-    assert(execBMonotask0.hasLaunched)
-    networkScheduler.submitTask(execBMonotask1)
-    assert(!execBMonotask1.hasLaunched)
-    networkScheduler.submitTask(execCMonotask0)
-    assert(!execCMonotask0.hasLaunched)
-
-    // When one of the monotasks finishes, the monotask for executor C should be run next,
-    // because the scheduler should do round-robin over the executors.
-    networkScheduler.bytesReceived(512 * 1024)
-    assert(execCMonotask0.hasLaunched)
-    assert(!execBMonotask1.hasLaunched)
-
-    // When another monotask finishes, the last monotask should be run.
-    networkScheduler.bytesReceived(512 * 1024)
-    assert(execBMonotask1.hasLaunched)
-  }
-
-  def makeMonotask(size: Long, executorId: String = "test-client"): DummyNetworkMonotask = {
+  def makeMonotask(size: Long, macrotaskId: Long): DummyNetworkMonotask = {
+    val taskContext = mock(classOf[TaskContext])
+    when(taskContext.taskAttemptId).thenReturn(macrotaskId)
     val blockIds = Array[(BlockId, Long)](
       (ShuffleBlockId(0,0,0), size))
-    new DummyNetworkMonotask(blockIds, executorId)
+    new DummyNetworkMonotask(blockIds, taskContext)
 
   }
 
-  class DummyNetworkMonotask(blockIds: Array[(BlockId, Long)], executorId: String)
-    extends NetworkMonotask(taskContext, BlockManagerId(executorId, "test-client", 1), blockIds) {
+  class DummyNetworkMonotask(blockIds: Array[(BlockId, Long)], taskContext: TaskContext)
+    extends NetworkMonotask(taskContext, BlockManagerId("executor", "test-client", 1), blockIds) {
 
     var hasLaunched = false
     override def launch(scheduler: NetworkScheduler) {
