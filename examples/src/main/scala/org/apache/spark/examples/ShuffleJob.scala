@@ -30,8 +30,9 @@ object ShuffleJob {
     val itemsPerPartition = if (args.length > 1) args(1).toInt else 1500000
     val longsPerValue = if (args.length > 2) args(2).toInt else 5
     def numShuffles = if (args.length > 3) args(3).toInt else 2
-    val rdd = spark.parallelize(1 to numTasks, numTasks).flatMap { _ =>
-      Array.fill(itemsPerPartition)((Random.nextLong, Array.fill(longsPerValue)(Random.nextLong)))
+    val rdd = spark.parallelize(1 to numTasks, numTasks).flatMap { i =>
+      val r = new Random(i)
+      Array.fill(itemsPerPartition)((r.nextLong, Array.fill(longsPerValue)(r.nextLong)))
     }
     // The goal here is just to shuffle the data with minimal computation, so this doesn't sort
     // the shuffled data. The reduceByKey should result in very few keys being combined, because

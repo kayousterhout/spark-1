@@ -52,11 +52,13 @@ object ShuffleAndComputeJob {
     val numComputeTasks = if (args.length > 5) args(5).toInt else 4
     val totalRecords = recordsPerTaskPerSecond * targetSeconds * numComputeTasks
     val computeRunnable = future {
+      spark.setJobGroup("b", "compute job")
       spark.parallelize(1 to totalRecords, 4).map(java.lang.Math.tan(_)).count
     }
 
     // Now, concurrently run two experiments.
     val shuffleRunnable = future {
+      spark.setJobGroup("a", "shuffle job")
       println("Running shuffle twice")
       (1 to numShuffles).foreach { _ =>
         shuffledRdd.count
