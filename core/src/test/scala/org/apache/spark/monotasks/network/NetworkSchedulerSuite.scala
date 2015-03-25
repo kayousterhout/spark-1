@@ -21,6 +21,7 @@ import org.mockito.Mockito.{mock, when}
 import org.scalatest.{BeforeAndAfterEach, FunSuite, Matchers}
 
 import org.apache.spark.{SparkConf, TaskContext}
+import org.apache.spark.executor.ShuffleReadMetrics
 import org.apache.spark.storage.{BlockId, BlockManagerId, ShuffleBlockId}
 
 class NetworkSchedulerSuite extends FunSuite with BeforeAndAfterEach with Matchers {
@@ -119,7 +120,9 @@ class NetworkSchedulerSuite extends FunSuite with BeforeAndAfterEach with Matche
   }
 
   class DummyNetworkMonotask(blockIds: Array[(BlockId, Long)], taskContext: TaskContext)
-    extends NetworkMonotask(taskContext, BlockManagerId("executor", "test-client", 1), blockIds) {
+    extends NetworkMonotask(
+      taskContext, BlockManagerId("executor", "test-client", 1), blockIds,
+      new ShuffleReadMetrics()) {
 
     var hasLaunched = false
     override def launch(scheduler: NetworkScheduler) {

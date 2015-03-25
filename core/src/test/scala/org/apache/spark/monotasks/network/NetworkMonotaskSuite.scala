@@ -43,6 +43,7 @@ import org.mockito.Mockito.{mock, verify, when}
 import org.scalatest.{FunSuite, Matchers}
 
 import org.apache.spark.{SparkEnv, TaskContext}
+import org.apache.spark.executor.ShuffleReadMetrics
 import org.apache.spark.monotasks.LocalDagScheduler
 import org.apache.spark.network.{BufferMessage, ConnectionManager}
 import org.apache.spark.storage.{BlockId, BlockManager, BlockManagerId, BlockStatus, ShuffleBlockId,
@@ -67,7 +68,8 @@ class NetworkMonotaskSuite extends FunSuite with Matchers {
       (ShuffleBlockId(0,0,0), 5),
       (ShuffleBlockId(0,1,0), 12),
       (ShuffleBlockId(0,2,0), 15))
-    val networkMonotask = new NetworkMonotask(context, testBlockManagerId, blockIds)
+    val networkMonotask =
+      new NetworkMonotask(context, testBlockManagerId, blockIds, new ShuffleReadMetrics())
 
     // Create the future to give to the monotask (via a mock) for the network call.
     val bufferMessage = mock(classOf[BufferMessage])
