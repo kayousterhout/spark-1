@@ -77,6 +77,7 @@ class ShuffleReader[K, V, C](
         // Create exactly one monotask per remote executor.
         val networkMonotask = new NetworkMonotask(context, address, blockInfos)
         fetchMonotasks.append(networkMonotask)
+        localBlockIds.append(networkMonotask.resultBlockId)
       }
     }
     logInfo(s"getReadMonotasks created ${fetchMonotasks.size} monotasks")
