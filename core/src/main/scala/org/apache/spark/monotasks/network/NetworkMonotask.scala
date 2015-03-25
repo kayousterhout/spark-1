@@ -19,6 +19,7 @@ package org.apache.spark.monotasks.network
 import scala.util.{Success, Failure}
 
 import org.apache.spark.{ExceptionFailure, FetchFailed, Logging, SparkException, TaskContext}
+import org.apache.spark.executor.ShuffleReadMetrics
 import org.apache.spark.monotasks.Monotask
 import org.apache.spark.network.{BufferMessage, ConnectionManagerId}
 import org.apache.spark.storage._
@@ -36,7 +37,8 @@ import org.apache.spark.util.Utils
 private[spark] class NetworkMonotask(
     context: TaskContext,
     val remoteAddress: BlockManagerId,
-    val blocks: Seq[(BlockId, Long)])
+    val blocks: Seq[(BlockId, Long)],
+    val readMetrics: ShuffleReadMetrics)
   extends Monotask(context) with Logging {
 
   val resultBlockId = new MonotaskResultBlockId(taskId)
@@ -71,6 +73,8 @@ private[spark] class NetworkMonotask(
         context.env.blockManager.cacheSingle(
           resultBlockId, message.asInstanceOf[BufferMessage], StorageLevel.MEMORY_ONLY, false)
         scheduler.bytesReceived(totalResultSize)
+        // TODO: this is messy...do it in a nicer way.
+        readMetrics.fetchWaitTime = (System.nanoTime - scheduler.currentStartTimeNanos) / 1000000
         context.localDagScheduler.handleTaskCompletion(this)
       }
 

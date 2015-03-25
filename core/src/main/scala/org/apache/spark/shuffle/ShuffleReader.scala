@@ -44,6 +44,7 @@ class ShuffleReader[K, V, C](
   extends Logging {
 
   private val localBlockIds = new ArrayBuffer[BlockId]()
+  val readMetrics = context.taskMetrics.createShuffleReadMetricsForDependency()
 
   def getReadMonotasks(): Seq[Monotask] = {
     // Get the locations of the map output.
@@ -54,9 +55,6 @@ class ShuffleReader[K, V, C](
       shuffleDependency.shuffleId, reduceId)
     logDebug("Fetching map output location for shuffle %d, reduce %d took %d ms".format(
       shuffleDependency.shuffleId, reduceId, System.currentTimeMillis - startTime))
-
-    val targetRequestSizeBytes =
-      context.env.conf.getInt("spark.reducer.targetRequestSizeMb", 9) * 1024 * 1024
 
     // Organize the blocks based on the block manager address.
     val blocksByAddress = new HashMap[BlockManagerId, ArrayBuffer[(BlockId, Long)]]
@@ -75,7 +73,7 @@ class ShuffleReader[K, V, C](
         localBlockIds ++= nonEmptyBlocks.map(_._1)
       } else {
         // Create exactly one monotask per remote executor.
-        val networkMonotask = new NetworkMonotask(context, address, blockInfos)
+        val networkMonotask = new NetworkMonotask(context, address, blockInfos, readMetrics)
         fetchMonotasks.append(networkMonotask)
         localBlockIds.append(networkMonotask.resultBlockId)
       }
@@ -86,7 +84,6 @@ class ShuffleReader[K, V, C](
 
   def getDeserializedAggregatedSortedData(): Iterator[Product2[K, C]] = {
     val shuffleDataSerializer = shuffleDependency.serializer.getOrElse(context.env.serializer)
-    val readMetrics = context.taskMetrics.createShuffleReadMetricsForDependency()
     val iter = localBlockIds.iterator.flatMap {
       case shuffleBlockId: ShuffleBlockId =>
         // The map task was run on this machine, so the memory store has the serialized shuffle

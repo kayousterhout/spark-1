@@ -37,6 +37,7 @@ private[spark] class NetworkScheduler(conf: SparkConf) extends Logging {
 
   // TODO: synchronize?
   private var waitingBytes = 0L
+  var currentStartTimeNanos = 0L
 
   // This isn't synchronized since it's only used for monitoring.
   def getOutstandingBytes: Long = currentOutstandingBytes
@@ -50,7 +51,10 @@ private[spark] class NetworkScheduler(conf: SparkConf) extends Logging {
     // running macrotask.
     if (currentOutstandingBytes == 0 || macrotaskId == currentMacrotaskId) {
       monotask.launch(this)
-      currentMacrotaskId = macrotaskId
+      if (currentOutstandingBytes == 0) {
+        currentMacrotaskId = macrotaskId
+        currentStartTimeNanos = System.nanoTime
+      }
       currentOutstandingBytes += monotask.totalResultSize
     } else {
       waitingBytes += monotask.totalResultSize
@@ -66,16 +70,19 @@ private[spark] class NetworkScheduler(conf: SparkConf) extends Logging {
     currentOutstandingBytes -= totalBytes
 
     if (currentOutstandingBytes == 0 && !macrotaskQueue.isEmpty) {
-      // We can launch monotasks for the next macrotask.
-      // TODO: consider starting monotasks for the next macrotask when the outstanding bytes to
-      // any one executor is low? Or does that introduce annoying load balancing?
-      currentMacrotaskId = macrotaskQueue.dequeue()
-      macrotaskIdToMonotasks(currentMacrotaskId).foreach { monotask =>
-        monotask.launch(this)
-        currentOutstandingBytes += monotask.totalResultSize
-        waitingBytes -= monotask.totalResultSize
+
+      if (!macrotaskQueue.isEmpty) {
+        // We can launch monotasks for the next macrotask.
+        // TODO: consider starting monotasks for the next macrotask when the outstanding bytes to
+        // any one executor is low? Or does that introduce annoying load balancing?
+        currentMacrotaskId = macrotaskQueue.dequeue()
+        macrotaskIdToMonotasks(currentMacrotaskId).foreach { monotask =>
+          monotask.launch(this)
+          currentOutstandingBytes += monotask.totalResultSize
+          waitingBytes -= monotask.totalResultSize
+        }
+        macrotaskIdToMonotasks.remove(currentMacrotaskId)
       }
-      macrotaskIdToMonotasks.remove(currentMacrotaskId)
     }
   }
 }
