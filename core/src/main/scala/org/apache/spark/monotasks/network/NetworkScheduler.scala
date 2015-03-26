@@ -70,7 +70,7 @@ private[spark] class NetworkScheduler(conf: SparkConf) extends Logging {
     currentOutstandingBytes -= totalBytes
 
     if (currentOutstandingBytes == 0 && !macrotaskQueue.isEmpty) {
-
+      currentStartTimeNanos = System.nanoTime
       if (!macrotaskQueue.isEmpty) {
         // We can launch monotasks for the next macrotask.
         // TODO: consider starting monotasks for the next macrotask when the outstanding bytes to
