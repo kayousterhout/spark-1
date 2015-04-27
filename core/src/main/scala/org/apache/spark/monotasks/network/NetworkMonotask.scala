@@ -57,6 +57,7 @@ private[spark] class NetworkMonotask(
     // Increment the ref count because we need to pass this to a different thread.
     // This needs to be released after use.
     buf.retain()
+    logInfo(s"onBlockFetchSucess: trying to cache block $resultBlockId with buf.size ${buf.size()}")
     context.env.blockManager.cacheSingle(resultBlockId, buf, StorageLevel.MEMORY_ONLY, false)
     context.localDagScheduler.handleTaskCompletion(this)
   }

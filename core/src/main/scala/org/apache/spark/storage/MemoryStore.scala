@@ -77,6 +77,7 @@ private[spark] class MemoryStore(blockManager: BlockManager, maxMemory: Long)
       val values = blockManager.dataDeserialize(blockId, bytesCopy)
       cacheIterator(blockId, values, level, returnValues = true)
     } else {
+      logInfo(s"Trying to cache block with size ${bytesCopy.limit}")
       tryToCache(blockId, bytesCopy, bytesCopy.limit, deserialized = false)
       CacheResult(bytesCopy.limit(), Right(bytesCopy.duplicate()))
     }
