@@ -106,7 +106,7 @@ class ShuffleHelper[K, V, C](
          })
       } catch {
         case e: Exception =>
-          logError(s"Failed to get shuffle block $blockId", e)
+          logError(s"Failed to get shuffle block $blockId from task ${context.taskAttemptId}", e)
           val mapId = blockIdToMapId(blockId)
           val address = statuses(mapId)._1
           throw new FetchFailedException(
@@ -158,6 +158,7 @@ class ShuffleHelper[K, V, C](
       // TODO: This should be handled by the LocalDagScheduler, so that it can ensure results
       //       get deleted in all possible failure scenarios.
       //       https://github.com/NetSys/spark-monotasks/issues/8
+      logInfo(s"Task ${context.taskAttemptId} removing block $monotaskResultBlockId")
       blockManager.removeBlock(monotaskResultBlockId, tellMaster = false)
       bytes
 
