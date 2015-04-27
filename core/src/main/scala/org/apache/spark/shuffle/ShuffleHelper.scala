@@ -16,16 +16,17 @@
 
 package org.apache.spark.shuffle
 
+import java.nio.ByteBuffer
+
 import scala.collection.mutable.{ArrayBuffer, HashMap}
 
 import org.apache.spark.{InterruptibleIterator, Logging, ShuffleDependency, SparkEnv,
   SparkException, TaskContextImpl}
 import org.apache.spark.monotasks.Monotask
 import org.apache.spark.monotasks.network.NetworkMonotask
-import org.apache.spark.network.buffer.ManagedBuffer
 import org.apache.spark.serializer.Serializer
 import org.apache.spark.storage.{BlockId, BlockManagerId, MonotaskResultBlockId, ShuffleBlockId}
-import org.apache.spark.util.CompletionIterator
+import org.apache.spark.util.{CompletionIterator, ByteBufferInputStream}
 
 /**
  * Handles creating network monotasks to read shuffle data over the network. Also provides
@@ -88,19 +89,17 @@ class ShuffleHelper[K, V, C](
     val dummyShuffleBlockId = new ShuffleBlockId(shuffleDependency.shuffleId, 0, reduceId)
 
     val iter = localBlockIds.iterator.flatMap { blockId =>
-      val dataBuffer = getShuffleDataBuffer(blockId)
+      val bytes = getShuffleDataBuffer(blockId)
 
       // Can't use BlockManager.dataDeserialize here, because we have an InputStream already
       // (as opposed to a ByteBuffer).
       try {
-        val inputStream = dataBuffer.createInputStream()
-        val decompressedStream = blockManager.wrapForCompression(dummyShuffleBlockId, inputStream)
+        bytes.rewind()
+        val decompressedStream = blockManager.wrapForCompression(dummyShuffleBlockId,
+          new ByteBufferInputStream(bytes))
         val iter = shuffleDataSerializer.newInstance()
           .deserializeStream(decompressedStream).asIterator
         CompletionIterator[Any, Iterator[Any]](iter, {
-          // Once the iterator is exhausted, release the buffer.
-          dataBuffer.release()
-
            // After iterating through all of the shuffle data, aggregate the shuffle read metrics.
            // All calls to updateShuffleReadMetrics() (across all shuffle dependencies) need to
            // happen in a single thread; this is guaranteed here, because this will be called from
@@ -134,14 +133,14 @@ class ShuffleHelper[K, V, C](
    * (for shuffle data read locally) or MonotaskResultBlockId (for shuffle data read from remote
    * executors).
    */
-  private def getShuffleDataBuffer(blockId: BlockId): ManagedBuffer = blockId match {
+  private def getShuffleDataBuffer(blockId: BlockId): ByteBuffer = blockId match {
     case shuffleBlockId: ShuffleBlockId =>
       try {
         // TODO: don't wrap this in a ManagedByte buffer!
-        val bufferMessage = blockManager.getBlockData(shuffleBlockId)
+        val bytes = blockManager.getLocalBytes(shuffleBlockId).get
         readMetrics.incLocalBlocksFetched(1)
-        readMetrics.incLocalBytesRead(bufferMessage.size)
-        bufferMessage
+        readMetrics.incLocalBytesRead(bytes.limit())
+        bytes
       } catch {
         case e: Exception =>
           val failureMessage = s"Unable to fetch local shuffle block with id $blockId"
@@ -155,16 +154,15 @@ class ShuffleHelper[K, V, C](
       }
 
     case monotaskResultBlockId: MonotaskResultBlockId =>
-      // TODO: handle case where the block doesn't exist.
-      val bufferMessage = blockManager.getBlockData(monotaskResultBlockId)
-      readMetrics.incRemoteBytesRead(bufferMessage.size)
-      readMetrics.incRemoteBlocksFetched(1)
+      val bytes = blockManager.getLocalBytes(monotaskResultBlockId).get
+      readMetrics.incLocalBlocksFetched(1)
+      readMetrics.incLocalBytesRead(bytes.limit())
       // Remove the data from the memory store.
       // TODO: This should be handled by the LocalDagScheduler, so that it can ensure results
       //       get deleted in all possible failure scenarios.
       //       https://github.com/NetSys/spark-monotasks/issues/8
       blockManager.removeBlock(monotaskResultBlockId, tellMaster = false)
-      bufferMessage
+      bytes
 
     case _ =>
       throw new SparkException(s"Failed to get block $blockId, which is not a shuffle block")
