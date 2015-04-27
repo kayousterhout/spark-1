@@ -45,12 +45,11 @@ private[spark] class MemoryShuffleBlockManager(conf: SparkConf)
     new MetadataCleaner(MetadataCleanerType.SHUFFLE_BLOCK_MANAGER, this.cleanup, conf)
 
   override def getBytes(blockId: ShuffleBlockId): Option[ByteBuffer] = {
-    val segment = getBlockData(blockId)
-    Some(segment.nioByteBuffer())
+    blockManager.memoryStore.getBytes(blockId)
   }
 
   override def getBlockData(blockId: ShuffleBlockId): ManagedBuffer = {
-    blockManager.memoryStore.getBytes(blockId).map(new NioManagedBuffer(_))
+    getBytes(blockId).map(new NioManagedBuffer(_))
       .getOrElse(throw new BlockNotFoundException(blockId.toString))
   }
 

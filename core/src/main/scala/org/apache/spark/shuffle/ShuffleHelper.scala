@@ -137,6 +137,7 @@ class ShuffleHelper[K, V, C](
   private def getShuffleDataBuffer(blockId: BlockId): ManagedBuffer = blockId match {
     case shuffleBlockId: ShuffleBlockId =>
       try {
+        // TODO: don't wrap this in a ManagedByte buffer!
         val bufferMessage = blockManager.getBlockData(shuffleBlockId)
         readMetrics.incLocalBlocksFetched(1)
         readMetrics.incLocalBytesRead(bufferMessage.size)
@@ -155,8 +156,7 @@ class ShuffleHelper[K, V, C](
 
     case monotaskResultBlockId: MonotaskResultBlockId =>
       // TODO: handle case where the block doesn't exist.
-      val bufferMessage = blockManager.getSingle(monotaskResultBlockId).get
-        .asInstanceOf[ManagedBuffer]
+      val bufferMessage = blockManager.getBlockData(monotaskResultBlockId)
       readMetrics.incRemoteBytesRead(bufferMessage.size)
       readMetrics.incRemoteBlocksFetched(1)
       // Remove the data from the memory store.
