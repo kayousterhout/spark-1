@@ -19,7 +19,7 @@ package org.apache.spark.shuffle.memory
 import java.io.{ByteArrayOutputStream, OutputStream}
 import java.nio.ByteBuffer
 
-import org.apache.spark.{ShuffleDependency, SparkEnv, TaskContext}
+import org.apache.spark.{Logging, ShuffleDependency, SparkEnv, TaskContext}
 import org.apache.spark.executor.ShuffleWriteMetrics
 import org.apache.spark.scheduler.MapStatus
 import org.apache.spark.serializer.{SerializationStream, Serializer}
@@ -31,7 +31,7 @@ private[spark] class MemoryShuffleWriter[K, V](
     shuffleBlockManager: MemoryShuffleBlockManager,
     handle: BaseShuffleHandle[K, V, _],
     mapId: Int,
-    context: TaskContext) extends ShuffleWriter[K, V] {
+    context: TaskContext) extends ShuffleWriter[K, V] with Logging {
 
   private val dep = handle.dependency
 
@@ -110,6 +110,7 @@ private[spark] class SerializedObjectWriter(
 
   def open() {
     compressionStream = blockManager.wrapForCompression(blockId, byteOutputStream)
+    logInfo(s"Compression stream: $compressionStream")
     serializationStream = ser.newInstance().serializeStream(compressionStream)
     initialized = true
   }

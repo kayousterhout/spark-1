@@ -91,14 +91,8 @@ class ShuffleHelper[K, V, C](
     val iter = localBlockIds.iterator.flatMap { blockId =>
       val bytes = getShuffleDataBuffer(blockId)
 
-      // Can't use BlockManager.dataDeserialize here, because we have an InputStream already
-      // (as opposed to a ByteBuffer).
       try {
-        bytes.rewind()
-        val decompressedStream = blockManager.wrapForCompression(dummyShuffleBlockId,
-          new ByteBufferInputStream(bytes))
-        val iter = shuffleDataSerializer.newInstance()
-          .deserializeStream(decompressedStream).asIterator
+        val iter = blockManager.dataDeserialize(dummyShuffleBlockId, bytes, shuffleDataSerializer)
         CompletionIterator[Any, Iterator[Any]](iter, {
            // After iterating through all of the shuffle data, aggregate the shuffle read metrics.
            // All calls to updateShuffleReadMetrics() (across all shuffle dependencies) need to
