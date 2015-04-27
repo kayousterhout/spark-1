@@ -56,7 +56,8 @@ private[spark] class NetworkMonotask(
   override def onBlockFetchSuccess(blockId: String, buf: ManagedBuffer): Unit = {
     logInfo(s"onBlockFetchSucess: trying to cache block $resultBlockId with buf.size ${buf.size()}")
     // TODO: Don't just copy into a ByteBuffer!!!
-    context.env.blockManager.cacheBytes(resultBlockId, buf.nioByteBuffer(), StorageLevel.MEMORY_ONLY_SER, false)
+    context.env.blockManager.cacheBytes(resultBlockId, buf.nioByteBuffer(),
+      StorageLevel.MEMORY_ONLY_SER, false)
     context.localDagScheduler.handleTaskCompletion(this)
   }
 

@@ -69,8 +69,12 @@ class ShuffleHelper[K, V, C](
         blockIdToMapId(blockId) = index
         if (address.executorId == context.env.blockManager.blockManagerId.executorId) {
           localBlockIds += blockId
+          logInfo(s"KMZ: Created new ShuffleBlockId for local shuffle block "+
+            s"${shuffleDependency.shuffleId}, map $index, reduce $reduceId")
         } else {
           val networkMonotask = new NetworkMonotask(context, address, blockId, size)
+          logInfo(s"KMZ: Created new ShuffleBlockId for remote shuffle block "+
+            s"${shuffleDependency.shuffleId}, map $index, reduce $reduceId")
           localBlockIds.append(networkMonotask.resultBlockId)
           fetchMonotasks.append(networkMonotask)
         }
@@ -130,7 +134,6 @@ class ShuffleHelper[K, V, C](
   private def getShuffleDataBuffer(blockId: BlockId): ByteBuffer = blockId match {
     case shuffleBlockId: ShuffleBlockId =>
       try {
-        // TODO: don't wrap this in a ManagedByte buffer!
         val bytes = blockManager.getLocalBytes(shuffleBlockId).get
         readMetrics.incLocalBlocksFetched(1)
         readMetrics.incLocalBytesRead(bytes.limit())

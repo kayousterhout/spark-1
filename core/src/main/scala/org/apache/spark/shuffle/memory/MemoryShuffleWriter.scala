@@ -38,6 +38,7 @@ private[spark] class MemoryShuffleWriter[K, V](
   // Create a different writer for each output bucket.
   private val blockManager = SparkEnv.get.blockManager
   private val numBuckets = dep.partitioner.numPartitions
+  logInfo(s"KMZ: MemoryShuffleWriter writing output data to $numBuckets")
   private val shuffleData = Array.tabulate[SerializedObjectWriter](numBuckets) {
     bucketId =>
       new SerializedObjectWriter(blockManager, dep, mapId, bucketId)
@@ -85,7 +86,8 @@ private[spark] class MemoryShuffleWriter[K, V](
 
 /** Serializes and optionally compresses data into an in-memory byte stream. */
 private[spark] class SerializedObjectWriter(
-    blockManager: BlockManager, dep: ShuffleDependency[_,_,_], partitionId: Int, bucketId: Int) {
+    blockManager: BlockManager, dep: ShuffleDependency[_,_,_], partitionId: Int, bucketId: Int)
+  extends Logging {
 
   /**
    * A ByteArrayOutputStream that will convert the underlying byte array to a byte buffer without
@@ -110,7 +112,7 @@ private[spark] class SerializedObjectWriter(
 
   def open() {
     compressionStream = blockManager.wrapForCompression(blockId, byteOutputStream)
-    logInfo(s"Compression stream: $compressionStream")
+    System.out.println(s"Compression stream: $compressionStream")
     serializationStream = ser.newInstance().serializeStream(compressionStream)
     initialized = true
   }
