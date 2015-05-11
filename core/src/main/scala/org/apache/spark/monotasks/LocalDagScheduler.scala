@@ -65,6 +65,10 @@ private[spark] class LocalDagScheduler(
    * return its result until all of its monotasks have finished). */
   val macrotaskResults = new HashMap[Long, ByteBuffer]()
 
+  private val macrotaskRunningComputeMonotasks = new HashMap[Long, Int]()
+  private val macrotaskRunningDiskMonotasks = new HashMap[Long, Int]()
+  private val macrotaskRunningNetworkMonotasks = new HashMap[Long, Int]()
+
   def getNumRunningComputeMonotasks(): Int = {
     computeScheduler.numRunningTasks.get()
   }
@@ -72,6 +76,9 @@ private[spark] class LocalDagScheduler(
   def getNumRunningMacrotasks(): Int = {
     macrotaskRemainingMonotasks.keySet.size
   }
+
+  def getNumMacrotasksInNetwork(): Long = macrotaskRunningNetworkMonotasks.size
+  def getNumMacrotasksInCompute(): Long = macrotaskRunningComputeMonotasks.size
 
   def getOutstandingNetworkBytes(): Long = networkScheduler.getOutstandingBytes
 
@@ -92,6 +99,15 @@ private[spark] class LocalDagScheduler(
     monotasks.foreach(submitMonotask(_))
   }
 
+  private def updateMetricsForFinishedMonotask(completedMonotask: Monotask) {
+    val mapToUpdate = completedMonotask match {
+      case networkMonotask: NetworkMonotask => macrotaskRunningNetworkMonotasks
+      case computeMonotask: ComputeMonotask => macrotaskRunningComputeMonotasks
+      case diskMonotask: DiskMonotask => macrotaskRunningDiskMonotasks
+    }
+    decrementRunningMonotasks(mapToUpdate, completedMonotask.context.taskAttemptId)
+  }
+
   /**
    * Marks the monotask as successfully completed by updating the dependency tree and running any
    * newly runnable monotasks.
@@ -106,6 +122,7 @@ private[spark] class LocalDagScheduler(
     val taskAttemptId = completedMonotask.context.taskAttemptId
     logDebug(s"Monotask $completedMonotask (id: ${completedMonotask.taskId}) for " +
       s"macrotask $taskAttemptId has completed.")
+    updateMetricsForFinishedMonotask(completedMonotask)
     runningMonotasks.remove(completedMonotask.taskId)
 
     if (macrotaskRemainingMonotasks.contains(taskAttemptId)) {
@@ -159,6 +176,7 @@ private[spark] class LocalDagScheduler(
     = synchronized {
     logInfo(s"Monotask ${failedMonotask.taskId} (for macrotask " +
       s"${failedMonotask.context.taskAttemptId}) failed")
+    updateMetricsForFinishedMonotask(failedMonotask)
     runningMonotasks -= failedMonotask.taskId
     failDependentMonotasks(failedMonotask, Some(failedMonotask.taskId))
     val taskAttemptId = failedMonotask.context.taskAttemptId
@@ -187,6 +205,24 @@ private[spark] class LocalDagScheduler(
     }
   }
 
+  private def incrementRunningMonotasks(
+      macrotaskRunningMonotasks: HashMap[Long, Int],
+      macrotaskId: Long): Unit = {
+    val currentlyRunning = macrotaskRunningMonotasks.getOrElse(macrotaskId, 0)
+    macrotaskRunningMonotasks(macrotaskId) = currentlyRunning + 1
+  }
+
+  private def decrementRunningMonotasks(
+      macrotaskRunningMonotasks: HashMap[Long, Int],
+      macrotaskId: Long): Unit = {
+    val currentlyRunning = macrotaskRunningMonotasks(macrotaskId)
+    if (currentlyRunning == 1) {
+      macrotaskRunningMonotasks.remove(macrotaskId)
+    } else {
+      macrotaskRunningMonotasks(macrotaskId) = currentlyRunning - 1
+    }
+  }
+
   /**
    * Submits a monotask to the relevant scheduler to be executed. This method should only be called
    * after all of the monotask's dependencies have been satisfied.
@@ -194,9 +230,18 @@ private[spark] class LocalDagScheduler(
   private def scheduleMonotask(monotask: Monotask) {
     assert(monotask.dependencies.isEmpty)
     monotask match {
-      case computeMonotask: ComputeMonotask => computeScheduler.submitTask(computeMonotask)
-      case networkMonotask: NetworkMonotask => networkScheduler.submitTask(networkMonotask)
-      case diskMonotask: DiskMonotask => diskScheduler.submitTask(diskMonotask)
+      case computeMonotask: ComputeMonotask =>
+        incrementRunningMonotasks(
+          macrotaskRunningComputeMonotasks, computeMonotask.context.taskAttemptId)
+        computeScheduler.submitTask(computeMonotask)
+      case networkMonotask: NetworkMonotask =>
+        incrementRunningMonotasks(
+          macrotaskRunningNetworkMonotasks, networkMonotask.context.taskAttemptId)
+        networkScheduler.submitTask(networkMonotask)
+      case diskMonotask: DiskMonotask =>
+        incrementRunningMonotasks(
+          macrotaskRunningDiskMonotasks, diskMonotask.context.taskAttemptId)
+        diskScheduler.submitTask(diskMonotask)
       case _ => logError(s"Received unexpected type of monotask: $monotask")
     }
     /* Add the monotask to runningMonotasks before removing it from waitingMonotasks to avoid

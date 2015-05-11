@@ -63,7 +63,8 @@ private[spark] class NetworkMonotask(
     // Increment the ref count because we need to pass this to a different thread.
     // This needs to be released after use.
     buf.retain()
-    logInfo(s"Received network bytes; actual size was ${buf.size()}; expected size $size")
+    logInfo(s"Received shuffle block $shuffleBlockId from ${remoteAddress.host} (actual size: " +
+      s"${buf.size()} bytes; expected size: $size bytes)")
     context.env.blockManager.cacheSingle(resultBlockId, buf, StorageLevel.MEMORY_ONLY, false)
     context.localDagScheduler.handleTaskCompletion(this)
   }
