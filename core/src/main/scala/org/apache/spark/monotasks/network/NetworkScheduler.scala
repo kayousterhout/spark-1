@@ -16,6 +16,8 @@
 
 package org.apache.spark.monotasks.network
 
+import java.util.concurrent.atomic.AtomicLong
+
 import org.apache.spark.Logging
 import org.apache.spark.util.Utils
 
@@ -30,9 +32,18 @@ private[spark] class NetworkScheduler() extends Logging {
   //       number of threads; eventually, we'll want a smarter queueing strategy.
   private val networkThreadpool = Utils.newDaemonFixedThreadPool(threads, "network-monotask-thread")
 
+  /** Number of bytes that this executor is currently waiting to receive over the network. */
+  private var currentOutstandingBytes = new AtomicLong(0)
+
   def submitTask(monotask: NetworkMonotask) {
     networkThreadpool.execute(new Runnable {
-      override def run(): Unit = monotask.execute()
+      override def run(): Unit = monotask.execute(NetworkScheduler.this)
     })
   }
+
+  def bytesRequested(bytesRequested: Long) = currentOutstandingBytes.addAndGet(bytesRequested)
+
+  def bytesReceived(bytesReceived: Long) = currentOutstandingBytes.addAndGet(-bytesReceived)
+
+  def getOutstandingBytes: Long = currentOutstandingBytes.get()
 }

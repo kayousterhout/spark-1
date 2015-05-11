@@ -37,14 +37,19 @@ private[spark] class NetworkMonotask(
     context: TaskContextImpl,
     val remoteAddress: BlockManagerId,
     shuffleBlockId: ShuffleBlockId,
-    size: Long)
+    private val size: Long)
   extends Monotask(context) with Logging with BlockFetchingListener {
 
   val resultBlockId = new MonotaskResultBlockId(taskId)
 
-  def execute() {
+  /** Scheduler to notify about bytes received over the network. Set by execute(). */
+  var networkScheduler: NetworkScheduler = _
+
+  def execute(scheduler: NetworkScheduler) {
     logDebug(s"Sending request for block $shuffleBlockId (size (${Utils.bytesToString(size)}}) " +
       s"to $remoteAddress")
+    networkScheduler = scheduler
+    networkScheduler.bytesRequested(size)
     context.env.blockManager.blockTransferService.fetchBlocks(
       remoteAddress.host,
       remoteAddress.port,
@@ -54,14 +59,17 @@ private[spark] class NetworkMonotask(
   }
 
   override def onBlockFetchSuccess(blockId: String, buf: ManagedBuffer): Unit = {
+    networkScheduler.bytesReceived(size)
     // Increment the ref count because we need to pass this to a different thread.
     // This needs to be released after use.
     buf.retain()
+    logInfo(s"Received network bytes; actual size was ${buf.size()}; expected size $size")
     context.env.blockManager.cacheSingle(resultBlockId, buf, StorageLevel.MEMORY_ONLY, false)
     context.localDagScheduler.handleTaskCompletion(this)
   }
 
   override def onBlockFetchFailure(failedBlockId: String, e: Throwable): Unit = {
+    networkScheduler.bytesReceived(size)
     logError(s"Failed to get block(s) from ${remoteAddress.host}:${remoteAddress.port}", e)
     val serializedFailureReason = BlockId(failedBlockId) match {
       case ShuffleBlockId(shuffleId, mapId, _) =>
