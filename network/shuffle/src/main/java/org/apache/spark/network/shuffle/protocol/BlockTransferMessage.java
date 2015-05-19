@@ -52,7 +52,7 @@ public abstract class BlockTransferMessage implements Encodable {
 
   /** Preceding every serialized message is its type, which allows us to deserialize it. */
   public static enum Type {
-    OPEN_BLOCKS(0), REGISTER_EXECUTOR(1), STREAM_HANDLE(2);
+    OPEN_BLOCKS(0), STREAM_HANDLE(1);
 
     private final byte id;
 
@@ -72,8 +72,7 @@ public abstract class BlockTransferMessage implements Encodable {
       byte type = buf.readByte();
       switch (type) {
         case 0: return OpenBlocks.decode(buf);
-        case 1: return RegisterExecutor.decode(buf);
-        case 2: return StreamHandle.decode(buf);
+        case 1: return StreamHandle.decode(buf);
         default: throw new IllegalArgumentException("Unknown message type: " + type);
       }
     }
