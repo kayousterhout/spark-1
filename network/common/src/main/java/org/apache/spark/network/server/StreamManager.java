@@ -21,7 +21,7 @@ import org.apache.spark.network.buffer.ManagedBuffer;
 
 /**
  * The StreamManager is used to fetch individual chunks from a stream. This is used in
- * {@link TransportRequestHandler} in order to respond to fetchChunk() requests. Creation of the
+ * {@link TransportRequestHandler} in order to respond to fetchBlock() requests. Creation of the
  * stream is outside the scope of the transport layer, but a given stream is guaranteed to be read
  * by only one client connection, meaning that getChunk() for a particular stream will be called
  * serially and that once the connection associated with the stream is closed, that stream will
@@ -29,7 +29,7 @@ import org.apache.spark.network.buffer.ManagedBuffer;
  */
 public abstract class StreamManager {
   /**
-   * Called in response to a fetchChunk() request. The returned buffer will be passed as-is to the
+   * Called in response to a fetchBlock() request. The returned buffer will be passed as-is to the
    * client. A single stream will be associated with a single TCP connection, so this method
    * will not be called in parallel for a particular stream.
    *

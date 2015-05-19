@@ -15,6 +15,22 @@
  * limitations under the License.
  */
 
+/*
+ * Copyright 2014 The Regents of The University California
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.apache.spark.network.netty
 
 import java.nio._
@@ -26,9 +42,9 @@ import scala.util.{Failure, Success, Try}
 
 import org.apache.commons.io.IOUtils
 import org.apache.spark.network.buffer.{ManagedBuffer, NioManagedBuffer}
-import org.apache.spark.network.shuffle.BlockFetchingListener
-import org.apache.spark.network.{BlockDataManager, BlockTransferService}
-import org.apache.spark.storage.{BlockId, ShuffleBlockId}
+import org.apache.spark.network.client.BlockReceivedCallback
+import org.apache.spark.network.BlockTransferService
+import org.apache.spark.storage.{BlockId, BlockManager, ShuffleBlockId}
 import org.apache.spark.{SecurityManager, SparkConf}
 import org.mockito.Mockito._
 import org.scalatest.mock.MockitoSugar
@@ -97,11 +113,11 @@ class NettyBlockTransferSecuritySuite extends FunSuite with MockitoSugar with Sh
    * properly. We will throw an out-of-band exception if something other than that goes wrong.
    */
   private def testConnection(conf0: SparkConf, conf1: SparkConf): Try[Unit] = {
-    val blockManager = mock[BlockDataManager]
+    val blockManager = mock[BlockManager]
     val blockId = ShuffleBlockId(0, 1, 2)
     val blockString = "Hello, world!"
     val blockBuffer = new NioManagedBuffer(ByteBuffer.wrap(blockString.getBytes))
-    when(blockManager.getBlockData(blockId)).thenReturn(blockBuffer)
+    when(blockManager.getBlockData(blockId.toString)).thenReturn(blockBuffer)
 
     val securityManager0 = new SecurityManager(conf0)
     val exec0 = new NettyBlockTransferService(conf0, securityManager0, numCores = 1)
@@ -133,13 +149,13 @@ class NettyBlockTransferSecuritySuite extends FunSuite with MockitoSugar with Sh
 
     val promise = Promise[ManagedBuffer]()
 
-    self.fetchBlocks(from.hostName, from.port, execId, Array(blockId.toString),
-      new BlockFetchingListener {
-        override def onBlockFetchFailure(blockId: String, exception: Throwable): Unit = {
+    self.fetchBlock(from.hostName, from.port, execId, blockId.toString,
+      new BlockReceivedCallback {
+        override def onFailure(blockId: String, exception: Throwable): Unit = {
           promise.failure(exception)
         }
 
-        override def onBlockFetchSuccess(blockId: String, data: ManagedBuffer): Unit = {
+        override def onSuccess(blockId: String, data: ManagedBuffer): Unit = {
           promise.success(data.retain())
         }
       })

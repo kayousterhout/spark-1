@@ -45,23 +45,14 @@ public final class MessageDecoder extends MessageToMessageDecoder<ByteBuf> {
 
   private Message decode(Message.Type msgType, ByteBuf in) {
     switch (msgType) {
-      case ChunkFetchRequest:
-        return ChunkFetchRequest.decode(in);
+      case BlockFetchRequest:
+        return BlockFetchRequest.decode(in);
 
-      case ChunkFetchSuccess:
-        return ChunkFetchSuccess.decode(in);
+      case BlockFetchSuccess:
+        return BlockFetchSuccess.decode(in);
 
-      case ChunkFetchFailure:
-        return ChunkFetchFailure.decode(in);
-
-      case RpcRequest:
-        return RpcRequest.decode(in);
-
-      case RpcResponse:
-        return RpcResponse.decode(in);
-
-      case RpcFailure:
-        return RpcFailure.decode(in);
+      case BlockFetchFailure:
+        return BlockFetchFailure.decode(in);
 
       default:
         throw new IllegalArgumentException("Unexpected message type: " + msgType);

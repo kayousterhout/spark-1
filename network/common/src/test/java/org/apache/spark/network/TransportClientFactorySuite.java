@@ -33,8 +33,6 @@ import static org.junit.Assert.assertTrue;
 
 import org.apache.spark.network.client.TransportClient;
 import org.apache.spark.network.client.TransportClientFactory;
-import org.apache.spark.network.server.NoOpRpcHandler;
-import org.apache.spark.network.server.RpcHandler;
 import org.apache.spark.network.server.TransportServer;
 import org.apache.spark.network.util.ConfigProvider;
 import org.apache.spark.network.util.JavaUtils;
@@ -50,8 +48,7 @@ public class TransportClientFactorySuite {
   @Before
   public void setUp() {
     conf = new TransportConf(new SystemPropertyConfigProvider());
-    RpcHandler rpcHandler = new NoOpRpcHandler();
-    context = new TransportContext(conf, rpcHandler);
+    context = new TransportContext(conf, null);
     server1 = context.createServer();
     server2 = context.createServer();
   }
@@ -81,8 +78,7 @@ public class TransportClientFactorySuite {
       }
     });
 
-    RpcHandler rpcHandler = new NoOpRpcHandler();
-    TransportContext context = new TransportContext(conf, rpcHandler);
+    TransportContext context = new TransportContext(conf, null);
     final TransportClientFactory factory = context.createClientFactory();
     final Set<TransportClient> clients = Collections.synchronizedSet(
       new HashSet<TransportClient>());

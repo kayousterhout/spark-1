@@ -33,38 +33,55 @@
 
 package org.apache.spark.network.protocol;
 
+import com.google.common.base.Objects;
 import io.netty.buffer.ByteBuf;
 
-/** An on-the-wire transmittable message. */
-public interface Message extends Encodable {
-  /** Used to identify this request type. */
-  Type type();
+/**
+ * Response to {@link BlockFetchRequest} when there is an error fetching the chunk.
+ */
+public final class BlockFetchFailure implements ResponseMessage {
+  public final String blockId;
+  public final String errorString;
 
-  /** Preceding every serialized Message is its type, which allows us to deserialize it. */
-  public static enum Type implements Encodable {
-    BlockFetchRequest(0), BlockFetchSuccess(1), BlockFetchFailure(2);
+  public BlockFetchFailure(String blockId, String errorString) {
+    this.blockId = blockId;
+    this.errorString = errorString;
+  }
 
-    private final byte id;
+  @Override
+  public Type type() { return Type.BlockFetchFailure; }
 
-    private Type(int id) {
-      assert id < 128 : "Cannot have more than 128 message types";
-      this.id = (byte) id;
+  @Override
+  public int encodedLength() {
+    return Encoders.Strings.encodedLength(blockId) + Encoders.Strings.encodedLength(errorString);
+  }
+
+  @Override
+  public void encode(ByteBuf buf) {
+    Encoders.Strings.encode(buf, blockId);
+    Encoders.Strings.encode(buf, errorString);
+  }
+
+  public static BlockFetchFailure decode(ByteBuf buf) {
+    String blockId = Encoders.Strings.decode(buf);
+    String errorString = Encoders.Strings.decode(buf);
+    return new BlockFetchFailure(blockId, errorString);
+  }
+
+  @Override
+  public boolean equals(Object other) {
+    if (other instanceof BlockFetchFailure) {
+      BlockFetchFailure o = (BlockFetchFailure) other;
+      return blockId.equals(o.blockId) && errorString.equals(o.errorString);
     }
+    return false;
+  }
 
-    public byte id() { return id; }
-
-    @Override public int encodedLength() { return 1; }
-
-    @Override public void encode(ByteBuf buf) { buf.writeByte(id); }
-
-    public static Type decode(ByteBuf buf) {
-      byte id = buf.readByte();
-      switch (id) {
-        case 0: return BlockFetchRequest;
-        case 1: return BlockFetchSuccess;
-        case 2: return BlockFetchFailure;
-        default: throw new IllegalArgumentException("Unknown message type: " + id);
-      }
-    }
+  @Override
+  public String toString() {
+    return Objects.toStringHelper(this)
+      .add("blockId", blockId)
+      .add("errorString", errorString)
+      .toString();
   }
 }
