@@ -145,27 +145,6 @@ final class NioBlockTransferService(conf: SparkConf, securityManager: SecurityMa
     }(cm.futureExecContext)
   }
 
-  /**
-   * Upload a single block to a remote node, available only after [[init]] is invoked.
-   *
-   * This call blocks until the upload completes, or throws an exception upon failures.
-   */
-  override def uploadBlock(
-      hostname: String,
-      port: Int,
-      execId: String,
-      blockId: BlockId,
-      blockData: ManagedBuffer,
-      level: StorageLevel)
-    : Future[Unit] = {
-    checkInit()
-    val msg = PutBlock(blockId, blockData.nioByteBuffer(), level)
-    val blockMessageArray = new BlockMessageArray(BlockMessage.fromPutBlock(msg))
-    val remoteCmId = new ConnectionManagerId(hostName, port)
-    val reply = cm.sendMessageReliably(remoteCmId, blockMessageArray.toBufferMessage)
-    reply.map(x => ())(cm.futureExecContext)
-  }
-
   private def checkInit(): Unit = if (cm == null) {
     throw new IllegalStateException(getClass.getName + " has not been initialized")
   }
