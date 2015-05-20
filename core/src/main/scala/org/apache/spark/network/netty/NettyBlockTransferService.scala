@@ -67,8 +67,8 @@ class NettyBlockTransferService(conf: SparkConf, securityManager: SecurityManage
       execId: String,
       blockId: String,
       blockReceivedCallback: BlockReceivedCallback): Unit = {
-    logTrace(s"Fetching block $blockId from $host:$port (executor id $execId)")
     val client = clientFactory.createClient(host, port)
+    logInfo(s"Fetching block $blockId from $host:$port (executor id $execId) using client $client")
     client.fetchBlock(blockId.toString, blockReceivedCallback)
   }
 

@@ -36,9 +36,7 @@ private[spark] class NetworkScheduler() extends Logging {
   private var currentOutstandingBytes = new AtomicLong(0)
 
   def submitTask(monotask: NetworkMonotask) {
-    networkThreadpool.execute(new Runnable {
-      override def run(): Unit = monotask.execute(NetworkScheduler.this)
-    })
+    monotask.execute(NetworkScheduler.this)
   }
 
   def bytesRequested(bytesRequested: Long) = currentOutstandingBytes.addAndGet(bytesRequested)
