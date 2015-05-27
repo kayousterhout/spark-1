@@ -76,6 +76,7 @@ final class ShuffleBlockFetcherIterator(
   private[this] var numBlocksProcessed = 0
 
   private[this] val startTime = System.currentTimeMillis
+  private[this] var lastReturnTime = System.currentTimeMillis
 
   /** Local blocks to fetch, excluding zero-sized blocks. */
   private[this] val localBlocks = new ArrayBuffer[BlockId]()
@@ -273,6 +274,8 @@ final class ShuffleBlockFetcherIterator(
   override def hasNext: Boolean = numBlocksProcessed < numBlocksToFetch
 
   override def next(): (BlockId, Try[Iterator[Any]]) = {
+    val elapsedTime = System.currentTimeMillis() - lastReturnTime
+    logInfo(s"Attempting to fetch a new shuffle block after $elapsedTime ms")
     numBlocksProcessed += 1
     val startFetchWait = System.currentTimeMillis()
     currentResult = results.take()
@@ -309,6 +312,7 @@ final class ShuffleBlockFetcherIterator(
         }
     }
 
+    lastReturnTime = System.currentTimeMillis()
     (result.blockId, iteratorTry)
   }
 }
