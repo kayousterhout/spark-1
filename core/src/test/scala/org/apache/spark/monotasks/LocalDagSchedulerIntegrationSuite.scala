@@ -45,9 +45,10 @@ class LocalDagSchedulerIntegrationSuite extends FunSuite with BeforeAndAfter
     // This is required because the LocalDagScheduler takes as input a BlockManager, which is
     // obtained from SparkEnv. Pass in false to the SparkConf constructor so that the same
     // configuration is loaded regardless of the system properties.
-    sc = new SparkContext("local", "test", new SparkConf(false))
+    val conf = new SparkConf(false)
+    sc = new SparkContext("local", "test", conf)
     blockManager = SparkEnv.get.blockManager
-    localDagScheduler = new LocalDagScheduler(mock(classOf[ExecutorBackend]), blockManager)
+    localDagScheduler = new LocalDagScheduler(mock(classOf[ExecutorBackend]), blockManager, conf)
 
     taskContext = mock(classOf[TaskContextImpl])
     when(taskContext.localDagScheduler).thenReturn(localDagScheduler)

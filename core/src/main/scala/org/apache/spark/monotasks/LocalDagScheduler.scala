@@ -20,7 +20,7 @@ import java.nio.ByteBuffer
 
 import scala.collection.mutable.{HashMap, HashSet}
 
-import org.apache.spark.{Logging, TaskState}
+import org.apache.spark.{Logging, SparkConf, TaskState}
 import org.apache.spark.executor.ExecutorBackend
 import org.apache.spark.monotasks.compute.{ComputeMonotask, ComputeScheduler}
 import org.apache.spark.monotasks.disk.{DiskMonotask, DiskScheduler}
@@ -38,10 +38,11 @@ import org.apache.spark.storage.BlockManager
  */
 private[spark] class LocalDagScheduler(
     executorBackend: ExecutorBackend,
-    val blockManager: BlockManager)
+    val blockManager: BlockManager,
+    sparkConf: SparkConf)
   extends Logging {
 
-  val computeScheduler = new ComputeScheduler(executorBackend)
+  val computeScheduler = new ComputeScheduler(executorBackend, sparkConf)
   val networkScheduler = new NetworkScheduler()
   val diskScheduler = new DiskScheduler(blockManager)
 

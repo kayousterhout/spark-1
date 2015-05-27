@@ -16,23 +16,53 @@
 
 package org.apache.spark.monotasks.compute
 
+import java.util.Comparator
+import java.util.concurrent.{PriorityBlockingQueue, ThreadPoolExecutor, TimeUnit}
 import java.util.concurrent.atomic.AtomicInteger
 
-import org.apache.spark.Logging
+import org.apache.spark.{Logging, SparkConf}
 import org.apache.spark.executor.ExecutorBackend
 import org.apache.spark.util.Utils
+import org.apache.spark.monotasks.MonotaskRunnable
 
 private[spark] sealed trait RunningTasksUpdate
 private[spark] object TaskStarted extends RunningTasksUpdate
 private[spark] object TaskCompleted extends RunningTasksUpdate
 
-private[spark] class ComputeScheduler(executorBackend: ExecutorBackend) extends Logging {
+private class PrepareMonotasksFirst extends Comparator[Runnable] {
+
+  private def isPrepareMonotask(runnable: MonotaskRunnable) =
+    runnable.monotask.isInstanceOf[PrepareMonotask]
+
+  override def compare(runnable1: Runnable, runnable2: Runnable): Int = {
+    val monotaskRunnable1 = runnable1.asInstanceOf[MonotaskRunnable]
+    val monotaskRunnable2 = runnable2.asInstanceOf[MonotaskRunnable]
+
+    val runnable1IsPrepare = isPrepareMonotask(monotaskRunnable1)
+    val runnable2IsPrepare = isPrepareMonotask(monotaskRunnable2)
+    if (runnable1IsPrepare && !runnable2IsPrepare) {
+      return -1
+    } else if (runnable2IsPrepare && !runnable1IsPrepare) {
+      return 1
+    } else {
+      val attemptIdDifference = (monotaskRunnable1.monotask.context.taskAttemptId -
+        monotaskRunnable2.monotask.context.taskAttemptId)
+      return attemptIdDifference.toInt
+    }
+  }
+}
+
+private[spark] class ComputeScheduler(executorBackend: ExecutorBackend, sparkConf: SparkConf)
+  extends Logging {
+
   private val threads = Runtime.getRuntime.availableProcessors()
 
   // TODO: This threadpool currently uses a single FIFO queue when the number of tasks exceeds the
   //       number of threads; eventually, we'll want a smarter queueing strategy.
-  private val computeThreadpool = Utils.newDaemonFixedThreadPool(threads, "compute-monotask-thread")
-  private val workQueue = computeThreadpool.getQueue()
+  private val threadFactory = Utils.namedThreadFactory("compute-monotask-thread")
+  private val workQueue = new PriorityBlockingQueue[Runnable](11, new PrepareMonotasksFirst)
+  private val computeThreadpool = new ThreadPoolExecutor(
+    threads, threads, 0L, TimeUnit.MILLISECONDS, workQueue, threadFactory)
 
   val numRunningTasks = new AtomicInteger(0)
 
