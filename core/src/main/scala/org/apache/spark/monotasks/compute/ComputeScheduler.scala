@@ -45,17 +45,16 @@ private class PrepareMonotasksFirst extends Comparator[Runnable] {
     } else if (runnable2IsPrepare && !runnable1IsPrepare) {
       return 1
     } else {
-      val attemptIdDifference = (monotaskRunnable1.monotask.context.taskAttemptId -
-        monotaskRunnable2.monotask.context.taskAttemptId)
-      return attemptIdDifference.toInt
+      return (monotaskRunnable1.monotask.taskId - monotaskRunnable2.monotask.taskId).toInt
     }
   }
 }
 
-private[spark] class ComputeScheduler(executorBackend: ExecutorBackend, sparkConf: SparkConf)
+private[spark] class ComputeScheduler(
+    executorBackend: ExecutorBackend,
+    sparkConf: SparkConf,
+    threads: Int = Runtime.getRuntime.availableProcessors())
   extends Logging {
-
-  private val threads = Runtime.getRuntime.availableProcessors()
 
   // TODO: This threadpool currently uses a single FIFO queue when the number of tasks exceeds the
   //       number of threads; eventually, we'll want a smarter queueing strategy.
@@ -81,11 +80,11 @@ private[spark] class ComputeScheduler(executorBackend: ExecutorBackend, sparkCon
     executorBackend.updateFreeCores(freeCores)
   }
 
-  def submitTask(monotask: ComputeMonotask) {
-    computeThreadpool.execute(new Runnable {
+  def submitTask(computeMonotask: ComputeMonotask) {
+    computeThreadpool.execute(new MonotaskRunnable(computeMonotask) {
       override def run(): Unit = {
         updateRunningTasksAndNotifyBackend(TaskStarted)
-        monotask.executeAndHandleExceptions()
+        computeMonotask.executeAndHandleExceptions()
         updateRunningTasksAndNotifyBackend(TaskCompleted)
       }
     })
