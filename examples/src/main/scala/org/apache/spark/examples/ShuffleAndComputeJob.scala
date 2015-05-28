@@ -36,7 +36,7 @@ object ShuffleAndComputeJob {
     val itemsPerPartition = if (args.length > 2) args(2).toInt else 6400000
     val longsPerValue = if (args.length > 3) args(3).toInt else 6
     val numShuffles = if (args.length > 4) args(4).toInt else 10
-    val rdd = spark.parallelize(1 to numTasks, numTasks).flatMap { i =>
+    val rdd = spark.parallelize(1 to numMapTasks, numMapTasks).flatMap { i =>
       val random = new Random(i)
       Array.fill(itemsPerPartition)((random.nextLong, Array.fill(longsPerValue)(random.nextLong)))
     }
