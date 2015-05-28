@@ -74,6 +74,11 @@ private[spark] class TaskSchedulerImpl(
   // on this class.
   val activeTaskSets = new HashMap[String, TaskSetManager]
 
+  // Stores the number of running macrotasks on each executor. Used to avoid overwhelming the mono-
+  // task pipeline on each executor: we schedule at most n tasks on each machine, where n is the
+  // total number of slots that can be used concurrently (summed across all resources).
+  private val executorIdToRunningMacrotasks = new HashMap[String, Int]
+
   val taskIdToTaskSetId = new HashMap[Long, String]
   val taskIdToExecutorId = new HashMap[Long, String]
 
@@ -227,7 +232,12 @@ private[spark] class TaskSchedulerImpl(
     for (i <- 0 until shuffledOffers.size) {
       val execId = shuffledOffers(i).executorId
       val host = shuffledOffers(i).host
-      if (availableCpus(i) >= CPUS_PER_TASK) {
+      val machineHasMaximumNumberOfTasksRunning = {
+        val runningTasks = executorIdToRunningMacrotasks.getOrElseUpdate(execId, 0)
+        // TODO: Properly configure this!
+        runningTasks < 9
+      }
+      if (!machineHasMaximumNumberOfTasksRunning && availableCpus(i) >= CPUS_PER_TASK) {
         try {
           for (task <- taskSet.resourceOffer(execId, host, maxLocality)) {
             tasks(i) += task
@@ -235,6 +245,7 @@ private[spark] class TaskSchedulerImpl(
             taskIdToTaskSetId(tid) = taskSet.taskSet.id
             taskIdToExecutorId(tid) = execId
             executorsByHost(host) += execId
+            executorIdToRunningMacrotasks(execId) += 1
             availableCpus(i) -= CPUS_PER_TASK
             assert(availableCpus(i) >= 0)
             launchedTask = true
@@ -376,6 +387,10 @@ private[spark] class TaskSchedulerImpl(
     taskSetManager: TaskSetManager,
     tid: Long,
     taskResult: DirectTaskResult[_]) = synchronized {
+    val executorId = taskIdToExecutorId(tid)
+    executorIdToRunningMacrotasks(executorId) -= 1
+    assert(executorIdToRunningMacrotasks(executorId) >= 0)
+
     taskSetManager.handleSuccessfulTask(tid, taskResult)
   }
 
@@ -384,6 +399,10 @@ private[spark] class TaskSchedulerImpl(
     tid: Long,
     taskState: TaskState,
     reason: TaskEndReason) = synchronized {
+    val executorId = taskIdToExecutorId(tid)
+    executorIdToRunningMacrotasks(executorId) -= 1
+    assert(executorIdToRunningMacrotasks(executorId) >= 0)
+
     taskSetManager.handleFailedTask(tid, taskState, reason)
     if (!taskSetManager.isZombie && taskState != TaskState.KILLED) {
       // Need to revive offers again now that the task set manager state has been updated to
