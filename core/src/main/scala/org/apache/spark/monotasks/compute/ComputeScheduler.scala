@@ -22,15 +22,14 @@ import java.util.concurrent.atomic.AtomicInteger
 
 import org.apache.spark.{Logging, SparkConf}
 import org.apache.spark.executor.ExecutorBackend
-import org.apache.spark.util.Utils
 import org.apache.spark.monotasks.MonotaskRunnable
+import org.apache.spark.util.Utils
 
 private[spark] sealed trait RunningTasksUpdate
 private[spark] object TaskStarted extends RunningTasksUpdate
 private[spark] object TaskCompleted extends RunningTasksUpdate
 
 private class PrepareMonotasksFirst extends Comparator[Runnable] {
-
   private def isPrepareMonotask(runnable: MonotaskRunnable) =
     runnable.monotask.isInstanceOf[PrepareMonotask]
 
