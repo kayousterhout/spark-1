@@ -235,7 +235,7 @@ private[spark] class TaskSchedulerImpl(
       val machineHasMaximumNumberOfTasksRunning = {
         val runningTasks = executorIdToRunningMacrotasks.getOrElseUpdate(execId, 0)
         // TODO: Properly configure this!
-        runningTasks < 9
+        runningTasks >= 9
       }
       if (!machineHasMaximumNumberOfTasksRunning && availableCpus(i) >= CPUS_PER_TASK) {
         try {
@@ -329,10 +329,6 @@ private[spark] class TaskSchedulerImpl(
         }
         taskIdToTaskSetId.get(tid) match {
           case Some(taskSetId) =>
-            if (TaskState.isFinished(state)) {
-              taskIdToTaskSetId.remove(tid)
-              taskIdToExecutorId.remove(tid)
-            }
             activeTaskSets.get(taskSetId).foreach { taskSet =>
               if (state == TaskState.FINISHED) {
                 taskSet.removeRunningTask(tid)
@@ -383,14 +379,21 @@ private[spark] class TaskSchedulerImpl(
     taskSetManager.handleTaskGettingResult(tid)
   }
 
+  private def cleanupFinishedTask(tid: Long) {
+    taskIdToTaskSetId.remove(tid)
+    taskIdToExecutorId.remove(tid).map { executorId =>
+      executorIdToRunningMacrotasks(executorId) -= 1
+      assert(executorIdToRunningMacrotasks(executorId) >= 0)
+    }.getOrElse {
+      throw new IllegalStateException(s"Missing information about which executor task $tid ran on")
+    }
+  }
+
   def handleSuccessfulTask(
     taskSetManager: TaskSetManager,
     tid: Long,
     taskResult: DirectTaskResult[_]) = synchronized {
-    val executorId = taskIdToExecutorId(tid)
-    executorIdToRunningMacrotasks(executorId) -= 1
-    assert(executorIdToRunningMacrotasks(executorId) >= 0)
-
+    cleanupFinishedTask(tid)
     taskSetManager.handleSuccessfulTask(tid, taskResult)
   }
 
@@ -399,10 +402,7 @@ private[spark] class TaskSchedulerImpl(
     tid: Long,
     taskState: TaskState,
     reason: TaskEndReason) = synchronized {
-    val executorId = taskIdToExecutorId(tid)
-    executorIdToRunningMacrotasks(executorId) -= 1
-    assert(executorIdToRunningMacrotasks(executorId) >= 0)
-
+    cleanupFinishedTask(tid)
     taskSetManager.handleFailedTask(tid, taskState, reason)
     if (!taskSetManager.isZombie && taskState != TaskState.KILLED) {
       // Need to revive offers again now that the task set manager state has been updated to
