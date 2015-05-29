@@ -53,12 +53,12 @@ object ShuffleAndComputeJob {
 
     import ExecutionContext.Implicits.global
     val recordsPerTaskPerSecond = 1724000
-    val targetSeconds = if (args.length > 4) args(4).toInt else 250
-    val numComputeTasks = if (args.length > 5) args(5).toInt else 2
+    val targetSeconds = if (args.length > 5) args(5).toInt else 250
+    val numComputeTasks = if (args.length > 6) args(6).toInt else 2
     val totalRecords = recordsPerTaskPerSecond * targetSeconds * numComputeTasks
     val computeRunnable = future {
       spark.setJobGroup("b", "compute job")
-      spark.parallelize(1 to totalRecords, 4).map(java.lang.Math.tan(_)).count
+      spark.parallelize(1 to totalRecords, numComputeTasks).map(java.lang.Math.tan(_)).count
     }
 
     // Now, concurrently run two experiments.
