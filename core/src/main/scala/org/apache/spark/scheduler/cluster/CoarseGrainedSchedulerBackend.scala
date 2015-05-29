@@ -17,6 +17,7 @@
 
 package org.apache.spark.scheduler.cluster
 
+import java.io.{File, PrintWriter}
 import java.util.concurrent.atomic.AtomicInteger
 
 import scala.collection.mutable.{ArrayBuffer, HashMap, HashSet}
@@ -26,6 +27,10 @@ import scala.concurrent.duration._
 import akka.actor._
 import akka.pattern.ask
 import akka.remote.{DisassociatedEvent, RemotingLifecycleEvent}
+
+import org.json4s.JsonAST.{JArray, JField}
+import org.json4s.JsonDSL._
+import org.json4s.jackson.JsonMethods
 
 import org.apache.spark.{ExecutorAllocationClient, Logging, SparkEnv, SparkException, TaskState}
 import org.apache.spark.scheduler._
@@ -75,6 +80,9 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val actorSyste
     override protected def log = CoarseGrainedSchedulerBackend.this.log
     private val addressToExecutorId = new HashMap[Address, String]
 
+    private val freeCoresLogger = new PrintWriter(
+      new File(s"/tmp/available_cores_${System.currentTimeMillis}"))
+
     override def preStart() {
       // Listen for remote client disconnection events, since they don't go through Akka's watch()
       context.system.eventStream.subscribe(self, classOf[RemotingLifecycleEvent])
@@ -83,6 +91,16 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val actorSyste
       val reviveInterval = conf.getLong("spark.scheduler.revive.interval", 1000)
       import context.dispatcher
       context.system.scheduler.schedule(0.millis, reviveInterval.millis, self, ReviveOffers)
+    }
+
+    private def logFreeCores() = {
+      val executorData = JArray(executorDataMap.toList.map { case (executorId, data) =>
+        ("Executor ID" -> executorId) ~ ("Free Cores" -> data.freeCores)
+      })
+      val jsonData = ("Current Time Millis" -> System.currentTimeMillis()) ~
+        ("Executor Data" -> executorData)
+      freeCoresLogger.write(JsonMethods.compact(JsonMethods.render(jsonData)))
+      freeCoresLogger.write("\n")
     }
 
     def receiveWithLogging = {
@@ -134,6 +152,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val actorSyste
           makeOffers(executorId)
         }
         executorDataMap(executorId).freeCores = cores
+        logFreeCores()
 
       case ReviveOffers =>
         makeOffers()
@@ -150,6 +169,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val actorSyste
       case StopDriver =>
         sender ! true
         context.stop(self)
+        freeCoresLogger.close()
 
       case StopExecutors =>
         logInfo("Asking each executor to shut down")
@@ -210,6 +230,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val actorSyste
           executorData.executorActor ! LaunchTask(new SerializableBuffer(serializedTask))
         }
       }
+      logFreeCores()
     }
 
     // Remove a disconnected slave from the cluster
