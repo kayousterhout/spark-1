@@ -53,29 +53,10 @@ private[spark] abstract class Macrotask[T](val stageId: Int, val partition: Part
   var epoch: Long = -1
 
   /**
-   * Deserializes the macrotask binary and returns the RDD that this macrotask will operate on, as
-   * well as the ExecutionMonotask that will perform the computation. This function is run within a
-   * compute monotask, so should not use network or disk.
-   */
-  def getExecutionMonotask(context: TaskContextImpl): (RDD[_], ExecutionMonotask[_, _])
-
-  /**
    * Returns the monotasks that need to be run in order to execute this macrotask. This function is
    * run within a compute monotask, so should not use network or disk.
    */
-  def getMonotasks(context: TaskContextImpl): Seq[Monotask] = {
-    val (rdd, executionMonotask) = getExecutionMonotask(context)
-    val resultSerializationMonotask =
-      new ResultSerializationMonotask(context, executionMonotask.getResultBlockId())
-    resultSerializationMonotask.addDependency(executionMonotask)
-
-    val rddMonotasks =
-      rdd.buildDag(partition, dependencyIdToPartitions, context, executionMonotask)
-    val leaves = rddMonotasks.filter(_.dependents.isEmpty)
-    leaves.foreach(resultSerializationMonotask.addDependency(_))
-
-    rddMonotasks ++ Seq(executionMonotask, resultSerializationMonotask)
-  }
+  def getMonotasks(context: TaskContextImpl): Seq[Monotask]
 
   // TODO
   protected def addResultSerializationMonotask(

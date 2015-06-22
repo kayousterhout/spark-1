@@ -49,20 +49,15 @@ private[spark] class ShuffleMapMacrotask(
 
   override def toString = "ShuffleMapTask(%d, %d)".format(stageId, partition.index)
 
-  override def getExecutionMonotask(context: TaskContextImpl): (RDD[_], ExecutionMonotask[_, _]) = {
-    val ser = context.env.closureSerializer.newInstance()
-    val (rdd, dep) = ser.deserialize[(RDD[_], ShuffleDependency[Any, Any, _])](
-      ByteBuffer.wrap(taskBinary.value), context.dependencyManager.replClassLoader)
-    (rdd, new ShuffleMapMonotask(context, rdd, partition, dep))
-  }
-
   override def getMonotasks(context: TaskContextImpl): Seq[Monotask] = {
+    // First, construct a ShuffleMapMonotask, which converts an RDD into a set of shuffle blocks
+    // that each have serialized (and possibly compressed) data.
     val ser = context.env.closureSerializer.newInstance()
     val (rdd, dep) = ser.deserialize[(RDD[_], ShuffleDependency[Any, Any, _])](
       ByteBuffer.wrap(taskBinary.value), context.dependencyManager.replClassLoader)
     val shuffleMapMonotask = new ShuffleMapMonotask(context, rdd, partition, dep)
 
-    // Create one disk write monotask for each shuffle block.
+    // Create one disk write monotask to write each shuffle block.
     val diskWriteMonotasks = shuffleMapMonotask.getResultBlockIds().map { shuffleBlockId =>
       // Use the same block id for the in-memory as on-disk data! Because later, we may actually
       // want to just leave some of the data in-memory.
@@ -72,7 +67,11 @@ private[spark] class ShuffleMapMacrotask(
       diskWriteMonotask
     }
 
-    val rddMonotasks = rdd.buildDag(partition, dependencyIdToPartitions, context, shuffleMapMonotask)
+    // Create the monotasks that will generate the RDD to be shuffled.
+    val rddMonotasks = rdd.buildDag(
+      partition, dependencyIdToPartitions, context, shuffleMapMonotask)
+
+    // Create a monotask to serialize the result and return all of the monotasks we've created.
     val allMonotasks = Seq(shuffleMapMonotask) ++ rddMonotasks ++ diskWriteMonotasks
     addResultSerializationMonotask(context, shuffleMapMonotask.getResultBlockId(), allMonotasks)
   }

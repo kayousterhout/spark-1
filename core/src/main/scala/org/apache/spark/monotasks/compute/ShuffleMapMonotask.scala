@@ -58,4 +58,16 @@ private[spark] class ShuffleMapMonotask[T](
         throw e
     }
   }
+
+  /**
+   * ShuffleMapMonotask overrides maybeCleanupIntermediate data because it has many result blocks
+   * (rather than just 1) that all need to be deleted from the block manager.
+   */
+  override def maybeCleanupIntermediateData() {
+    if (dependents.count(!_.isFinished) == 0) {
+      // Don't need to tell the master about shuffle block IDs being deleted, because their
+      // storage status is tracked by MapStatuses rather than through the BlockManager.
+      resultBlockIds.foreach(context.env.blockManager.removeBlockFromMemory(_, false))
+    }
+  }
 }
