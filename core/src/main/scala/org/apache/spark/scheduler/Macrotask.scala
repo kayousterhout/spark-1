@@ -27,6 +27,7 @@ import org.apache.spark.monotasks.Monotask
 import org.apache.spark.monotasks.compute.{ExecutionMonotask, ResultSerializationMonotask}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.serializer.SerializerInstance
+import org.apache.spark.storage.BlockId
 import org.apache.spark.util.ByteBufferInputStream
 
 /**
@@ -74,6 +75,21 @@ private[spark] abstract class Macrotask[T](val stageId: Int, val partition: Part
     leaves.foreach(resultSerializationMonotask.addDependency(_))
 
     rddMonotasks ++ Seq(executionMonotask, resultSerializationMonotask)
+  }
+
+  // TODO
+  protected def addResultSerializationMonotask(
+      context: TaskContextImpl,
+      macrotaskResultBlockId: BlockId,
+      monotasks: Seq[Monotask]): Seq[Monotask] = {
+    val serializationMonotask = new ResultSerializationMonotask(context, macrotaskResultBlockId)
+    // Make all of the monotasks dependencies of serializationMonotask.
+    monotasks.foreach { monotask =>
+      if (monotask.dependents.isEmpty) {
+        serializationMonotask.addDependency(monotask)
+      }
+    }
+    monotasks ++ Seq(serializationMonotask)
   }
 }
 

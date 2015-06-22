@@ -356,6 +356,8 @@ abstract class RDD[T: ClassTag](
    *                     in the DAG at the appropriate location.
    * @return All of the monotasks that have been added to the DAG (this Seq will not include
    *         nextMonotask).
+   *
+   *         TODO: consider splitting this into get input and get persist monotasks
    */
   private[spark] final def buildDag(
       partition: Partition,

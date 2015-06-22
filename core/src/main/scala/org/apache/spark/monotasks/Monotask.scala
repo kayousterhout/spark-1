@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicLong
 import scala.collection.mutable.ArrayBuffer
 
 import org.apache.spark.TaskContextImpl
-import org.apache.spark.storage.{BlockId, MonotaskResultBlockId}
+import org.apache.spark.storage.{BlockId, MonotaskResultBlockId, ShuffleBlockId}
 
 /**
  * A Monotask object encapsulates information about an operation that uses only one type of
@@ -39,7 +39,7 @@ private[spark] abstract class Monotask(val context: TaskContextImpl) {
 
   // The BlockId with which this monotask stored temporary data in the BlockManager for use by its
   // dependencies, or None if the monotask did not store any temporary data.
-  protected var resultBlockId: Option[BlockId] = None
+  protected var resultBlockId: Seq[BlockId] = Nil
 
   // Monotasks that need to have finished before this monotask can be run. This includes all
   // dependencies (even ones that have already completed) so that we can clean up intermediate data
@@ -61,8 +61,12 @@ private[spark] abstract class Monotask(val context: TaskContextImpl) {
   }
 
   def getResultBlockId(): BlockId = {
-    resultBlockId.getOrElse(throw new UnsupportedOperationException(
-      s"Monotask $this (id: ${taskId}) does not have a result BlockId."))
+    if (resultBlockId.length != 1) {
+      throw new UnsupportedOperationException(
+        s"Monotask $this (id: $taskId) expected to have exactly one block ID (had " +
+        s"${resultBlockId.length}).")
+    }
+    resultBlockId(0)
   }
 
   /**
@@ -84,6 +88,9 @@ private[spark] abstract class Monotask(val context: TaskContextImpl) {
       dependency.resultBlockId.map { blockId =>
         val tellMaster = blockId match {
           case monotaskResultBlockId: MonotaskResultBlockId => false
+            // Don't need to tell the master about shuffle block IDs being deleted, because their
+            // storage status is tracked by MapStatuses rather than through the BlockManager.
+          case shuffleBlockId: ShuffleBlockId => false
           case _ => true
         }
 

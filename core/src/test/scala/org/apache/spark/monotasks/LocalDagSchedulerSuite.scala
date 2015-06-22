@@ -89,7 +89,7 @@ class LocalDagSchedulerSuite extends FunSuite with BeforeAndAfterEach with Local
 
     val blockId = new TestBlockId("0")
     val monotaskA = new SimpleMonotask(context) {
-      resultBlockId = Some(blockId)
+      resultBlockId = Seq(blockId)
       blockManager.cacheBytes(blockId, ByteBuffer.allocate(10), StorageLevel.MEMORY_ONLY_SER, false)
     }
     val monotaskB = new SimpleMonotask(context)

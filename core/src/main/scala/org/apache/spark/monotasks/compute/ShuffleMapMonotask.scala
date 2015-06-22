@@ -20,6 +20,7 @@ import org.apache.spark.{Partition, ShuffleDependency, SparkEnv, TaskContextImpl
 import org.apache.spark.rdd.RDD
 import org.apache.spark.scheduler.MapStatus
 import org.apache.spark.shuffle.ShuffleWriter
+import org.apache.spark.storage.BlockId
 
 /**
  * Divides the elements of an RDD into multiple buckets (based on a partitioner specified in the
@@ -32,12 +33,20 @@ private[spark] class ShuffleMapMonotask[T](
     dependency: ShuffleDependency[Any, Any, _])
   extends ExecutionMonotask[T, MapStatus](context, rdd, partition) {
 
+  private var resultBlockIds: Seq[BlockId] = _
+
+  def getResultBlockIds(): Seq[BlockId] = resultBlockIds
+
   override def getResult(): MapStatus = {
     var writer: ShuffleWriter[Any, Any] = null
     try {
       val manager = SparkEnv.get.shuffleManager
       writer = manager.getWriter[Any, Any](dependency.shuffleHandle, partition.index, context)
       writer.write(rdd.iterator(partition, context).asInstanceOf[Iterator[_ <: Product2[Any, Any]]])
+      resultBlockIds = writer.stop(success = true).map { mapStatus =>
+        mapStatus.
+      // TODO: need to return something different from stop! so we get the map id.
+      }
       return writer.stop(success = true).get
     } catch {
       case e: Exception =>

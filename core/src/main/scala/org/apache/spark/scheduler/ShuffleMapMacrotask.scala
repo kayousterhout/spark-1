@@ -23,8 +23,11 @@ import scala.language.existentials
 
 import org.apache.spark.{Partition, ShuffleDependency, TaskContextImpl}
 import org.apache.spark.broadcast.Broadcast
+import org.apache.spark.monotasks.Monotask
 import org.apache.spark.monotasks.compute.{ExecutionMonotask, ShuffleMapMonotask}
+import org.apache.spark.monotasks.disk.DiskWriteMonotask
 import org.apache.spark.rdd.RDD
+import org.apache.spark.storage.StorageLevel
 
 /**
  * Describes a group of monotasks that will divides the elements of an RDD into multiple buckets
@@ -51,5 +54,26 @@ private[spark] class ShuffleMapMacrotask(
     val (rdd, dep) = ser.deserialize[(RDD[_], ShuffleDependency[Any, Any, _])](
       ByteBuffer.wrap(taskBinary.value), context.dependencyManager.replClassLoader)
     (rdd, new ShuffleMapMonotask(context, rdd, partition, dep))
+  }
+
+  override def getMonotasks(context: TaskContextImpl): Seq[Monotask] = {
+    val ser = context.env.closureSerializer.newInstance()
+    val (rdd, dep) = ser.deserialize[(RDD[_], ShuffleDependency[Any, Any, _])](
+      ByteBuffer.wrap(taskBinary.value), context.dependencyManager.replClassLoader)
+    val shuffleMapMonotask = new ShuffleMapMonotask(context, rdd, partition, dep)
+
+    // Create one disk write monotask for each shuffle block.
+    val diskWriteMonotasks = shuffleMapMonotask.getResultBlockIds().map { shuffleBlockId =>
+      // Use the same block id for the in-memory as on-disk data! Because later, we may actually
+      // want to just leave some of the data in-memory.
+      val diskWriteMonotask = new DiskWriteMonotask(
+        context, shuffleBlockId, shuffleBlockId, StorageLevel.DISK_ONLY)
+      diskWriteMonotask.addDependency(shuffleMapMonotask)
+      diskWriteMonotask
+    }
+
+    val rddMonotasks = rdd.buildDag(partition, dependencyIdToPartitions, context, shuffleMapMonotask)
+    val allMonotasks = Seq(shuffleMapMonotask) ++ rddMonotasks ++ diskWriteMonotasks
+    addResultSerializationMonotask(context, shuffleMapMonotask.getResultBlockId(), allMonotasks)
   }
 }
