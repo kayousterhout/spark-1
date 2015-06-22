@@ -42,11 +42,8 @@ private[spark] class ShuffleMapMonotask[T](
     try {
       val manager = SparkEnv.get.shuffleManager
       writer = manager.getWriter[Any, Any](dependency.shuffleHandle, partition.index, context)
+      resultBlockIds = writer.shuffleBlockIds
       writer.write(rdd.iterator(partition, context).asInstanceOf[Iterator[_ <: Product2[Any, Any]]])
-      resultBlockIds = writer.stop(success = true).map { mapStatus =>
-        mapStatus.
-      // TODO: need to return something different from stop! so we get the map id.
-      }
       return writer.stop(success = true).get
     } catch {
       case e: Exception =>
