@@ -28,13 +28,14 @@ import org.apache.spark.storage.{BlockId, BlockManagerId, MonotaskResultBlockId,
 import org.apache.spark.util.CompletionIterator
 
 /**
- * Handles creating network monotasks to read shuffle data over the network. Also provides
- * functionality for deserializing, aggregating, and sorting the result.
+ * Handles creating network monotasks to read shuffle data over the network and disk monotasks to
+ * read shuffle data stored on local disks. Also provides functionality for deserializing,
+ * aggregating, and sorting the result.
  *
  * Each task that performs a shuffle should create one instance of this class.  The class stores
  * the intermediate block IDs used to store the shuffle data in the memory store after network
- * monotasks have read it over the network.  These IDs are used to later read the data (by the
- * compute monotasks that perform the computation).
+ * monotasks have read it over the network and disk monotasks have read it from local disks.  These
+ * IDs are used to later read the data (by the compute monotasks that perform the computation).
  */
 class ShuffleHelper[K, V, C](
     shuffleDependency: ShuffleDependency[K, V, C],
@@ -60,21 +61,36 @@ class ShuffleHelper[K, V, C](
   private val blockIdToMapId = new HashMap[BlockId, Int]()
 
   def getReadMonotasks(): Seq[Monotask] = {
-    // Create NetworkMonotasks for all of the remote blocks with non-zero size.
-    val fetchMonotasks = new ArrayBuffer[NetworkMonotask]
+    val blockManager = context.env.blockManager
+
+    val fetchMonotasks = new ArrayBuffer[Monotask]
     for (((address, size), index) <- statuses.zipWithIndex) {
+      // Only need to fetch blocks that have non-zero size.
       if (size > 0) {
         val blockId = new ShuffleBlockId(shuffleDependency.shuffleId, index, reduceId)
         blockIdToMapId(blockId) = index
-        if (address.executorId == context.env.blockManager.blockManagerId.executorId) {
-          localBlockIds += blockId
+        val monotask = if (address.executorId == blockManager.blockManagerId.executorId) {
+          // Create a DiskReadMonotask to load the data into memory.
+          // The data loaded into memory by these monotasks will be automatically deleted by the
+          // LocalDagScheduler, because DiskReadMonotasks always marks the data read from disk as
+          // intermediate data that should be deleted when all of the monotasks's dependents complete.
+          blockManager.getBlockLoadMonotask(blockId, context).getOrElse {
+            throw new FetchFailedException(
+              blockManager.blockManagerId,
+              blockId.shuffleId,
+              blockId.mapId,
+              reduceId,
+              s"Could not find shuffle block ID $blockId in BlockManager")
+          }
         } else {
-          val networkMonotask = new NetworkMonotask(context, address, blockId, size)
-          localBlockIds.append(networkMonotask.getResultBlockId())
-          fetchMonotasks.append(networkMonotask)
+          new NetworkMonotask(context, address, blockId, size)
         }
+
+        localBlockIds.append(monotask.getResultBlockId())
+        fetchMonotasks.append(monotask)
       }
     }
+
     fetchMonotasks
   }
 
@@ -150,7 +166,8 @@ class ShuffleHelper[K, V, C](
             shuffleBlockId.shuffleId,
             shuffleBlockId.mapId,
             reduceId,
-            failureMessage)
+            failureMessage,
+            e)
       }
 
     case monotaskResultBlockId: MonotaskResultBlockId =>

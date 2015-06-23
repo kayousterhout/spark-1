@@ -61,8 +61,7 @@ private[spark] class ShuffleMapMacrotask(
     val diskWriteMonotasks = shuffleMapMonotask.getResultBlockIds().map { shuffleBlockId =>
       // Use the same block id for the in-memory as on-disk data! Because later, we may actually
       // want to just leave some of the data in-memory.
-      val diskWriteMonotask = new DiskWriteMonotask(
-        context, shuffleBlockId, shuffleBlockId, StorageLevel.DISK_ONLY)
+      val diskWriteMonotask = new DiskWriteMonotask(context, shuffleBlockId, shuffleBlockId)
       diskWriteMonotask.addDependency(shuffleMapMonotask)
       diskWriteMonotask
     }
