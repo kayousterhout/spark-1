@@ -387,6 +387,9 @@ abstract class RDD[T: ClassTag](
       //   input monotask --'                       `-> SerializationMonotask -> DiskWriteMonotask
       //   input monotask --'
       //         ...
+      // TODO: Handle the case where the storage level is MEMORY_AND_DISK (we currently always write
+      //       RDDs with this storage level to disk, and don't even attempt to store them in
+      //       memory).
       val rddComputeMonotask = new RddComputeMonotask(context, this, partition)
       nextMonotask.addDependency(rddComputeMonotask)
       val inputMonotasks =
@@ -397,7 +400,7 @@ abstract class RDD[T: ClassTag](
       val serializationMonotask = new SerializationMonotask(context, blockId)
       serializationMonotask.addDependency(rddComputeMonotask)
       val diskWriteMonotask = new DiskWriteMonotask(
-        context, blockId, serializationMonotask.getResultBlockId(), storageLevel)
+        context, blockId, serializationMonotask.getResultBlockId())
       diskWriteMonotask.addDependency(serializationMonotask)
 
       inputMonotasks ++ Seq(rddComputeMonotask, serializationMonotask, diskWriteMonotask)
