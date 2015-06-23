@@ -24,7 +24,7 @@ import scala.language.existentials
 import org.apache.spark.{Partition, ShuffleDependency, TaskContextImpl}
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.monotasks.Monotask
-import org.apache.spark.monotasks.compute.{ExecutionMonotask, ShuffleMapMonotask}
+import org.apache.spark.monotasks.compute.ShuffleMapMonotask
 import org.apache.spark.monotasks.disk.DiskWriteMonotask
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel

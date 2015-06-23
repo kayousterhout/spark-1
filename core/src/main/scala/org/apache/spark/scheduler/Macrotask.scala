@@ -24,8 +24,7 @@ import scala.language.existentials
 
 import org.apache.spark.{Logging, Partition, TaskContextImpl}
 import org.apache.spark.monotasks.Monotask
-import org.apache.spark.monotasks.compute.{ExecutionMonotask, ResultSerializationMonotask}
-import org.apache.spark.rdd.RDD
+import org.apache.spark.monotasks.compute.ResultSerializationMonotask
 import org.apache.spark.serializer.SerializerInstance
 import org.apache.spark.storage.BlockId
 import org.apache.spark.util.ByteBufferInputStream

@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicLong
 import scala.collection.mutable.ArrayBuffer
 
 import org.apache.spark.TaskContextImpl
-import org.apache.spark.storage.{BlockId, MonotaskResultBlockId, ShuffleBlockId}
+import org.apache.spark.storage.{BlockId, MonotaskResultBlockId}
 
 /**
  * A Monotask object encapsulates information about an operation that uses only one type of
