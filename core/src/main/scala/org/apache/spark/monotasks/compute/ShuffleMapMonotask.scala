@@ -33,24 +33,22 @@ private[spark] class ShuffleMapMonotask[T](
     dependency: ShuffleDependency[Any, Any, _])
   extends ExecutionMonotask[T, MapStatus](context, rdd, partition) {
 
-  private var resultBlockIds: Seq[BlockId] = _
+  private val shuffleWriter = SparkEnv.get.shuffleManager.getWriter[Any, Any](
+    dependency.shuffleHandle, partition.index, context)
+
+  private val resultBlockIds: Seq[BlockId] = shuffleWriter.shuffleBlockIds
 
   def getResultBlockIds(): Seq[BlockId] = resultBlockIds
 
   override def getResult(): MapStatus = {
-    var writer: ShuffleWriter[Any, Any] = null
     try {
-      val manager = SparkEnv.get.shuffleManager
-      writer = manager.getWriter[Any, Any](dependency.shuffleHandle, partition.index, context)
-      resultBlockIds = writer.shuffleBlockIds
-      writer.write(rdd.iterator(partition, context).asInstanceOf[Iterator[_ <: Product2[Any, Any]]])
-      return writer.stop(success = true).get
+      shuffleWriter.write(
+        rdd.iterator(partition, context).asInstanceOf[Iterator[_ <: Product2[Any, Any]]])
+      return shuffleWriter.stop(success = true).get
     } catch {
       case e: Exception =>
         try {
-          if (writer != null) {
-            writer.stop(success = false)
-          }
+          shuffleWriter.stop(success = false)
         } catch {
           case e: Exception =>
             log.debug("Could not stop writer", e)
@@ -64,7 +62,7 @@ private[spark] class ShuffleMapMonotask[T](
    * (rather than just 1) that all need to be deleted from the block manager.
    */
   override def maybeCleanupIntermediateData() {
-    if (dependents.count(!_.isFinished) == 0) {
+    if (allDependentsFinished) {
       // Don't need to tell the master about shuffle block IDs being deleted, because their
       // storage status is tracked by MapStatuses rather than through the BlockManager.
       resultBlockIds.foreach(context.env.blockManager.removeBlockFromMemory(_, false))
