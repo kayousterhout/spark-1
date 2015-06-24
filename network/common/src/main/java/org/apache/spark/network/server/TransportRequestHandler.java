@@ -96,6 +96,7 @@ public class TransportRequestHandler extends MessageHandler<RequestMessage> {
 
     ManagedBuffer buf;
     try {
+      // instead, this should accept a class that says what to do on success and what to do on failure.
       buf = blockFetcher.getBlockData(req.blockId);
     } catch (Exception e) {
       logger.error(String.format(
