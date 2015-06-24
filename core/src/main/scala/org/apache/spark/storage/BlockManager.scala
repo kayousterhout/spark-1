@@ -237,6 +237,18 @@ private[spark] class BlockManager(
   }
 
   override def getBlockData(blockId: String): ManagedBuffer = {
+    // Instead, this will accept a callback!
+    // TODO: need to pass in a task context
+    val diskReadMonotask = getBlockLoadMonotask(BlockId(blockId), null)
+    // submit the disk read monotask to the local dag scheduler.
+    // foobar.
+
+    // Could change disk read monotask to optionally take a callback that's executed when it's
+    // finished?
+
+    // Need localdagscheduler, blockManager in taskcontext. maybe define a special task context
+    // for these? could make task attemptId -1? need to pass more metadata about taskid? -1 seems
+    // ok for now.
     getBlockData(BlockId(blockId))
   }
 

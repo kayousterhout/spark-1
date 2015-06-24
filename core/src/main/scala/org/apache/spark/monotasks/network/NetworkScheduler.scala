@@ -26,7 +26,11 @@ private[spark] class NetworkScheduler() extends Logging {
   private var currentOutstandingBytes = new AtomicLong(0)
 
   def submitTask(monotask: NetworkMonotask) {
+    // If network fetch request, just issue.  these are effectively scheduled on the receive-side
+    // (and the network client serializes them.
     monotask.execute(NetworkScheduler.this)
+
+    // if push request, also just issue?? again, effectively scheduled on the receive-side.
   }
 
   /**
