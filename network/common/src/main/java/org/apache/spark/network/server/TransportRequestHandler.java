@@ -37,6 +37,7 @@ import com.google.common.base.Throwables;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
+import org.apache.spark.network.client.BlockReceivedCallback;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -63,6 +64,25 @@ public class TransportRequestHandler extends MessageHandler<RequestMessage> {
 
   /** Handles returning data for a given block id. */
   private final BlockFetcher blockFetcher;
+
+  /**
+   * Callback for when blocks stored on local disk have been brought into memory and are ready to
+   * be sent over the network.
+   */
+  class DiskReadCompleteCallback implements BlockReceivedCallback {
+    @Override
+    public void onSuccess(String blockId, ManagedBuffer buffer) {
+      respond(new BlockFetchSuccess(blockId, buffer));
+    }
+
+    @Override
+    public void onFailure(String blockId, Throwable e) {
+      logger.error(String.format("Error opening block %s", blockId), e);
+      respond(new BlockFetchFailure(blockId, Throwables.getStackTraceAsString(e)));
+    }
+  }
+
+  private final DiskReadCompleteCallback diskReadCompleteCallback = new DiskReadCompleteCallback();
 
   public TransportRequestHandler(
       Channel channel,
@@ -94,18 +114,7 @@ public class TransportRequestHandler extends MessageHandler<RequestMessage> {
 
     logger.trace("Received req from {} to fetch block {}", client, req.blockId);
 
-    ManagedBuffer buf;
-    try {
-      // instead, this should accept a class that says what to do on success and what to do on failure.
-      buf = blockFetcher.getBlockData(req.blockId);
-    } catch (Exception e) {
-      logger.error(String.format(
-        "Error opening block %s for request from %s", req.blockId, client), e);
-      respond(new BlockFetchFailure(req.blockId, Throwables.getStackTraceAsString(e)));
-      return;
-    }
-
-    respond(new BlockFetchSuccess(req.blockId, buf));
+    blockFetcher.getBlockData(req.blockId, diskReadCompleteCallback);
   }
 
   /**

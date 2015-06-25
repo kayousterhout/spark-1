@@ -22,6 +22,7 @@ import java.nio.ByteBuffer
 import scala.util.control.NonFatal
 
 import org.apache.spark.{Logging, TaskContextImpl}
+import org.apache.spark.network.client.BlockReceivedCallback
 import org.apache.spark.storage.{BlockId, StorageLevel}
 
 /**
@@ -33,6 +34,8 @@ private[spark] class DiskReadMonotask(
   extends DiskMonotask(context, blockId) with Logging {
 
   resultBlockId = Some(blockId)
+
+  val callback: Option[BlockReceivedCallback] = None
 
   override def execute(): Boolean = {
     val data = blockManager.blockFileManager.getBlockFile(blockId, diskId).map { file =>
@@ -54,6 +57,10 @@ private[spark] class DiskReadMonotask(
     val success = data.isDefined
     if (success) {
       blockManager.cacheBytes(getResultBlockId(), data.get, StorageLevel.MEMORY_ONLY_SER, true)
+      callback.foreach(_.onSuccess(
+        getResultBlockId().toString, blockManager.getBlockData(getResultBlockId())))
+    } else {
+      callback.foreach(_.onFailure(getResultBlockId().toString, new Throwable("no dice!")))
     }
     success
   }

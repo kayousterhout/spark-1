@@ -48,10 +48,11 @@ import sun.nio.ch.DirectBuffer
 import org.apache.spark._
 import org.apache.spark.executor._
 import org.apache.spark.io.CompressionCodec
-import org.apache.spark.monotasks.Monotask
+import org.apache.spark.monotasks.{LocalDagScheduler, Monotask, SubmitMonotask}
 import org.apache.spark.monotasks.disk.DiskReadMonotask
 import org.apache.spark.network._
 import org.apache.spark.network.buffer.{ManagedBuffer, NioManagedBuffer}
+import org.apache.spark.network.client.BlockReceivedCallback
 import org.apache.spark.network.server.BlockFetcher
 import org.apache.spark.serializer.Serializer
 import org.apache.spark.shuffle.ShuffleManager
@@ -111,6 +112,9 @@ private[spark] class BlockManager(
 
   var blockManagerId: BlockManagerId = _
 
+  // TODO Used to submit requests to read blocks from local disk. Set by initialize().
+  var localDagScheduler: LocalDagScheduler = _
+
   // Whether to compress broadcast variables that are stored
   private val compressBroadcast = conf.getBoolean("spark.broadcast.compress", true)
   // Whether to compress shuffle output that are stored
@@ -167,8 +171,10 @@ private[spark] class BlockManager(
    * This method initializes the BlockTransferService, registers with the BlockManagerMaster and
    * starts the BlockManagerWorker actor.
    */
-  def initialize(appId: String): Unit = {
+  def initialize(appId: String, localDagScheduler: LocalDagScheduler = null): Unit = {
     blockTransferService.init(this)
+
+    this.localDagScheduler = localDagScheduler
 
     blockManagerId = BlockManagerId(
       executorId, blockTransferService.hostName, blockTransferService.port)
@@ -236,20 +242,24 @@ private[spark] class BlockManager(
     }
   }
 
-  override def getBlockData(blockId: String): ManagedBuffer = {
+  override def getBlockData(blockId: String, callback: BlockReceivedCallback): Unit = {
     // Instead, this will accept a callback!
     // TODO: need to pass in a task context
-    val diskReadMonotask = getBlockLoadMonotask(BlockId(blockId), null)
-    // submit the disk read monotask to the local dag scheduler.
-    // foobar.
+    getBlockLoadMonotask(BlockId(blockId), null) match {
+      case Some(monotask) =>
+        localDagScheduler.post(SubmitMonotask(monotask))
 
-    // Could change disk read monotask to optionally take a callback that's executed when it's
-    // finished?
+      case None =>
+        callback.onFailure(
+          blockId, new Throwable(s"Block ID $blockId not stored on executor $executorId"))
+    }
 
     // Need localdagscheduler, blockManager in taskcontext. maybe define a special task context
     // for these? could make task attemptId -1? need to pass more metadata about taskid? -1 seems
     // ok for now.
-    getBlockData(BlockId(blockId))
+
+    // TODO: if stored in memory, do this.
+    //getBlockData(BlockId(blockId))
   }
 
   /**
