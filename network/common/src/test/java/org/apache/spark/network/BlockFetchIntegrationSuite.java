@@ -98,14 +98,14 @@ public class BlockFetchIntegrationSuite {
 
     BlockFetcher blockFetcher = new BlockFetcher() {
       @Override
-      public ManagedBuffer getBlockData(String blockId) {
-        if (blockId.equals(BUFFER_BLOCK_ID)) {
+      public void getBlockData(String blockId, BlockReceivedCallback callback) {
+        /*if (blockId.equals(BUFFER_BLOCK_ID)) {
           return new NioManagedBuffer(buf);
         } else if (blockId.equals(FILE_BLOCK_ID)) {
           return new FileSegmentManagedBuffer(conf, testFile, 10, testFile.length() - 25);
         } else {
           throw new IllegalArgumentException("Invalid chunk index: " + blockId);
-        }
+        }*/
       }
     };
 
