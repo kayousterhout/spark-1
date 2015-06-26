@@ -252,8 +252,8 @@ private[spark] class BlockManager(
       case blockNotFound: BlockNotFoundException =>
         // Block not found in-memory; try to get it from disk instead.
         // Need localdagscheduler, blockManager in taskcontext. maybe define a special task context
-        // for these? could make task attemptId -1? need to pass more metadata about taskid? -1 seems
-        // ok for now.
+        // for these? could make task attemptId -1? need to pass more metadata about taskid? -1
+        // seems ok for now.
         getBlockLoadMonotask(BlockId(blockId), null) match {
           case Some(monotask) =>
             localDagScheduler.post(SubmitMonotask(monotask))
