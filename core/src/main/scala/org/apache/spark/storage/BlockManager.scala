@@ -243,23 +243,29 @@ private[spark] class BlockManager(
   }
 
   override def getBlockData(blockId: String, callback: BlockReceivedCallback): Unit = {
-    // Instead, this will accept a callback!
-    // TODO: need to pass in a task context
-    getBlockLoadMonotask(BlockId(blockId), null) match {
-      case Some(monotask) =>
-        localDagScheduler.post(SubmitMonotask(monotask))
+    try {
+      // First, try to get the block from in-memory.
+      // TODO: make getBlockData not throw an exception? fail more gracefully?
+      val blockData = getBlockData(BlockId(blockId))
+      callback.onSuccess(blockId, blockData)
+    } catch {
+      case blockNotFound: BlockNotFoundException =>
+        // Block not found in-memory; try to get it from disk instead.
+        // Need localdagscheduler, blockManager in taskcontext. maybe define a special task context
+        // for these? could make task attemptId -1? need to pass more metadata about taskid? -1 seems
+        // ok for now.
+        getBlockLoadMonotask(BlockId(blockId), null) match {
+          case Some(monotask) =>
+            localDagScheduler.post(SubmitMonotask(monotask))
 
-      case None =>
-        callback.onFailure(
-          blockId, new Throwable(s"Block ID $blockId not stored on executor $executorId"))
+          case None =>
+            callback.onFailure(
+              blockId, new Throwable(s"Block ID $blockId not stored on executor $executorId"))
+        }
+
+      case t: Throwable =>
+        callback.onFailure(blockId, t)
     }
-
-    // Need localdagscheduler, blockManager in taskcontext. maybe define a special task context
-    // for these? could make task attemptId -1? need to pass more metadata about taskid? -1 seems
-    // ok for now.
-
-    // TODO: if stored in memory, do this.
-    //getBlockData(BlockId(blockId))
   }
 
   /**
