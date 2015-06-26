@@ -20,7 +20,7 @@ import java.nio.ByteBuffer
 
 import scala.collection.mutable.{HashMap, HashSet}
 
-import org.apache.spark.{Logging, TaskState}
+import org.apache.spark.{Logging, SparkEnv, TaskContextImpl, TaskState}
 import org.apache.spark.executor.ExecutorBackend
 import org.apache.spark.monotasks.compute.{ComputeMonotask, ComputeScheduler}
 import org.apache.spark.monotasks.disk.{DiskMonotask, DiskScheduler}
@@ -42,6 +42,14 @@ private[spark] class LocalDagScheduler(
     executorBackend: ExecutorBackend,
     val blockManager: BlockManager)
   extends EventLoop[LocalDagSchedulerEvent]("local-dag-scheduler-event-loop") with Logging {
+
+  /**
+   * TaskContextImpl to use for monotasks that do not correspond to a macrotask running on this
+   * machine (e.g., DiskReadMonotasks that are reading data to be sent to a remote executor).
+   * TODO: should a bunch of the stuff from TaskContextImpl get moved to SparkEnv? like max
+   * result size, dep manager, local dag scheduelr.
+   */
+  val genericTaskContext = new TaskContextImpl(SparkEnv.get, this, 0, null, -1, -1)
 
   private val computeScheduler = new ComputeScheduler(executorBackend)
   private val networkScheduler = new NetworkScheduler
