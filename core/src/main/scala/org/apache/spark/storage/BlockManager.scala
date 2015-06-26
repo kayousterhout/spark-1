@@ -273,17 +273,13 @@ private[spark] class BlockManager(
    * cannot be read successfully.
    */
   def getBlockData(blockId: BlockId): ManagedBuffer = {
-    if (blockId.isShuffle) {
-      shuffleManager.shuffleBlockManager.getBlockData(blockId.asInstanceOf[ShuffleBlockId])
+    val blockBytesOpt = doGetLocal(blockId, asBlockResult = false)
+      .asInstanceOf[Option[ByteBuffer]]
+    if (blockBytesOpt.isDefined) {
+      val buffer = blockBytesOpt.get
+      new NioManagedBuffer(buffer)
     } else {
-      val blockBytesOpt = doGetLocal(blockId, asBlockResult = false)
-        .asInstanceOf[Option[ByteBuffer]]
-      if (blockBytesOpt.isDefined) {
-        val buffer = blockBytesOpt.get
-        new NioManagedBuffer(buffer)
-      } else {
-        throw new BlockNotFoundException(blockId.toString)
-      }
+      throw new BlockNotFoundException(blockId.toString)
     }
   }
 
