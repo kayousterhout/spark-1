@@ -73,7 +73,8 @@ class ShuffleHelper[K, V, C](
           // Create a DiskReadMonotask to load the data into memory.
           // The data loaded into memory by these monotasks will be automatically deleted by the
           // LocalDagScheduler, because DiskReadMonotasks always marks the data read from disk as
-          // intermediate data that should be deleted when all of the monotasks's dependents complete.
+          // intermediate data that should be deleted when all of the monotasks's dependents
+          // complete.
           blockManager.getBlockLoadMonotask(blockId, context).getOrElse {
             throw new FetchFailedException(
               blockManager.blockManagerId,
