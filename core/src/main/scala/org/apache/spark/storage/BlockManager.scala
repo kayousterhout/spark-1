@@ -439,7 +439,7 @@ private[spark] class BlockManager(
     logDebug(s"Getting local block $blockId as bytes")
     // As an optimization for map output fetches, if the block is for a shuffle, return it
     // without acquiring a lock; the disk store never deletes (recent) items so this should work
-    if (blockId.isShuffle) {
+    /* if (blockId.isShuffle) {
       val shuffleBlockManager = shuffleManager.shuffleBlockManager
       shuffleBlockManager.getBytes(blockId.asInstanceOf[ShuffleBlockId]) match {
         case Some(bytes) =>
@@ -448,9 +448,8 @@ private[spark] class BlockManager(
           throw new BlockException(
             blockId, s"Block $blockId not found on disk, though it should be")
       }
-    } else {
-      doGetLocal(blockId, asBlockResult = false).asInstanceOf[Option[ByteBuffer]]
-    }
+    } else { */
+    doGetLocal(blockId, asBlockResult = false).asInstanceOf[Option[ByteBuffer]]
   }
 
   private def doGetLocal(blockId: BlockId, asBlockResult: Boolean): Option[Any] = {
