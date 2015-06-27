@@ -48,6 +48,7 @@ private[spark] class LocalDagScheduler(
    * machine (e.g., DiskReadMonotasks that are reading data to be sent to a remote executor).
    * TODO: should a bunch of the stuff from TaskContextImpl get moved to SparkEnv? like max
    * result size, dep manager, local dag scheduelr.
+   * TODO: remoteMacrotaskTaskContext?
    */
   val genericTaskContext = new TaskContextImpl(SparkEnv.get, this, 0, null, -1, -1)
 

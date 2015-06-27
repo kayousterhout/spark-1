@@ -171,15 +171,17 @@ private[spark] class BlockManager(
    * This method initializes the BlockTransferService, registers with the BlockManagerMaster and
    * starts the BlockManagerWorker actor.
    */
-  def initialize(appId: String, localDagScheduler: LocalDagScheduler = null): Unit = {
+  def initialize(appId: String): Unit = {
     blockTransferService.init(this)
-
-    this.localDagScheduler = localDagScheduler
 
     blockManagerId = BlockManagerId(
       executorId, blockTransferService.hostName, blockTransferService.port)
 
     master.registerBlockManager(blockManagerId, maxMemory, slaveActor)
+  }
+
+  def setLocalDagScheduler(localDagScheduler: LocalDagScheduler): Unit = {
+    this.localDagScheduler = localDagScheduler
   }
 
   /**

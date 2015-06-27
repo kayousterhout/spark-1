@@ -102,6 +102,7 @@ private[spark] class Executor(
     AkkaUtils.maxFrameSizeBytes(conf) - AkkaUtils.reservedSizeBytes
 
   private val localDagScheduler = new LocalDagScheduler(executorBackend, env.blockManager)
+  env.blockManager.setLocalDagScheduler(localDagScheduler)
 
   private val continuousMonitor = new ContinuousMonitor(
     conf,
