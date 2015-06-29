@@ -88,6 +88,7 @@ class ShuffleHelper[K, V, C](
               s"Could not find local shuffle block ID $blockId in BlockManager")
           }
         } else {
+          logInfo(s"Creating new network monotask for block $blockId (BM: $address")
           new NetworkMonotask(context, address, blockId, size)
         }
 
