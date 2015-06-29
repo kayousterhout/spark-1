@@ -249,6 +249,7 @@ private[spark] class BlockManager(
       // First, try to get the block from in-memory.
       // TODO: make getBlockData not throw an exception? fail more gracefully?
       val blockData = getBlockData(BlockId(blockId))
+      // TODO: make sure the data is serialized!
       callback.onSuccess(blockId, blockData)
     } catch {
       case blockNotFound: BlockNotFoundException =>
@@ -256,7 +257,7 @@ private[spark] class BlockManager(
         // Need localdagscheduler, blockManager in taskcontext. maybe define a special task context
         // for these? could make task attemptId -1? need to pass more metadata about taskid? -1
         // seems ok for now.
-        logInfo(s"block not found locally so submitting a disk monotask")
+        logInfo(s"Block $blockId not found locally so submitting a disk monotask")
         getBlockLoadMonotask(BlockId(blockId), localDagScheduler.genericTaskContext) match {
           case Some(monotask) =>
             monotask.callback = Some(callback)
@@ -834,6 +835,9 @@ private[spark] class BlockManager(
             blockInfo.remove(blockId)
             logInfo(s"Block $blockId is no longer stored locally, so the BlockManager discarded " +
               "its metadata.")
+          } else {
+            logInfo(s"After removing block $blockId from memory, its storage level is " +
+              s"${status.storageLevel}")
           }
           if (tellMaster && info.tellMaster) {
             reportBlockStatus(blockId, info, status)

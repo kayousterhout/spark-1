@@ -112,7 +112,7 @@ public class TransportRequestHandler extends MessageHandler<RequestMessage> {
   private void processFetchRequest(final BlockFetchRequest req) {
     final String client = NettyUtils.getRemoteAddress(channel);
 
-    logger.trace("Received req from {} to fetch block {}", client, req.blockId);
+    logger.info("Received req from {} to fetch block {}", client, req.blockId);
 
     blockFetcher.getBlockData(req.blockId, diskReadCompleteCallback);
   }
