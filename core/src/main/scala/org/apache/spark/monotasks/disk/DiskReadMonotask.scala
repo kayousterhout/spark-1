@@ -35,7 +35,7 @@ private[spark] class DiskReadMonotask(
 
   resultBlockId = Some(blockId)
 
-  val callback: Option[BlockReceivedCallback] = None
+  var callback: Option[BlockReceivedCallback] = None
 
   override def execute(): Boolean = {
     val data = blockManager.blockFileManager.getBlockFile(blockId, diskId).map { file =>
