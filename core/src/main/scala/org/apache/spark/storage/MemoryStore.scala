@@ -83,6 +83,7 @@ private[spark] class MemoryStore(blockManager: BlockManager, maxMemory: Long)
       val values = blockManager.dataDeserialize(blockId, bytesCopy)
       cacheIterator(blockId, values, level, returnValues = true)
     } else {
+      logInfo(s"CacheBytes called for block $blockId")
       tryToCache(blockId, bytesCopy, bytesCopy.limit, deserialized = false)
       CacheResult(bytesCopy.limit(), Right(bytesCopy.duplicate()))
     }
@@ -194,6 +195,7 @@ private[spark] class MemoryStore(blockManager: BlockManager, maxMemory: Long)
         val valuesOrBytes = if (deserialized) "values" else "bytes"
         logInfo(s"Block $blockId stored as $valuesOrBytes in memory (estimated size:  " +
           s"${Utils.bytesToString(size)}, free: ${Utils.bytesToString(freeMemory)}).")
+        (new Throwable()).printStackTrace()
       }
     }
   }
