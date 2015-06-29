@@ -68,6 +68,8 @@ class ShuffleHelper[K, V, C](
       // Only need to fetch blocks that have non-zero size.
       if (size > 0) {
         val blockId = new ShuffleBlockId(shuffleDependency.shuffleId, index, reduceId)
+        logInfo(s"Creating monotask to fetch block $blockId of size $size for " +
+          s"task ${context.taskAttemptId}")
         blockIdToMapId(blockId) = index
         val monotask = if (address.executorId == blockManager.blockManagerId.executorId) {
           // Create a DiskReadMonotask to load the data into memory.
@@ -76,16 +78,21 @@ class ShuffleHelper[K, V, C](
           // intermediate data that should be deleted when all of the monotasks's dependents
           // complete.
           blockManager.getBlockLoadMonotask(blockId, context).getOrElse {
+            logInfo(s"Failed to get block load monotask for block id $blockId on block manager " +
+              s"${blockManager.blockManagerId.executorId} (block on BM ${address.executorId})")
             throw new FetchFailedException(
               blockManager.blockManagerId,
               blockId.shuffleId,
               blockId.mapId,
               reduceId,
-              s"Could not find shuffle block ID $blockId in BlockManager")
+              s"Could not find local shuffle block ID $blockId in BlockManager")
           }
         } else {
           new NetworkMonotask(context, address, blockId, size)
         }
+
+        logInfo(s"To fetch block $blockId from executor ${address.executorId} " +
+          s"(I'm ${blockManager.blockManagerId.executorId}), got monotask $monotask")
 
         localBlockIds.append(monotask.getResultBlockId())
         fetchMonotasks.append(monotask)
