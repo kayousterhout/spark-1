@@ -994,7 +994,7 @@ private[spark] class BlockManager(
    * Returns a Monotask that will load the specified block into the MemoryStore. Returns None if the
    * block is already in the MemoryStore or is not stored by this BlockManager.
    */
-  def getBlockLoadMonotask(blockId: BlockId, context: TaskContextImpl): Option[Monotask] = {
+  def getBlockLoadMonotask(blockId: BlockId, context: TaskContextImpl): Option[DiskReadMonotask] = {
     val info = blockInfo.get(blockId).orNull
     if (info != null) {
       info.synchronized {
