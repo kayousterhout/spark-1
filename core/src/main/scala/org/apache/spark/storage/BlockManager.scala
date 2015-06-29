@@ -670,6 +670,7 @@ private[spark] class BlockManager(
       val tinfo = new BlockInfo(level, tellMaster, None)
       // Do atomically !
       blockInfo.putIfAbsent(blockId, tinfo).map { oldInfo =>
+        logInfo(s"Old block info for $blockId: $oldInfo")
         if (oldInfo.waitForReady()) {
           // We abort the cache operation if the block is already stored where we were going to
           // cache it.
@@ -770,6 +771,7 @@ private[spark] class BlockManager(
       }
     }
     logDebug(s"Caching block $blockId locally took ${Utils.getUsedTimeMs(startTimeMs)}.")
+    logInfo(s"After caching, new storage level for block $blockId is ${blockInfo(blockId).level}")
 
     // TODO: Reimplement support for block replication using NetworkMonotasks.
 
