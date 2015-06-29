@@ -69,7 +69,7 @@ class ShuffleHelper[K, V, C](
       if (size > 0) {
         val blockId = new ShuffleBlockId(shuffleDependency.shuffleId, index, reduceId)
         logInfo(s"Creating monotask to fetch block $blockId of size $size for " +
-          s"task ${context.taskAttemptId}")
+          s"task ${context.taskAttemptId} (partition ID ${context.partitionId}")
         blockIdToMapId(blockId) = index
         val monotask = if (address.executorId == blockManager.blockManagerId.executorId) {
           // Create a DiskReadMonotask to load the data into memory.
