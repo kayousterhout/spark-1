@@ -256,8 +256,10 @@ private[spark] class BlockManager(
         // Need localdagscheduler, blockManager in taskcontext. maybe define a special task context
         // for these? could make task attemptId -1? need to pass more metadata about taskid? -1
         // seems ok for now.
+        logInfo(s"block not found locally so submitting a disk monotask")
         getBlockLoadMonotask(BlockId(blockId), localDagScheduler.genericTaskContext) match {
           case Some(monotask) =>
+            monotask.callback = Some(callback)
             localDagScheduler.post(SubmitMonotask(monotask))
 
           case None =>

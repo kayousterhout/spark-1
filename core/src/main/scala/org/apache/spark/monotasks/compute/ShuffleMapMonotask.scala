@@ -19,7 +19,6 @@ package org.apache.spark.monotasks.compute
 import org.apache.spark.{Partition, ShuffleDependency, SparkEnv, TaskContextImpl}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.scheduler.MapStatus
-import org.apache.spark.shuffle.ShuffleWriter
 import org.apache.spark.storage.BlockId
 
 /**
