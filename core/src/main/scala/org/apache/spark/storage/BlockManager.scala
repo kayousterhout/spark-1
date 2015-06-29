@@ -260,6 +260,7 @@ private[spark] class BlockManager(
         logInfo(s"Block $blockId not found locally so submitting a disk monotask")
         getBlockLoadMonotask(BlockId(blockId), localDagScheduler.genericTaskContext) match {
           case Some(monotask) =>
+            // TODO: should instead make a network monotask?
             monotask.callback = Some(callback)
             localDagScheduler.post(SubmitMonotask(monotask))
 
