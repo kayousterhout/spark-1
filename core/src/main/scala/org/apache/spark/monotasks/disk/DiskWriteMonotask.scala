@@ -74,7 +74,7 @@ private[spark] class DiskWriteMonotask(
     /* Copy the ByteBuffer that we are given so that the code that created the ByteBuffer can
      * continue using it. This only copies the metadata, not the buffer contents. */
     val dataCopy = data.duplicate()
-    logDebug(s"Attempting to write block $blockId to disk $diskId")
+    logInfo(s"Attempting to write block $blockId to disk $diskId")
     blockManager.blockFileManager.getBlockFile(blockId, diskId).map { file =>
       try {
         val stream = new FileOutputStream(file)

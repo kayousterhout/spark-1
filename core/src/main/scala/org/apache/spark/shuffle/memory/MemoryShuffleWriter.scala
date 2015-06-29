@@ -19,7 +19,7 @@ package org.apache.spark.shuffle.memory
 import java.io.{ByteArrayOutputStream, OutputStream}
 import java.nio.ByteBuffer
 
-import org.apache.spark.{ShuffleDependency, SparkEnv, TaskContext}
+import org.apache.spark.{Logging, ShuffleDependency, SparkEnv, TaskContext}
 import org.apache.spark.executor.ShuffleWriteMetrics
 import org.apache.spark.scheduler.MapStatus
 import org.apache.spark.serializer.{SerializationStream, Serializer}
@@ -87,7 +87,8 @@ private[spark] class MemoryShuffleWriter[K, V](
 
 /** Serializes and optionally compresses data into an in-memory byte stream. */
 private[spark] class SerializedObjectWriter(
-    blockManager: BlockManager, dep: ShuffleDependency[_,_,_], partitionId: Int, bucketId: Int) {
+    blockManager: BlockManager, dep: ShuffleDependency[_,_,_], partitionId: Int, bucketId: Int)
+  extends Logging {
 
   /**
    * A ByteArrayOutputStream that will convert the underlying byte array to a byte buffer without
@@ -128,6 +129,7 @@ private[spark] class SerializedObjectWriter(
       serializationStream.flush()
       serializationStream.close()
       if (saveToBlockManager) {
+        logInfo(s"Saving blockId $blockId to block manager for shuffle write")
         val result = blockManager.cacheBytes(
           blockId,
           byteOutputStream.getByteBuffer(),

@@ -20,7 +20,7 @@ import java.util.concurrent.atomic.AtomicLong
 
 import scala.collection.mutable.ArrayBuffer
 
-import org.apache.spark.TaskContextImpl
+import org.apache.spark.{Logging, TaskContextImpl}
 import org.apache.spark.storage.{BlockId, MonotaskResultBlockId}
 
 /**
@@ -31,7 +31,7 @@ import org.apache.spark.storage.{BlockId, MonotaskResultBlockId}
  * Monotasks are responsible for notifying the localDagScheduler when they have completed
  * successfully or when they have failed.
  */
-private[spark] abstract class Monotask(val context: TaskContextImpl) {
+private[spark] abstract class Monotask(val context: TaskContextImpl) extends Logging {
   val taskId = Monotask.newId()
 
   // Whether this monotask has finished executing.
@@ -98,6 +98,7 @@ private[spark] abstract class Monotask(val context: TaskContextImpl) {
           case _ => true
         }
 
+        logInfo(s"Removing intermediate block $blockId from memory")
         context.env.blockManager.removeBlockFromMemory(blockId, tellMaster)
       }
     }
