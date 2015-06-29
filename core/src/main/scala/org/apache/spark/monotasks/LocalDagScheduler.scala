@@ -200,7 +200,7 @@ private[spark] class LocalDagScheduler(
         // Tell the executorBackend that the macrotask finished.
         runningMacrotaskAttemptIds.remove(taskAttemptId)
         completedMonotask.context.markTaskCompleted()
-        logDebug(s"Notifying executorBackend about successful completion of task $taskAttemptId")
+        logInfo(s"Notifying executorBackend about successful completion of task $taskAttemptId")
         executorBackend.statusUpdate(taskAttemptId, TaskState.FINISHED, result)
       }
     } else {

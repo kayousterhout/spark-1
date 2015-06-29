@@ -1003,11 +1003,13 @@ private[spark] class BlockManager(
    */
   def getBlockLoadMonotask(blockId: BlockId, context: TaskContextImpl): Option[DiskReadMonotask] = {
     val info = blockInfo.get(blockId).orNull
+    logInfo(s"Block info is $info")
     if (info != null) {
       info.synchronized {
         val level = info.level
         val diskId = info.diskId
         if (level.useMemory && memoryStore.contains(blockId)) {
+          logInfo(s"Not returning block for $blockId because it is stored in memory!")
           return None
         } else if (level.useDisk && blockFileManager.contains(blockId, info.diskId)) {
           return Some(new DiskReadMonotask(context, blockId, diskId.get))
