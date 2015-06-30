@@ -47,6 +47,7 @@ import java.util.concurrent.TimeUnit;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
+import io.netty.channel.Channel;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -99,7 +100,7 @@ public class BlockFetchIntegrationSuite {
 
     BlockFetcher blockFetcher = new BlockFetcher() {
       @Override
-      public void getBlockData(String blockId, TransportRequestHandler handler) {
+      public void getBlockData(String blockId, Channel channel) {
         /*if (blockId.equals(BUFFER_BLOCK_ID)) {
           return new NioManagedBuffer(buf);
         } else if (blockId.equals(FILE_BLOCK_ID)) {
