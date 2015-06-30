@@ -60,6 +60,7 @@ import org.apache.spark.network.client.BlockReceivedCallback;
 import org.apache.spark.network.client.TransportClient;
 import org.apache.spark.network.client.TransportClientFactory;
 import org.apache.spark.network.server.BlockFetcher;
+import org.apache.spark.network.server.TransportRequestHandler;
 import org.apache.spark.network.server.TransportServer;
 import org.apache.spark.network.util.SystemPropertyConfigProvider;
 import org.apache.spark.network.util.TransportConf;
@@ -98,7 +99,7 @@ public class BlockFetchIntegrationSuite {
 
     BlockFetcher blockFetcher = new BlockFetcher() {
       @Override
-      public void getBlockData(String blockId, BlockReceivedCallback callback) {
+      public void getBlockData(String blockId, TransportRequestHandler handler) {
         /*if (blockId.equals(BUFFER_BLOCK_ID)) {
           return new NioManagedBuffer(buf);
         } else if (blockId.equals(FILE_BLOCK_ID)) {
