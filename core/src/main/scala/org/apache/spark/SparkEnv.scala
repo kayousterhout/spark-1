@@ -47,6 +47,7 @@ import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.api.python.PythonWorkerFactory
 import org.apache.spark.broadcast.BroadcastManager
 import org.apache.spark.metrics.MetricsSystem
+import org.apache.spark.monotasks.LocalDagScheduler
 import org.apache.spark.network.BlockTransferService
 import org.apache.spark.network.netty.NettyBlockTransferService
 import org.apache.spark.network.nio.NioBlockTransferService
@@ -85,6 +86,9 @@ class SparkEnv (
     val shuffleMemoryManager: ShuffleMemoryManager,
     val outputCommitCoordinator: OutputCommitCoordinator,
     val conf: SparkConf) extends Logging {
+
+  val localDagScheduler = new LocalDagScheduler(blockManager)
+  blockManager.setLocalDagScheduler(localDagScheduler)
 
   private[spark] var isStopped = false
   private val pythonWorkers = mutable.HashMap[(String, Map[String, String]), PythonWorkerFactory]()

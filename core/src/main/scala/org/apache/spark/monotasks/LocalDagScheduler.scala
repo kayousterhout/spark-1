@@ -38,10 +38,11 @@ import org.apache.spark.util.{EventLoop, SparkUncaughtExceptionHandler}
  * loop.  The only exception to this is monitoring functions (to get the number of running tasks,
  * for example), which are not processed by the event loop.
  */
-private[spark] class LocalDagScheduler(
-    executorBackend: ExecutorBackend,
-    val blockManager: BlockManager)
+private[spark] class LocalDagScheduler(val blockManager: BlockManager)
   extends EventLoop[LocalDagSchedulerEvent]("local-dag-scheduler-event-loop") with Logging {
+
+  // set later (this is init by SparkEnv, which doesn't have backend).
+  private var executorBackend: ExecutorBackend = _
 
   /**
    * TaskContextImpl to use for monotasks that do not correspond to a macrotask running on this
@@ -52,7 +53,7 @@ private[spark] class LocalDagScheduler(
    */
   val genericTaskContext = new TaskContextImpl(SparkEnv.get, this, 0, null, -1, -1)
 
-  private val computeScheduler = new ComputeScheduler(executorBackend)
+  private val computeScheduler = new ComputeScheduler
   private val networkScheduler = new NetworkScheduler
   private val diskScheduler = new DiskScheduler(blockManager)
 
@@ -78,6 +79,11 @@ private[spark] class LocalDagScheduler(
 
   // Start the event thread.
   start()
+
+  def setExecutorBackend(executorBackend: ExecutorBackend): Unit = {
+    this.executorBackend = executorBackend
+    computeScheduler.setExecutorBackend(executorBackend)
+  }
 
   def getNumRunningComputeMonotasks(): Int = {
     computeScheduler.numRunningTasks.get()

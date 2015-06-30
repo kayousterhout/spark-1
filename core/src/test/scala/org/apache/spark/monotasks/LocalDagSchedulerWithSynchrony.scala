@@ -26,7 +26,9 @@ import org.apache.spark.storage.BlockManager
  * with a method to block waiting for an event to complete.
  */
 class LocalDagSchedulerWithSynchrony(executorBackend: ExecutorBackend, blockManager: BlockManager)
-  extends LocalDagScheduler(executorBackend, blockManager) {
+  extends LocalDagScheduler(blockManager) {
+
+  setExecutorBackend(executorBackend)
 
   def runEvent(event: LocalDagSchedulerEvent) {
     try {

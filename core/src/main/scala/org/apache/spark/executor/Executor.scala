@@ -101,17 +101,16 @@ private[spark] class Executor(
   private val maximumResultSizeBytes =
     AkkaUtils.maxFrameSizeBytes(conf) - AkkaUtils.reservedSizeBytes
 
-  private val localDagScheduler = new LocalDagScheduler(executorBackend, env.blockManager)
-  env.blockManager.setLocalDagScheduler(localDagScheduler)
+  env.localDagScheduler.setExecutorBackend(executorBackend)
 
   private val continuousMonitor = new ContinuousMonitor(
     conf,
-    localDagScheduler.getOutstandingNetworkBytes,
-    localDagScheduler.getNumRunningComputeMonotasks,
-    localDagScheduler.getNumRunningMacrotasks,
-    localDagScheduler.getNumMacrotasksInCompute,
-    localDagScheduler.getNumMacrotasksInDisk,
-    localDagScheduler.getNumMacrotasksInNetwork)
+    env.localDagScheduler.getOutstandingNetworkBytes,
+    env.localDagScheduler.getNumRunningComputeMonotasks,
+    env.localDagScheduler.getNumRunningMacrotasks,
+    env.localDagScheduler.getNumMacrotasksInCompute,
+    env.localDagScheduler.getNumMacrotasksInDisk,
+    env.localDagScheduler.getNumMacrotasksInNetwork)
   continuousMonitor.start(env)
 
   startDriverHeartbeater()
@@ -123,13 +122,13 @@ private[spark] class Executor(
       serializedTask: ByteBuffer) {
     val context = new TaskContextImpl(
       env,
-      localDagScheduler,
+      env.localDagScheduler,
       maximumResultSizeBytes,
       dependencyManager,
       taskAttemptId,
       attemptNumber)
     val prepareMonotask = new PrepareMonotask(context, serializedTask)
-    localDagScheduler.post(SubmitMonotask(prepareMonotask))
+    env.localDagScheduler.post(SubmitMonotask(prepareMonotask))
   }
 
   def killTask(taskId: Long, interruptThread: Boolean) {
