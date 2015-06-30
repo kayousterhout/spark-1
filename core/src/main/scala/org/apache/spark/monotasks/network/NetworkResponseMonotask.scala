@@ -19,6 +19,7 @@ package org.apache.spark.monotasks.network
 import org.apache.spark.{Logging, TaskContextImpl}
 import org.apache.spark.network.server.TransportRequestHandler
 import org.apache.spark.storage.BlockId
+import org.apache.spark.monotasks.{TaskFailure, TaskSuccess}
 
 /**
  * A monotask that sends data over the network in response to a request from a remote executor.
@@ -34,9 +35,14 @@ private[spark] class NetworkResponseMonotask(
       // propagated correctly?
       val buffer = context.env.blockManager.getBlockData(blockId)
       handler.sendBlockFetchSuccess(blockId.toString(), buffer)
+      // TODO: need to wait to delete data until it's actually been sent over the network -- so
+      // need to move the block fetch success code back here.
+      context.localDagScheduler.post(TaskSuccess(this, None))
     } catch {
       case t: Throwable =>
         handler.sendBlockFetchFailure(blockId.toString(), t)
+      // TODO: make a real failure reason here.
+      context.localDagScheduler.post(TaskFailure(this, null))
     }
   }
 }
