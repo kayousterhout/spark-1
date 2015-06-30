@@ -248,21 +248,33 @@ private[spark] class BlockManager(
 
   override def getBlockData(blockIdStr: String, handler: TransportRequestHandler): Unit = {
     val blockId = BlockId(blockIdStr)
-    val networkResponseMonotask = new NetworkResponseMonotask(
-      blockId, handler, localDagScheduler.genericTaskContext)
 
-    getBlockLoadMonotask(blockId, localDagScheduler.genericTaskContext) match {
-      case Some(blockLoadMonotask) =>
-        networkResponseMonotask.addDependency(blockLoadMonotask)
-        localDagScheduler.post(SubmitMonotasks(Seq(networkResponseMonotask, blockLoadMonotask)))
+    try {
+      // If the block is in-memory, just send it back.
+      // TODO: this is a hack to make broadcast blocks work! (Remember this needs to work on the
+      // master).
+      // (problematic otherwise because localDagScheduler is null -- so can't get generic task
+      // context).
+      val buffer = getBlockData(blockId)
+      handler.sendBlockFetchSuccess(blockIdStr, buffer)
+    } catch {
+      case _: BlockNotFoundException =>
+        val networkResponseMonotask = new NetworkResponseMonotask(
+          blockId, handler, localDagScheduler.genericTaskContext)
 
-      case None =>
-        // TODO: this is a band-aid to partially deal with failures (the network monotask will
-        // notice the missing block and send back a failure). But can still have a failure in the
-        // load monotask...so need a better way of dealing with these.
-        // TODO: also this might succeed because the data is actually in-memory.
-        logError(s"Block $blockId not on disk!")
-        localDagScheduler.post(SubmitMonotask(networkResponseMonotask))
+        getBlockLoadMonotask(blockId, localDagScheduler.genericTaskContext) match {
+          case Some(blockLoadMonotask) =>
+            networkResponseMonotask.addDependency(blockLoadMonotask)
+            localDagScheduler.post(SubmitMonotasks(Seq(networkResponseMonotask, blockLoadMonotask)))
+
+          case None =>
+            // TODO: this is a band-aid to partially deal with failures (the network monotask will
+            // notice the missing block and send back a failure). But can still have a failure in the
+            // load monotask...so need a better way of dealing with these.
+            // TODO: also this might succeed because the data is actually in-memory.
+            logError(s"Block $blockId not on disk!")
+            localDagScheduler.post(SubmitMonotask(networkResponseMonotask))
+        }
     }
   }
 
