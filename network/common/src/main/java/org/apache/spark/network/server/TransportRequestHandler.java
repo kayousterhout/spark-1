@@ -37,7 +37,6 @@ import com.google.common.base.Throwables;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
-import org.apache.spark.network.client.BlockReceivedCallback;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -95,37 +94,6 @@ public class TransportRequestHandler extends MessageHandler<RequestMessage> {
 
     logger.info("Received req from {} to fetch block {}", client, req.blockId);
 
-    blockFetcher.getBlockData(req.blockId, this);
-  }
-
-  public void sendBlockFetchSuccess(String blockId, ManagedBuffer buffer) {
-    respond(new BlockFetchSuccess(blockId, buffer));
-  }
-
-  public void sendBlockFetchFailure(String blockId, Throwable e) {
-    logger.error(String.format("Error opening block %s", blockId), e);
-    respond(new BlockFetchFailure(blockId, Throwables.getStackTraceAsString(e)));
-  }
-
-  /**
-   * Responds to a single message with some Encodable object. If a failure occurs while sending,
-   * it will be logged and the channel closed.
-   */
-  private void respond(final Encodable result) {
-    final String remoteAddress = channel.remoteAddress().toString();
-    channel.writeAndFlush(result).addListener(
-            new ChannelFutureListener() {
-                @Override
-                public void operationComplete(ChannelFuture future) throws Exception {
-                    if (future.isSuccess()) {
-                        logger.trace(String.format("Sent result %s to client %s", result, remoteAddress));
-                    } else {
-                        logger.error(String.format("Error sending result %s to %s; closing connection",
-                                result, remoteAddress), future.cause());
-                        channel.close();
-                    }
-                }
-            }
-    );
+    blockFetcher.getBlockData(req.blockId, channel);
   }
 }
