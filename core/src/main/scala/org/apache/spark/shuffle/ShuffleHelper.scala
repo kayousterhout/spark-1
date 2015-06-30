@@ -21,7 +21,7 @@ import scala.collection.mutable.{ArrayBuffer, HashMap}
 import org.apache.spark.{InterruptibleIterator, Logging, ShuffleDependency, SparkEnv,
   SparkException, TaskContextImpl}
 import org.apache.spark.monotasks.Monotask
-import org.apache.spark.monotasks.network.NetworkMonotask
+import org.apache.spark.monotasks.network.NetworkRequestMonotask
 import org.apache.spark.network.buffer.ManagedBuffer
 import org.apache.spark.serializer.Serializer
 import org.apache.spark.storage.{BlockId, BlockManagerId, MonotaskResultBlockId, ShuffleBlockId}
@@ -89,7 +89,7 @@ class ShuffleHelper[K, V, C](
           }
         } else {
           logInfo(s"Creating new network monotask for block $blockId (BM: $address")
-          new NetworkMonotask(context, address, blockId, size)
+          new NetworkRequestMonotask(context, address, blockId, size)
         }
 
         logInfo(s"To fetch block $blockId from executor ${address.executorId} " +

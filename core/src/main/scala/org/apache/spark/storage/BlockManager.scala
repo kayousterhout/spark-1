@@ -33,6 +33,8 @@
 
 package org.apache.spark.storage
 
+import io.netty.channel.Channel
+
 import java.io.{BufferedOutputStream, ByteArrayOutputStream, File, InputStream, OutputStream}
 import java.nio.{ByteBuffer, MappedByteBuffer}
 
@@ -48,12 +50,12 @@ import sun.nio.ch.DirectBuffer
 import org.apache.spark._
 import org.apache.spark.executor._
 import org.apache.spark.io.CompressionCodec
-import org.apache.spark.monotasks.{LocalDagScheduler, Monotask, SubmitMonotask}
+import org.apache.spark.monotasks.{LocalDagScheduler, SubmitMonotask, SubmitMonotasks}
 import org.apache.spark.monotasks.disk.DiskReadMonotask
+import org.apache.spark.monotasks.network.NetworkResponseMonotask
 import org.apache.spark.network._
 import org.apache.spark.network.buffer.{ManagedBuffer, NioManagedBuffer}
-import org.apache.spark.network.client.BlockReceivedCallback
-import org.apache.spark.network.server.BlockFetcher
+import org.apache.spark.network.server.{BlockFetcher, TransportRequestHandler}
 import org.apache.spark.serializer.Serializer
 import org.apache.spark.shuffle.ShuffleManager
 import org.apache.spark.util._
@@ -244,33 +246,23 @@ private[spark] class BlockManager(
     }
   }
 
-  override def getBlockData(blockId: String, callback: BlockReceivedCallback): Unit = {
-    try {
-      // First, try to get the block from in-memory.
-      // TODO: make getBlockData not throw an exception? fail more gracefully?
-      val blockData = getBlockData(BlockId(blockId))
-      // TODO: make sure the data is serialized!
-      callback.onSuccess(blockId, blockData)
-    } catch {
-      case blockNotFound: BlockNotFoundException =>
-        // Block not found in-memory; try to get it from disk instead.
-        // Need localdagscheduler, blockManager in taskcontext. maybe define a special task context
-        // for these? could make task attemptId -1? need to pass more metadata about taskid? -1
-        // seems ok for now.
-        logInfo(s"Block $blockId not found locally so submitting a disk monotask")
-        getBlockLoadMonotask(BlockId(blockId), localDagScheduler.genericTaskContext) match {
-          case Some(monotask) =>
-            // TODO: should instead make a network monotask?
-            monotask.callback = Some(callback)
-            localDagScheduler.post(SubmitMonotask(monotask))
+  override def getBlockData(blockIdStr: String, handler: TransportRequestHandler): Unit = {
+    val blockId = BlockId(blockIdStr)
+    val networkResponseMonotask = new NetworkResponseMonotask(
+      blockId, handler, localDagScheduler.genericTaskContext)
 
-          case None =>
-            callback.onFailure(
-              blockId, new Throwable(s"Block ID $blockId not stored on executor $executorId"))
-        }
+    getBlockLoadMonotask(blockId, localDagScheduler.genericTaskContext) match {
+      case Some(blockLoadMonotask) =>
+        networkResponseMonotask.addDependency(blockLoadMonotask)
+        localDagScheduler.post(SubmitMonotasks(Seq(networkResponseMonotask, blockLoadMonotask)))
 
-      case t: Throwable =>
-        callback.onFailure(blockId, t)
+      case None =>
+        // TODO: this is a band-aid to partially deal with failures (the network monotask will
+        // notice the missing block and send back a failure). But can still have a failure in the
+        // load monotask...so need a better way of dealing with these.
+        // TODO: also this might succeed because the data is actually in-memory.
+        logError(s"Block $blockId not on disk!")
+        localDagScheduler.post(SubmitMonotask(networkResponseMonotask))
     }
   }
 
@@ -1008,10 +1000,11 @@ private[spark] class BlockManager(
       info.synchronized {
         val level = info.level
         val diskId = info.diskId
-        if (level.useMemory && memoryStore.contains(blockId)) {
-          logInfo(s"Not returning block for $blockId because it is stored in memory!")
-          return None
-        } else if (level.useDisk && blockFileManager.contains(blockId, info.diskId)) {
+        //if (level.useMemory && memoryStore.contains(blockId)) {
+        //  logInfo(s"Not returning block for $blockId because it is stored in memory!")
+        //  return None
+        //} else
+        if (level.useDisk && blockFileManager.contains(blockId, info.diskId)) {
           return Some(new DiskReadMonotask(context, blockId, diskId.get))
         }
       }

@@ -65,25 +65,6 @@ public class TransportRequestHandler extends MessageHandler<RequestMessage> {
   /** Handles returning data for a given block id. */
   private final BlockFetcher blockFetcher;
 
-  /**
-   * Callback for when blocks stored on local disk have been brought into memory and are ready to
-   * be sent over the network.
-   */
-  class DiskReadCompleteCallback implements BlockReceivedCallback {
-    @Override
-    public void onSuccess(String blockId, ManagedBuffer buffer) {
-      respond(new BlockFetchSuccess(blockId, buffer));
-    }
-
-    @Override
-    public void onFailure(String blockId, Throwable e) {
-      logger.error(String.format("Error opening block %s", blockId), e);
-      respond(new BlockFetchFailure(blockId, Throwables.getStackTraceAsString(e)));
-    }
-  }
-
-  private final DiskReadCompleteCallback diskReadCompleteCallback = new DiskReadCompleteCallback();
-
   public TransportRequestHandler(
       Channel channel,
       BlockFetcher blockFetcher) {
@@ -114,7 +95,16 @@ public class TransportRequestHandler extends MessageHandler<RequestMessage> {
 
     logger.info("Received req from {} to fetch block {}", client, req.blockId);
 
-    blockFetcher.getBlockData(req.blockId, diskReadCompleteCallback);
+    blockFetcher.getBlockData(req.blockId, this);
+  }
+
+  public void sendBlockFetchSuccess(String blockId, ManagedBuffer buffer) {
+    respond(new BlockFetchSuccess(blockId, buffer));
+  }
+
+  public void sendBlockFetchFailure(String blockId, Throwable e) {
+    logger.error(String.format("Error opening block %s", blockId), e);
+    respond(new BlockFetchFailure(blockId, Throwables.getStackTraceAsString(e)));
   }
 
   /**
@@ -124,18 +114,18 @@ public class TransportRequestHandler extends MessageHandler<RequestMessage> {
   private void respond(final Encodable result) {
     final String remoteAddress = channel.remoteAddress().toString();
     channel.writeAndFlush(result).addListener(
-      new ChannelFutureListener() {
-        @Override
-        public void operationComplete(ChannelFuture future) throws Exception {
-          if (future.isSuccess()) {
-            logger.trace(String.format("Sent result %s to client %s", result, remoteAddress));
-          } else {
-            logger.error(String.format("Error sending result %s to %s; closing connection",
-              result, remoteAddress), future.cause());
-            channel.close();
-          }
-        }
-      }
+            new ChannelFutureListener() {
+                @Override
+                public void operationComplete(ChannelFuture future) throws Exception {
+                    if (future.isSuccess()) {
+                        logger.trace(String.format("Sent result %s to client %s", result, remoteAddress));
+                    } else {
+                        logger.error(String.format("Error sending result %s to %s; closing connection",
+                                result, remoteAddress), future.cause());
+                        channel.close();
+                    }
+                }
+            }
     );
   }
 }

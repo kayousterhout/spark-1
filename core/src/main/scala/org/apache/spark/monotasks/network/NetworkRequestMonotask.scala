@@ -17,7 +17,7 @@
 package org.apache.spark.monotasks.network
 
 import org.apache.spark.{ExceptionFailure, FetchFailed, Logging, SparkException, TaskContextImpl}
-import org.apache.spark.monotasks.{Monotask, TaskFailure, TaskSuccess}
+import org.apache.spark.monotasks.{TaskFailure, TaskSuccess}
 import org.apache.spark.network.buffer.ManagedBuffer
 import org.apache.spark.network.client.BlockReceivedCallback
 import org.apache.spark.storage.{BlockId, BlockManagerId, MonotaskResultBlockId, ShuffleBlockId,
@@ -25,7 +25,7 @@ import org.apache.spark.storage.{BlockId, BlockManagerId, MonotaskResultBlockId,
 import org.apache.spark.util.Utils
 
 /**
- * A monotask that uses the network to fetch shuffle data.  This monotask handles only fetching
+ * A monotask that uses the network to request shuffle data.  This monotask handles only fetching
  * data, and does not deserialize it.
  *
  * @param remoteAddress remote BlockManager to fetch from.
@@ -33,19 +33,19 @@ import org.apache.spark.util.Utils
  * @param size Estimated size of the data to fetch (used to keep track of how many bytes are in
  *             flight).
  */
-private[spark] class NetworkMonotask(
+private[spark] class NetworkRequestMonotask(
     context: TaskContextImpl,
     private val remoteAddress: BlockManagerId,
     private val shuffleBlockId: ShuffleBlockId,
     private val size: Long)
-  extends Monotask(context) with Logging with BlockReceivedCallback {
+  extends NetworkMonotask(context) with Logging with BlockReceivedCallback {
 
   resultBlockId = Some(new MonotaskResultBlockId(taskId))
 
   /** Scheduler to notify about bytes received over the network. Set by execute(). */
   var networkScheduler: NetworkScheduler = _
 
-  def execute(scheduler: NetworkScheduler) {
+  override def execute(scheduler: NetworkScheduler) {
     logInfo(s"Sending request for block $shuffleBlockId (size (${Utils.bytesToString(size)}}) " +
       s"to $remoteAddress")
     networkScheduler = scheduler

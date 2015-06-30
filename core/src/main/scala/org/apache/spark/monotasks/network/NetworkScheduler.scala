@@ -19,7 +19,6 @@ package org.apache.spark.monotasks.network
 import java.util.concurrent.atomic.AtomicLong
 
 import org.apache.spark.Logging
-import org.apache.spark.util.Utils
 
 private[spark] class NetworkScheduler() extends Logging {
   /** Number of bytes that this executor is currently waiting to receive over the network. */
