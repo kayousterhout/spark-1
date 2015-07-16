@@ -43,7 +43,7 @@ private[spark] class MemoryShuffleWriter[K, V](
       new SerializedObjectWriter(blockManager, dep, mapId, bucketId)
   }
 
-  override def shuffleBlockIds: Seq[ShuffleBlockId] = shuffleData.map(_.blockId)
+  override def shuffleBlockIds = shuffleData.map(_.blockId)
 
   private val shuffleWriteMetrics = new ShuffleWriteMetrics()
   context.taskMetrics().shuffleWriteMetrics = Some(shuffleWriteMetrics)

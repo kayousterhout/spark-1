@@ -22,7 +22,8 @@ import org.mockito.Mockito.{mock, when}
 
 import org.scalatest.{BeforeAndAfter, FunSuite}
 
-import org.apache.spark._
+import org.apache.spark.{Dependency, LocalSparkContext, SparkConf, SparkContext, SparkEnv,
+  TaskContext, TaskContextImpl}
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.executor.DependencyManager
 import org.apache.spark.monotasks.compute.ResultSerializationMonotask
@@ -65,8 +66,7 @@ class ResultMacrotaskSuite extends FunSuite with BeforeAndAfter with LocalSparkC
     when(serializerInstance.deserialize[(RDD[Int], (TaskContext, Iterator[Int]) => Int)](
       ByteBuffer.wrap(dummyTaskBinary), null)).thenReturn((rdd, dummyFunction))
 
-     // Setup the constructor parameters for ResultMacrotask.
-
+    // Setup the constructor parameters for ResultMacrotask.
     val partition = rdd.partitions.head
     val dependencyIdToPartitions = Dependency.getDependencyIdToPartitions(rdd, partition.index)
     val broadcastBinary = mock(classOf[Broadcast[Array[Byte]]])
