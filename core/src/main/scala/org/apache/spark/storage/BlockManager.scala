@@ -33,6 +33,8 @@
 
 package org.apache.spark.storage
 
+import io.netty.channel.Channel
+
 import java.io.{BufferedOutputStream, ByteArrayOutputStream, File, InputStream, OutputStream}
 import java.nio.{ByteBuffer, MappedByteBuffer}
 
@@ -48,8 +50,9 @@ import sun.nio.ch.DirectBuffer
 import org.apache.spark._
 import org.apache.spark.executor._
 import org.apache.spark.io.CompressionCodec
-import org.apache.spark.monotasks.{LocalDagScheduler, Monotask, SubmitMonotask}
+import org.apache.spark.monotasks.{LocalDagScheduler, Monotask, SubmitMonotask, SubmitMonotasks}
 import org.apache.spark.monotasks.disk.{DiskReadMonotask, DiskRemoveMonotask}
+import org.apache.spark.monotasks.network.NetworkResponseMonotask
 import org.apache.spark.network._
 import org.apache.spark.network.buffer.{ManagedBuffer, NioManagedBuffer}
 import org.apache.spark.network.server.BlockFetcher
@@ -246,8 +249,26 @@ private[spark] class BlockManager(
     }
   }
 
-  override def getBlockData(blockId: String): ManagedBuffer = {
-    getBlockData(BlockId(blockId))
+  override def getBlockData(blockIdStr: String, channel: Channel): Unit = {
+    val blockId = BlockId(blockIdStr)
+
+    val networkResponseMonotask = new NetworkResponseMonotask(
+      blockId, channel, localDagScheduler.genericTaskContext)
+
+    getBlockLoadMonotask(blockId, localDagScheduler.genericTaskContext) match {
+      case Some(blockLoadMonotask) =>
+        networkResponseMonotask.addDependency(blockLoadMonotask)
+        localDagScheduler.post(SubmitMonotasks(Seq(networkResponseMonotask, blockLoadMonotask)))
+
+      case None =>
+        // TODO: this is a band-aid to partially deal with failures (the network monotask will
+        // notice the missing block and send back a failure). But can still have a failure in
+        // the load monotask...so need a better way of dealing with these.
+        // TODO: also this might succeed because the data is actually in-memory.
+        // If the block isn't in memory, register a failure with the network monotask.
+        logError(s"Block $blockId not on disk!")
+        localDagScheduler.post(SubmitMonotask(networkResponseMonotask))
+    }
   }
 
   /**
@@ -255,17 +276,13 @@ private[spark] class BlockManager(
    * cannot be read successfully.
    */
   def getBlockData(blockId: BlockId): ManagedBuffer = {
-    if (blockId.isShuffle) {
-      shuffleManager.shuffleBlockManager.getBlockData(blockId.asInstanceOf[ShuffleBlockId])
+    val blockBytesOpt = doGetLocal(blockId, asBlockResult = false)
+      .asInstanceOf[Option[ByteBuffer]]
+    if (blockBytesOpt.isDefined) {
+      val buffer = blockBytesOpt.get
+      new NioManagedBuffer(buffer)
     } else {
-      val blockBytesOpt = doGetLocal(blockId, asBlockResult = false)
-        .asInstanceOf[Option[ByteBuffer]]
-      if (blockBytesOpt.isDefined) {
-        val buffer = blockBytesOpt.get
-        new NioManagedBuffer(buffer)
-      } else {
-        throw new BlockNotFoundException(blockId.toString)
-      }
+      throw new BlockNotFoundException(blockId.toString)
     }
   }
 
@@ -388,20 +405,7 @@ private[spark] class BlockManager(
    */
   def getLocalBytes(blockId: BlockId): Option[ByteBuffer] = {
     logDebug(s"Getting local block $blockId as bytes")
-    // As an optimization for map output fetches, if the block is for a shuffle, return it
-    // without acquiring a lock; the disk store never deletes (recent) items so this should work
-    if (blockId.isShuffle) {
-      val shuffleBlockManager = shuffleManager.shuffleBlockManager
-      shuffleBlockManager.getBytes(blockId.asInstanceOf[ShuffleBlockId]) match {
-        case Some(bytes) =>
-          Some(bytes)
-        case None =>
-          throw new BlockException(
-            blockId, s"Block $blockId not found on disk, though it should be")
-      }
-    } else {
-      doGetLocal(blockId, asBlockResult = false).asInstanceOf[Option[ByteBuffer]]
-    }
+    doGetLocal(blockId, asBlockResult = false).asInstanceOf[Option[ByteBuffer]]
   }
 
   private def doGetLocal(blockId: BlockId, asBlockResult: Boolean): Option[Any] = {

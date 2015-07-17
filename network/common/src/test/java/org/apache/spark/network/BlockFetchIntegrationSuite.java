@@ -47,6 +47,7 @@ import java.util.concurrent.TimeUnit;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
+import io.netty.channel.Channel;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -59,6 +60,8 @@ import org.apache.spark.network.buffer.NioManagedBuffer;
 import org.apache.spark.network.client.BlockReceivedCallback;
 import org.apache.spark.network.client.TransportClient;
 import org.apache.spark.network.client.TransportClientFactory;
+import org.apache.spark.network.protocol.BlockFetchFailure;
+import org.apache.spark.network.protocol.BlockFetchSuccess;
 import org.apache.spark.network.server.BlockFetcher;
 import org.apache.spark.network.server.TransportServer;
 import org.apache.spark.network.util.SystemPropertyConfigProvider;
@@ -98,14 +101,16 @@ public class BlockFetchIntegrationSuite {
 
     BlockFetcher blockFetcher = new BlockFetcher() {
       @Override
-      public ManagedBuffer getBlockData(String blockId) {
-        if (blockId.equals(BUFFER_BLOCK_ID)) {
-          return new NioManagedBuffer(buf);
-        } else if (blockId.equals(FILE_BLOCK_ID)) {
-          return new FileSegmentManagedBuffer(conf, testFile, 10, testFile.length() - 25);
-        } else {
-          throw new IllegalArgumentException("Invalid chunk index: " + blockId);
-        }
+      public void getBlockData(String blockId, Channel channel) {
+      if (blockId.equals(BUFFER_BLOCK_ID)) {
+        channel.writeAndFlush(new BlockFetchSuccess(blockId, new NioManagedBuffer(buf)));
+      } else if (blockId.equals(FILE_BLOCK_ID)) {
+        ManagedBuffer buffer =
+          new FileSegmentManagedBuffer(conf, testFile, 10, testFile.length() - 25);
+        channel.writeAndFlush(new BlockFetchSuccess(blockId, buffer));
+      } else {
+        channel.writeAndFlush(new BlockFetchFailure(blockId, "Invalid chunk index: " + blockId));
+      }
       }
     };
 

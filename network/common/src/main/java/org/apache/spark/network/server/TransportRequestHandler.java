@@ -92,40 +92,8 @@ public class TransportRequestHandler extends MessageHandler<RequestMessage> {
   private void processFetchRequest(final BlockFetchRequest req) {
     final String client = NettyUtils.getRemoteAddress(channel);
 
-    logger.trace("Received req from {} to fetch block {}", client, req.blockId);
+    logger.info("Received req from {} to fetch block {}", client, req.blockId);
 
-    ManagedBuffer buf;
-    try {
-      buf = blockFetcher.getBlockData(req.blockId);
-    } catch (Exception e) {
-      logger.error(String.format(
-        "Error opening block %s for request from %s", req.blockId, client), e);
-      respond(new BlockFetchFailure(req.blockId, Throwables.getStackTraceAsString(e)));
-      return;
-    }
-
-    respond(new BlockFetchSuccess(req.blockId, buf));
-  }
-
-  /**
-   * Responds to a single message with some Encodable object. If a failure occurs while sending,
-   * it will be logged and the channel closed.
-   */
-  private void respond(final Encodable result) {
-    final String remoteAddress = channel.remoteAddress().toString();
-    channel.writeAndFlush(result).addListener(
-      new ChannelFutureListener() {
-        @Override
-        public void operationComplete(ChannelFuture future) throws Exception {
-          if (future.isSuccess()) {
-            logger.trace(String.format("Sent result %s to client %s", result, remoteAddress));
-          } else {
-            logger.error(String.format("Error sending result %s to %s; closing connection",
-              result, remoteAddress), future.cause());
-            channel.close();
-          }
-        }
-      }
-    );
+    blockFetcher.getBlockData(req.blockId, channel);
   }
 }
