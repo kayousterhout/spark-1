@@ -38,7 +38,7 @@ private[spark] class ShuffleMapMonotask[T](
   private val shuffleWriter = SparkEnv.get.shuffleManager.getWriter[Any, Any](
     dependency.shuffleHandle, partition.index, context)
 
-  private var resultBlockIds: Seq[BlockId] = shuffleWriter.shuffleBlockIds
+  private var resultBlockIds = shuffleWriter.shuffleBlockIds
 
   def getResultBlockIds(): Seq[BlockId] = resultBlockIds
 
@@ -69,8 +69,7 @@ private[spark] class ShuffleMapMonotask[T](
     val zeroSizedBlockIds = new HashSet[BlockId]
     resultBlockIds = resultBlockIds.zipWithIndex.flatMap { pair =>
       val blockId = pair._1
-      val size = mapStatus.getSizeForBlock(pair._2)
-      if (size > 0) {
+      if (mapStatus.getSizeForBlock(pair._2) > 0) {
         Some(blockId)
       } else {
         zeroSizedBlockIds += blockId
@@ -78,9 +77,7 @@ private[spark] class ShuffleMapMonotask[T](
       }
     }
 
-    // Eliminate the disk monotasks corresponding to zero-sized blocks from dependents. We don't
-    // need to update the dependencies for the monotask that we're eliminating, because once that
-    // monotask has been eliminated from the DAG, its dependencies are irrelevant.
+    // Eliminate the disk monotasks corresponding to zero-sized blocks from dependents.
     val monotasksToRemove = dependents.filter { dependent =>
       dependent match {
         case diskWriteMonotask: DiskWriteMonotask =>
@@ -100,12 +97,10 @@ private[spark] class ShuffleMapMonotask[T](
    * for the shuffle data (in addition to the result block for the serialized task result) that all
    * need to be deleted from the block manager.
    */
-  override def maybeCleanupIntermediateData() {
-    super.maybeCleanupIntermediateData()
-    if (allDependentsFinished) {
-      // Don't need to tell the master about shuffle block IDs being deleted, because their
-      // storage status is tracked by MapStatuses rather than through the BlockManager.
-      resultBlockIds.foreach(SparkEnv.get.blockManager.removeBlockFromMemory(_, tellMaster = false))
-    }
+  override def cleanupIntermediateData(): Unit = {
+    super.cleanupIntermediateData()
+    // Don't need to tell the master about shuffle block IDs being deleted, because their
+    // storage status is tracked by MapStatuses rather than through the BlockManager.
+    resultBlockIds.foreach(SparkEnv.get.blockManager.removeBlockFromMemory(_, tellMaster = false))
   }
 }
