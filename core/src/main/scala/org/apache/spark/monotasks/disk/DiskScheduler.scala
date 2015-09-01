@@ -153,7 +153,9 @@ private[spark] class DiskScheduler(blockFileManager: BlockFileManager) extends L
    */
   private def executeMonotask(monotask: DiskMonotask): Unit = {
     try {
+      val startTimeNanos = System.nanoTime
       monotask.execute()
+      monotask.context.taskMetrics.incDiskNanos(System.nanoTime - startTimeNanos)
 
       logDebug(s"DiskMonotask $monotask (id: ${monotask.taskId}) operating on " +
         s"block ${monotask.blockId} completed successfully.")
