@@ -178,6 +178,7 @@ private[ui] class StagePage(parent: StagesTab) extends WebUIPage("stage") {
         Seq(
           ("Index", ""), ("ID", ""), ("Attempt", ""), ("Status", ""), ("Locality Level", ""),
           ("Executor ID / Host", ""), ("Launch Time", ""), ("Duration", ""),
+          ("Compute Monotask Time", ""), ("Disk Monotask Time", ""),
           ("Scheduler Delay", TaskDetailsClassNames.SCHEDULER_DELAY),
           ("Task Deserialization Time", TaskDetailsClassNames.TASK_DESERIALIZATION_TIME),
           ("GC Time", ""),
@@ -454,6 +455,8 @@ private[ui] class StagePage(parent: StagesTab) extends WebUIPage("stage") {
         else metrics.map(_.executorRunTime).getOrElse(1L)
       val formatDuration = if (info.status == "RUNNING") UIUtils.formatDuration(duration)
         else metrics.map(m => UIUtils.formatDuration(m.executorRunTime)).getOrElse("")
+      val computeMonotaskTime = metrics.map(_.computationNanos).getOrElse(0L)
+      val diskMonotaskTime = metrics.map(_.diskNanos).getOrElse(0L)
       val schedulerDelay = metrics.map(getSchedulerDelay(info, _)).getOrElse(0L)
       val gcTime = metrics.map(_.jvmGCTime).getOrElse(0L)
       val taskDeserializationTime = metrics.map(_.executorDeserializeTime).getOrElse(0L)
@@ -526,6 +529,12 @@ private[ui] class StagePage(parent: StagesTab) extends WebUIPage("stage") {
         <td>{UIUtils.formatDate(new Date(info.launchTime))}</td>
         <td sorttable_customkey={duration.toString}>
           {formatDuration}
+        </td>
+        <td sorttable_customkey={computeMonotaskTime.toString}>
+          {UIUtils.formatDurationNanos(computeMonotaskTime)}
+        </td>
+        <td sorttable_customkey={diskMonotaskTime.toString}>
+          {UIUtils.formatDurationNanos(diskMonotaskTime)}
         </td>
         <td sorttable_customkey={schedulerDelay.toString}
             class={TaskDetailsClassNames.SCHEDULER_DELAY}>
