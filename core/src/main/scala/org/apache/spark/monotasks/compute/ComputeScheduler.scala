@@ -160,6 +160,7 @@ private[spark] class ComputeScheduler(
       while (true) {
         val monotask = takeMonotask()
         updateRunningTasksAndNotifyBackend(TaskStarted)
+        monotask.context.taskMetrics.incComputeWaitNanos(monotask.getQueueTime())
         monotask.executeAndHandleExceptions()
         updateRunningTasksAndNotifyBackend(TaskCompleted)
       }
