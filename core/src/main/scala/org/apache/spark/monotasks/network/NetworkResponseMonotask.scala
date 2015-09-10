@@ -68,7 +68,7 @@ private[spark] class NetworkResponseMonotask(
       case None =>
         try {
           val buffer = SparkEnv.get.blockManager.getBlockData(blockId)
-          respond(new BlockFetchSuccess(blockId.toString(), buffer))
+          respond(new BlockFetchSuccess(blockId.toString(), buffer, context.taskMetrics.diskNanos))
         } catch {
           case NonFatal(t) =>
             respond(new BlockFetchFailure(blockId.toString(), Throwables.getStackTraceAsString(t)))

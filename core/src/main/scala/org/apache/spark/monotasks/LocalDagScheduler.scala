@@ -26,7 +26,8 @@ import org.apache.spark.executor.ExecutorBackend
 import org.apache.spark.monotasks.compute.{ComputeMonotask, ComputeScheduler,
   ResultSerializationMonotask}
 import org.apache.spark.monotasks.disk.{DiskMonotask, DiskScheduler}
-import org.apache.spark.monotasks.network.{NetworkMonotask, NetworkScheduler}
+import org.apache.spark.monotasks.network.{NetworkMonotask, NetworkResponseMonotask,
+  NetworkScheduler}
 import org.apache.spark.storage.{BlockFileManager, MemoryStore}
 import org.apache.spark.util.{EventLoop, SparkUncaughtExceptionHandler}
 
@@ -248,6 +249,10 @@ private[spark] class LocalDagScheduler(blockFileManager: BlockFileManager)
         completedMonotask.context.markTaskCompleted()
         logDebug(s"Notifying executorBackend about successful completion of task $taskAttemptId")
         sendStatusUpdate(taskAttemptId, TaskState.FINISHED, result)
+      }
+
+      if (completedMonotask.isInstanceOf[NetworkResponseMonotask] && taskAttemptId != -1) {
+        runningMacrotaskAttemptIds.remove(taskAttemptId)
       }
     } else {
       // This will only happen if another monotask in this macrotask failed while completedMonotask

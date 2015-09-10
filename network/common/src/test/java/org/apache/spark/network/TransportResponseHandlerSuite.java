@@ -58,8 +58,9 @@ public class TransportResponseHandlerSuite {
     handler.addFetchRequest(blockId, callback);
     assertEquals(1, handler.numOutstandingRequests());
 
-    handler.handle(new BlockFetchSuccess(blockId, new TestManagedBuffer(123)));
-    verify(callback).onSuccess(eq(blockId), (ManagedBuffer) any());
+    Long diskReadNanos = 14L;
+    handler.handle(new BlockFetchSuccess(blockId, new TestManagedBuffer(123), diskReadNanos));
+    verify(callback).onSuccess(eq(blockId), eq(diskReadNanos), (ManagedBuffer) any());
     assertEquals(0, handler.numOutstandingRequests());
   }
 

@@ -248,18 +248,21 @@ private[spark] class BlockManager(
     }
   }
 
-  override def getBlockData(blockIdStr: String, channel: Channel): Unit = {
+  override def getBlockData(
+      blockIdStr: String, channel: Channel, taskAttemptId: Long, attemptNumber: Int): Unit = {
     val blockId = BlockId(blockIdStr)
 
+    val taskContext = new TaskContextImpl(0, taskAttemptId, attemptNumber)
+
     val networkResponseMonotask = new NetworkResponseMonotask(
-      blockId, channel, localDagScheduler.genericTaskContext)
+      blockId, channel, taskContext)
 
     // Try to send the block back from in-memory.
     if (memoryStore.contains(blockId)) {
       localDagScheduler.post(SubmitMonotask(networkResponseMonotask))
     } else {
       // Try to load the block from disk.
-      getBlockLoadMonotask(blockId, localDagScheduler.genericTaskContext) match {
+      getBlockLoadMonotask(blockId, taskContext) match {
         case Some(blockLoadMonotask) =>
           blockLoadMonotask.addAlternateFailureHandler { failureReason: TaskFailedReason =>
             networkResponseMonotask.markAsFailed(failureReason.toErrorString)

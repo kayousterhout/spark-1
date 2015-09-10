@@ -58,6 +58,8 @@ private[spark] class NetworkRequestMonotask(
         remoteAddress.host,
         remoteAddress.port,
         shuffleBlockId.toString,
+        context.taskAttemptId,
+        context.attemptNumber,
         this)
     } catch {
       case NonFatal(t) => {
@@ -73,7 +75,7 @@ private[spark] class NetworkRequestMonotask(
     }
   }
 
-  override def onSuccess(blockId: String, buf: ManagedBuffer): Unit = {
+  override def onSuccess(blockId: String, diskReadNanos: Long, buf: ManagedBuffer): Unit = {
     networkScheduler.map(_.addOutstandingBytes(-size)).orElse {
       throw new IllegalStateException(
         s"onSuccess called for block $blockId in monotask $taskId before a NetworkScheduler " +
@@ -84,6 +86,7 @@ private[spark] class NetworkRequestMonotask(
     // This needs to be released after use.
     buf.retain()
     SparkEnv.get.blockManager.cacheSingle(getResultBlockId(), buf, StorageLevel.MEMORY_ONLY, false)
+    context.taskMetrics.incDiskNanos(diskReadNanos)
     localDagScheduler.post(TaskSuccess(this))
   }
 
