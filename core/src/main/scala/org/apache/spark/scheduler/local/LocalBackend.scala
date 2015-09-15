@@ -94,8 +94,9 @@ private[spark] class LocalActor(
 
   def reviveOffers() {
     // TODO: Update this code to use the same mechanism as CoarseGrainedSchedulerBackend to
-    //       determine how many tasks to launch per worker.
-    val offers = Seq(new WorkerOffer(localExecutorId, localExecutorHostname, freeCores))
+    //       determine how many tasks to launch per worker and correctly set the number of disks.
+    val offers = Seq(
+      new WorkerOffer(localExecutorId, localExecutorHostname, freeCores, totalDisks = 0))
     val tasks = scheduler.resourceOffers(offers).flatten
     for (task <- tasks) {
       freeCores -= scheduler.CPUS_PER_TASK

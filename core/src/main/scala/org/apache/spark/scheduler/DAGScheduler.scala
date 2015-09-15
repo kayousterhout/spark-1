@@ -52,7 +52,7 @@ import org.apache.spark._
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.executor.TaskMetrics
 import org.apache.spark.partial.{ApproximateActionListener, ApproximateEvaluator, PartialResult}
-import org.apache.spark.rdd.RDD
+import org.apache.spark.rdd.{HadoopRDD, NewHadoopRDD, RDD}
 import org.apache.spark.storage._
 import org.apache.spark.util._
 import org.apache.spark.storage.BlockManagerMessages.BlockManagerHeartbeat
@@ -889,12 +889,21 @@ class DAGScheduler(
       }
     }
 
+    val (usesDisk, usesNetwork) = getResourceNeeds(stage)
+
     if (tasks.size > 0) {
       logInfo("Submitting " + tasks.size + " missing tasks from " + stage + " (" + stage.rdd + ")")
       stage.pendingTasks ++= tasks
       logDebug("New pending tasks: " + stage.pendingTasks)
       taskScheduler.submitTasks(
-        new TaskSet(tasks.toArray, stage.id, stage.newAttemptId(), stage.jobId, properties))
+        new TaskSet(
+          tasks.toArray,
+          stage.id,
+          stage.newAttemptId(),
+          stage.jobId,
+          properties,
+          usesDisk,
+          usesNetwork))
       stage.latestInfo.submissionTime = Some(clock.getTimeMillis())
     } else {
       // Because we posted SparkListenerStageSubmitted earlier, we should post
@@ -933,6 +942,48 @@ class DAGScheduler(
           logError(s"Failed to update accumulators for $task", e)
       }
     }
+  }
+
+  /**
+   * Determines whether computing the given Stage requires using disk or network.
+   *
+   * @return A two-item tuple of Booleans, where the first Boolean describes whether computing the
+   *         RDD requires disk, and the second Boolean describes whether computing the RDD requires
+   *         network.
+   */
+  private def getResourceNeeds(stage: Stage): (Boolean, Boolean) = {
+    val rdd = stage.rdd
+
+    // If the input RDD is marked to be stored on disk, it will either be read from disk (if it's
+    // already stored there) or written to disk (if it hasn't been stored there yet); in either
+    // case, the macrotasks for the job will include disk monotasks.
+    val rddOnDisk = rdd.getStorageLevel.useDisk
+    val hasHadoopInput = rdd match {
+      case _: HadoopRDD[_, _] => true
+      case _: NewHadoopRDD[_, _] => true
+      case _ => false
+    }
+    val hasHadoopOutput = rdd.getWillBeSavedToHdfs
+    val hasDiskShuffleWrite = stage.isShuffleMap && writeShuffleDataToDisk
+    // Walk the RDD's dependency tree to see if it has any shuffle dependencies.
+    var hasShuffleRead = false
+    val waitingForVisit = new Stack[RDD[_]]
+    waitingForVisit.push(rdd)
+    while (!hasShuffleRead && !waitingForVisit.isEmpty) {
+      val currentRdd = waitingForVisit.pop()
+      currentRdd.dependencies.foreach {
+        case _: ShuffleDependency[_, _, _] =>
+          logInfo(s"Found shuffle dependency for RDD $rdd")
+          hasShuffleRead = true
+        case dep: Dependency[_] =>
+          waitingForVisit.push(dep.rdd)
+      }
+    }
+    val usesDisk = (rddOnDisk || hasHadoopInput || hasHadoopOutput || hasDiskShuffleWrite ||
+      (hasShuffleRead && writeShuffleDataToDisk))
+    logDebug(s"Stage $stage to compute RDD $rdd has resource needs of disk: $usesDisk and " +
+      s"network: $hasShuffleRead")
+    (usesDisk, hasShuffleRead)
   }
 
   /**
