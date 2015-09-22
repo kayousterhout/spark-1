@@ -80,17 +80,3 @@ object ConcurrentSortJobs extends Logging {
       s"${filename}_sorted")
   }
 }
-
-/**
- * Partitioner that evenly divides the space of all Longs. Useful to use to avoid sampling data.
- */
-class LongPartitioner(val partitions: Int) extends Partitioner with Logging {
-  override def numPartitions: Int = partitions
-
-  val partitionSize = (Long.MaxValue.toFloat - Long.MinValue.toFloat) / partitions
-
-  override def getPartition(key: Any): Int = {
-    val partition = (key.asInstanceOf[Long].toDouble - Long.MinValue.toDouble) / partitionSize
-    return Math.min(partition.floor.toInt, numPartitions - 1)
-  }
-}
