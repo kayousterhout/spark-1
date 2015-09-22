@@ -41,13 +41,15 @@ object ConcurrentSortJobs extends Logging {
     try {
       import ExecutionContext.Implicits.global
       val firstJobFuture = future {
-        spark.setJobGroup("first", "First sort job")
+        spark.setJobGroup("first", s"First sort job $inputFilename")
+        spark.setLocalProperty("spark.scheduler.pool", "pool1")
         System.out.println(s"Running first job in ${Thread.currentThread()}")
         doSortJob(spark, numReduceTasks, inputFilename)
       }
 
       val secondJobFuture = future {
-        spark.setJobGroup("second", "Second sort job")
+        spark.setJobGroup("second", s"Second sort job $secondFilename")
+        spark.setLocalProperty("spark.scheduler.pool", "pool2")
         System.out.println(s"Running second job in ${Thread.currentThread()}")
         doSortJob(spark, numReduceTasks, secondFilename)
       }
