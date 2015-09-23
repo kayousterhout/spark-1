@@ -268,6 +268,7 @@ private[spark] class BlockManager(
             networkResponseMonotask.markAsFailed(failureReason.toErrorString)
           }
           networkResponseMonotask.addDependency(blockLoadMonotask)
+          logInfo(s"Submitting monotasks for remote fetch for $blockIdStr")
           localDagScheduler.post(SubmitMonotasks(Seq(networkResponseMonotask, blockLoadMonotask)))
 
         case None =>

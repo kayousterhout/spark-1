@@ -224,7 +224,7 @@ private[spark] class LocalDagScheduler(blockFileManager: BlockFileManager)
       completedMonotask: Monotask,
       serializedTaskResult: Option[ByteBuffer] = None): Unit = {
     val taskAttemptId = completedMonotask.context.taskAttemptId
-    logDebug(s"Monotask $completedMonotask (id: ${completedMonotask.taskId}) for " +
+    logInfo(s"Monotask $completedMonotask (id: ${completedMonotask.taskId}) for " +
       s"macrotask $taskAttemptId has completed.")
     completedMonotask.cleanup()
     updateMetricsForFinishedMonotask(completedMonotask)
@@ -234,12 +234,15 @@ private[spark] class LocalDagScheduler(blockFileManager: BlockFileManager)
       completedMonotask.dependents.foreach { monotask =>
         if (monotask.dependenciesSatisfied()) {
           if (waitingMonotasks.contains(monotask)) {
+            logInfo(s"Monotask $completedMonotask finished to scheduling $monotask")
             scheduleMonotask(monotask)
           } else {
             logWarning(s"Monotask $monotask (id ${monotask.taskId}) is no longer in " +
               "waitingMonotasks, but it should not have been run yet, because one of its " +
               s"dependencies ($completedMonotask, id ${completedMonotask.taskId}) just finished.")
           }
+        } else {
+          logInfo(s"Dependencines for $completedMonotask are not yet finished, so not sched yet.")
         }
       }
 
@@ -252,6 +255,7 @@ private[spark] class LocalDagScheduler(blockFileManager: BlockFileManager)
       }
 
       if (completedMonotask.isInstanceOf[NetworkResponseMonotask] && taskAttemptId != -1) {
+        logInfo(s"Removing network response monotask $taskAttemptId from running attempt ids")
         runningMacrotaskAttemptIds.remove(taskAttemptId)
       }
     } else {
