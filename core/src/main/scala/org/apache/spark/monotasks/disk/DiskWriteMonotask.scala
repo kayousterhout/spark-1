@@ -42,7 +42,11 @@ private[spark] abstract class DiskWriteMonotask(context: TaskContextImpl, blockI
     val channel = stream.getChannel()
     try {
       writeData(rawDiskId, channel)
+      logInfo(s"QFW: ${System.currentTimeMillis()} About to force disk write monotask $this to " +
+        s"disk $diskId")
       channel.force(true)
+      logInfo(s"QFW: ${System.currentTimeMillis()} Done forcing disk write monotask $this to " +
+        s"disk $diskId")
     } finally {
       channel.close()
       stream.close()

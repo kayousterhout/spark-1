@@ -87,7 +87,9 @@ private[spark] class HdfsWriteMonotask(
     buffer.rewind()
     bufferOpt = Some(buffer)
 
+    logInfo(s"QFW ${System.currentTimeMillis()} setting up output committer for task")
     outputCommitter.setupTask(hadoopTaskContext)
+    logInfo(s"QFW ${System.currentTimeMillis()} done setting up output committer for task")
     hadoopTaskInProgress = true
 
     val path = getPath()
@@ -136,13 +138,15 @@ private[spark] class HdfsWriteMonotask(
     }
 
     stream.hsync()
-    logInfo(s"Block $blockId (composed of $numRecords records) was successfully written to HDFS " +
-      s"at location: ${getPath().toString()}")
+    logInfo(s"QFW ${System.currentTimeMillis()} Block $blockId (composed of $numRecords " +
+      s"records) was successfully written to HDFS at location: ${getPath().toString()}")
 
     // The stream must be closed before the task is committed.
     stream.close()
     streamOpt = None
+    logInfo(s"QFW ${System.currentTimeMillis()} commiting HDFS write for $this")
     SparkHadoopMapRedUtil.commitTask(outputCommitter, hadoopTaskContext, sparkTaskContext)
+    logInfo(s"QFW ${System.currentTimeMillis()} done committing HDFS write for $this")
     hadoopTaskInProgress = false
 
     val outputMetrics = new OutputMetrics(DataWriteMethod.Hadoop)

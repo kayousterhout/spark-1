@@ -64,7 +64,7 @@ private[spark] class DiskReadMonotask(
   /**
    * Reads data from disk and saves the result in-memory using the BlockManager.
    *
-   * @param fileBlockId BlockId coresponding to the on-disk file.
+   * @param fileBlockId BlockId corresponding to the on-disk file.
    * @param startOffset Offset at which to begin reading.
    * @param endOffset Optional offset at which to end reading. If not specified, this function will
    *                  read to the end of the file.
@@ -84,7 +84,8 @@ private[spark] class DiskReadMonotask(
     try {
       val startTimeMillis = System.currentTimeMillis()
       channel.read(buffer)
-      logInfo(s"Block $blockId (size: ${Utils.bytesToString(bytesToRead)}) read from " +
+      logInfo(s"QSF ${System.currentTimeMillis()} Block $blockId (size: " +
+        s"${Utils.bytesToString(bytesToRead)}) read from " +
         s"disk $diskId in ${System.currentTimeMillis - startTimeMillis} ms into $buffer")
     } finally {
       channel.close()
@@ -93,6 +94,7 @@ private[spark] class DiskReadMonotask(
 
     buffer.flip()
     blockManager.cacheBytes(getResultBlockId(), buffer, StorageLevel.MEMORY_ONLY_SER, true)
+    logInfo(s"QSF ${System.currentTimeMillis()} Done caching block ${getResultBlockId()}")
     context.taskMetrics.getInputMetricsForReadMethod(DataReadMethod.Disk).incBytesRead(bytesToRead)
   }
 }

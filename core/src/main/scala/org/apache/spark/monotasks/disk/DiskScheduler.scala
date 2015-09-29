@@ -252,9 +252,14 @@ private[spark] class DiskScheduler(blockFileManager: BlockFileManager) extends L
 
       try {
         while (!currentThread.isInterrupted()) {
+          logInfo(s"QFW ${System.currentTimeMillis()} ($this): Removing disk monotask from queue")
           val diskMonotask = taskQueue.take()
           diskMonotask.context.taskMetrics.incDiskWaitNanos(diskMonotask.getQueueTime())
+          logInfo(s"QFW ${System.currentTimeMillis()} ($this): Excuting disk monotask " +
+            s"$diskMonotask")
           executeMonotask(diskMonotask)
+          logInfo(s"QFW ${System.currentTimeMillis()} ($this): Done executing disk monotask " +
+            s"$diskMonotask")
           numRunningAndQueuedDiskMonotasks.decrementAndGet()
         }
       } catch {
