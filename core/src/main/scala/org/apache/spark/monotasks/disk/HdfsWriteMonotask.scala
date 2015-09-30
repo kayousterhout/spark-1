@@ -129,14 +129,18 @@ private[spark] class HdfsWriteMonotask(
         // portion of the array.
         //
         // The initialize() method already wrote the first byte of the file, so we skip it.
+        logInfo(s"QFW ${System.currentTimeMillis()} block $blockId writing to stream")
         stream.write(buffer.array(), 1, buffer.remaining())
       } else {
         val destByteArray = new Array[Byte](buffer.remaining())
+        logInfo(s"QFW ${System.currentTimeMillis()} block $blockId filling dest array")
         buffer.get(destByteArray)
+        logInfo(s"QFW ${System.currentTimeMillis()} block $blockId writing to stream")
         stream.write(destByteArray)
       }
     }
 
+    logInfo(s"QFW ${System.currentTimeMillis()} block $blockId hsync getting called")
     stream.hsync()
     logInfo(s"QFW ${System.currentTimeMillis()} Block $blockId (composed of $numRecords " +
       s"records) was successfully written to HDFS at location: ${getPath().toString()}")
