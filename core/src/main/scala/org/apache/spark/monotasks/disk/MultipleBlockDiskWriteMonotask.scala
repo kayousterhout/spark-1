@@ -46,7 +46,9 @@ private[spark] class MultipleBlockDiskWriteMonotask(
           "found in memory."))
       val dataCopy = data.duplicate()
       while (dataCopy.hasRemaining()) {
+        logInfo(s"QFW ${System.currentTimeMillis()} writing data to channel")
         channel.write(dataCopy)
+        logInfo(s"QFW ${System.currentTimeMillis()} DONE hwriting data to channel")
       }
 
       val bytesWritten = data.limit()
