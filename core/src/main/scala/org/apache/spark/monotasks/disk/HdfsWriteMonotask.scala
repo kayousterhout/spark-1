@@ -27,6 +27,7 @@ import org.apache.hadoop.mapreduce.lib.output.{FileOutputCommitter, FileOutputFo
 import org.apache.spark.{Logging, SparkEnv, TaskContextImpl}
 import org.apache.spark.executor.{DataWriteMethod, OutputMetrics}
 import org.apache.spark.mapred.SparkHadoopMapRedUtil
+import org.apache.spark.performance_logging.{DiskCounters, DiskUtilization}
 import org.apache.spark.storage.BlockId
 
 /**
@@ -121,6 +122,7 @@ private[spark] class HdfsWriteMonotask(
       "This HdfsWriteMonotask's's stream has not been set. Make sure that the \"initialize()\" " +
         "method has been called."))
 
+    val diskCountersBeforeWrite = new DiskCounters()
     if (buffer.hasRemaining()) {
       if (buffer.hasArray()) {
         // The ByteBuffer has a backing array that can be accessed without copying the bytes.
@@ -131,6 +133,9 @@ private[spark] class HdfsWriteMonotask(
         // The initialize() method already wrote the first byte of the file, so we skip it.
         logInfo(s"QFW ${System.currentTimeMillis()} block $blockId writing to stream")
         stream.write(buffer.array(), 1, buffer.remaining())
+        val utilizationDuringWrite = DiskUtilization(diskCountersBeforeWrite)
+        logInfo(
+          s"Disk utilization during write call: ${utilizationDuringWrite.deviceNameToUtilization}")
       } else {
         val destByteArray = new Array[Byte](buffer.remaining())
         logInfo(s"QFW ${System.currentTimeMillis()} block $blockId filling dest array")
@@ -143,14 +148,20 @@ private[spark] class HdfsWriteMonotask(
     logInfo(s"QFW ${System.currentTimeMillis()} block $blockId hsync getting called")
     stream.hsync()
     logInfo(s"QFW ${System.currentTimeMillis()} Block $blockId (composed of $numRecords " +
-      s"records) was successfully written to HDFS at location: ${getPath().toString()}")
+      s"records) was successfully written to HDFS at location: ${getPath().toString()}" +
+      s"and utilization until now was " +
+      s"${DiskUtilization(diskCountersBeforeWrite).deviceNameToUtilization}")
+
+    val diskCountersBeforeClose = new DiskCounters()
 
     // The stream must be closed before the task is committed.
     stream.close()
     streamOpt = None
     logInfo(s"QFW ${System.currentTimeMillis()} commiting HDFS write for $this")
     SparkHadoopMapRedUtil.commitTask(outputCommitter, hadoopTaskContext, sparkTaskContext)
-    logInfo(s"QFW ${System.currentTimeMillis()} done committing HDFS write for $this")
+    val utilizationDuringClose = DiskUtilization(diskCountersBeforeClose).deviceNameToUtilization
+    logInfo(s"QFW ${System.currentTimeMillis()} done committing HDFS write for $this; " +
+      s"utilization while closing was $utilizationDuringClose")
     hadoopTaskInProgress = false
 
     val outputMetrics = new OutputMetrics(DataWriteMethod.Hadoop)
