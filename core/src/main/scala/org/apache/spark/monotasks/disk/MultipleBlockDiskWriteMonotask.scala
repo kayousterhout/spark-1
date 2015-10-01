@@ -17,6 +17,7 @@
 package org.apache.spark.monotasks.disk
 
 import java.io.{BufferedOutputStream, DataOutputStream, FileOutputStream}
+import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 
 import org.apache.spark.TaskContextImpl
@@ -39,29 +40,35 @@ private[spark] class MultipleBlockDiskWriteMonotask(
   override def writeData(diskId: String, channel: FileChannel): Unit = {
     // Write each block, in order, to the single output file, tracking how long each block was
     // so that we can write an index file describing where each block starts and ends.
-    val lengths = serializedDataBlockIds.map { serializedDataBlockId =>
-      val data = blockManager.getLocalBytes(serializedDataBlockId).getOrElse(
+    logInfo(s"QFW ${System.currentTimeMillis()} copying data into direct buffer")
+    val data = serializedDataBlockIds.map { serializedDataBlockId =>
+      val blockData = blockManager.getLocalBytes(serializedDataBlockId).getOrElse(
         throw new IllegalStateException(s"Writing block $blockId to disk $diskId failed " +
           "because the block's serialized bytes (block $serializedDataBlockId) could not be " +
           "found in memory."))
-      val dataCopy = data.duplicate()
-      while (dataCopy.hasRemaining()) {
-        logInfo(s"QFW ${System.currentTimeMillis()} writing data to channel")
-        channel.write(dataCopy)
-        logInfo(s"QFW ${System.currentTimeMillis()} DONE hwriting data to channel")
-      }
+      // TODO hasn't been written yet!!!!
+      blockManager.updateBlockInfoOnWrite(serializedDataBlockId, diskId, blockData.limit)
+      blockData
+    }
+    val lengths = data.map(_.limit)
+    val totalDataSize = lengths.sum
+    val directBuffer = ByteBuffer.allocateDirect(totalDataSize)
+    data.foreach { buf =>
+      directBuffer.put(buf)
+    }
+    logInfo(s"QFW ${System.currentTimeMillis()} done copying data into direct buffer")
 
-      val bytesWritten = data.limit()
-      // This assumes that the block ID used for the serialized data is the same block ID that
-      // will be used later to access the data via the block manager.
-      blockManager.updateBlockInfoOnWrite(serializedDataBlockId, diskId, bytesWritten)
-
-      bytesWritten
+    directBuffer.rewind()
+    while (directBuffer.hasRemaining()) {
+      logInfo(s"QFW ${System.currentTimeMillis()} writing data to channel")
+      channel.write(directBuffer)
+      logInfo(s"QFW ${System.currentTimeMillis()} DONE writing data to channel")
     }
 
     // TODO: Consider just writing the indices at the beginning of the data file, rather than
     //       writing a separate file.
     writeIndexFile(blockId.shuffleId, blockId.mapId, lengths, diskId)
+    logInfo(s"QFW ${System.currentTimeMillis()} DONE writing index file")
   }
 
   /**
