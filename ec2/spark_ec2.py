@@ -90,8 +90,8 @@ SPARK_TACHYON_MAP = {
     "1.5.0": "0.7.1"
 }
 
-DEFAULT_SPARK_VERSION = SPARK_EC2_VERSION
-DEFAULT_SPARK_GITHUB_REPO = "https://github.com/amplab/drizzle"
+DEFAULT_SPARK_VERSION = "master"
+DEFAULT_SPARK_GITHUB_REPO = "git@github.com:amplab/drizzle.git"
 
 # Default location to get the spark-ec2 scripts (and ami-list) from
 DEFAULT_SPARK_EC2_GITHUB_REPO = "https://github.com/amplab/spark-ec2"
@@ -434,6 +434,9 @@ EC2_INSTANCE_TYPES = {
     "t2.large":    "hvm",
 }
 
+amis = {
+    "us-east-1":   "ami-ef4f0f8a",
+}
 
 def get_tachyon_version(spark_version):
     return SPARK_TACHYON_MAP.get(spark_version, "")
@@ -558,7 +561,8 @@ def launch_cluster(conn, opts, cluster_name):
 
     # Figure out Spark AMI
     if opts.ami is None:
-        opts.ami = get_spark_ami(opts)
+        opts.ami = amis[opts.region]
+        print("Using AMI %s"%(opts.ami))
 
     # we use group ids to work around https://github.com/boto/boto/issues/350
     additional_group_ids = []
@@ -590,6 +594,7 @@ def launch_cluster(conn, opts, cluster_name):
         for i in range(get_num_disks(opts.instance_type)):
             dev = BlockDeviceType()
             dev.ephemeral_name = 'ephemeral%d' % i
+            dev.size=40
             # The first ephemeral drive is /dev/sdb.
             name = '/dev/sd' + string.letters[i + 1]
             block_map[name] = dev
@@ -1039,16 +1044,16 @@ def deploy_files(conn, root_dir, opts, master_nodes, slave_nodes, modules):
 
     cluster_url = "%s:7077" % active_master
 
-    if "." in opts.spark_version:
-        # Pre-built Spark deploy
-        spark_v = get_validate_spark_version(opts.spark_version, opts.spark_git_repo)
-        tachyon_v = get_tachyon_version(spark_v)
-    else:
-        # Spark-only custom deploy
-        spark_v = "%s|%s" % (opts.spark_git_repo, opts.spark_version)
-        tachyon_v = ""
-        print("Deploying Spark via git hash; Tachyon won't be set up")
-        modules = filter(lambda x: x != "tachyon", modules)
+    #if "." in opts.spark_version:
+        ## Pre-built Spark deploy
+        #spark_v = get_validate_spark_version(opts.spark_version, opts.spark_git_repo)
+        #tachyon_v = get_tachyon_version(spark_v)
+    #else:
+    # Spark-only custom deploy
+    spark_v = "%s|%s" % (opts.spark_git_repo, opts.spark_version)
+    tachyon_v = ""
+    print("Deploying Spark via git hash; Tachyon won't be set up")
+    modules = filter(lambda x: x != "tachyon", modules)
 
     master_addresses = [get_dns_name(i, opts.private_ips) for i in master_nodes]
     slave_addresses = [get_dns_name(i, opts.private_ips) for i in slave_nodes]
@@ -1245,7 +1250,7 @@ def real_main():
     (opts, action, cluster_name) = parse_args()
 
     # Input parameter validation
-    get_validate_spark_version(opts.spark_version, opts.spark_git_repo)
+    #get_validate_spark_version(opts.spark_version, opts.spark_git_repo)
 
     if opts.wait is not None:
         # NOTE: DeprecationWarnings are silent in 2.7+ by default.
