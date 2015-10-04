@@ -436,6 +436,7 @@ EC2_INSTANCE_TYPES = {
 
 amis = {
     "us-east-1":   "ami-ef4f0f8a",
+    "us-west-2":   "ami-6a28cd59"
 }
 
 def get_tachyon_version(spark_version):
