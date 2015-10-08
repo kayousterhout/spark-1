@@ -69,29 +69,36 @@ class ShuffleHelper[K, V, C](
       if (size > 0) {
         val blockId = new ShuffleBlockId(shuffleDependency.shuffleId, mapId, reduceId)
         blockIdToMapId(blockId) = mapId
-        val monotask = if (address.executorId == blockManager.blockManagerId.executorId) {
-          // Create a DiskReadMonotask to load the data into memory.
-          // The data loaded into memory by these monotasks will be automatically deleted by the
-          // LocalDagScheduler, because DiskReadMonotasks always marks the data read from disk as
-          // intermediate data that should be deleted when all of the monotasks's dependents
-          // complete.
-          // TODO: This assumes all shuffle data is stored on-disk; we'll need to update this
-          //       when we support reading shuffle data from memory.
-          blockManager.getBlockLoadMonotask(blockId, context).getOrElse {
-            throw new FetchFailedException(
-              blockManager.blockManagerId,
-              blockId.shuffleId,
-              blockId.mapId,
-              reduceId,
-              s"Could not find local shuffle block ID $blockId in BlockManager")
+        if (address.executorId == blockManager.blockManagerId.executorId) {
+          localBlockIds.append(blockId)
+          if (blockManager.memoryStore.contains(blockId)) {
+            // If the data is already in local memory, don't need a monotask to load it.
+            None
+          } else {
+            // Create a DiskReadMonotask to load the data into memory.
+            // The data loaded into memory by these monotasks will be automatically deleted by the
+            // LocalDagScheduler, because DiskReadMonotasks always marks the data read from disk as
+            // intermediate data that should be deleted when all of the monotasks's dependents
+            // complete.
+            val maybeDiskLoadMonotask = blockManager.getBlockLoadMonotask(blockId, context)
+            if (maybeDiskLoadMonotask.isEmpty) {
+              throw new FetchFailedException(
+                blockManager.blockManagerId,
+                blockId.shuffleId,
+                blockId.mapId,
+                reduceId,
+                s"Could not find local shuffle block ID $blockId in BlockManager")
+            }
+            maybeDiskLoadMonotask
           }
         } else {
-          new NetworkRequestMonotask(context, address, blockId, size)
+          // Need to read the shuffle data from a remote machine.
+          val networkLoadMonotask = new NetworkRequestMonotask(context, address, blockId, size)
+          localBlockIds.append(networkLoadMonotask.getResultBlockId())
+          Some(networkLoadMonotask)
         }
-
-        localBlockIds.append(monotask.getResultBlockId())
-        Some(monotask)
       } else {
+        // The shuffle block has size zero, so we don't need to load it.
         None
       }
     }
