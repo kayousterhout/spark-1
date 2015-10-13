@@ -22,10 +22,13 @@ object DrizzleBaseline {
       Thread.sleep(10)
     }
 
+    val rdd = sc.parallelize(1L to n, slices).map(i => 2L * i).cache()
+    rdd.localCheckpoint() // truncate the lineage to get rid of parallel collection task size
+    rdd.count()
+
     for (i <- 0 to NUM_TRIALS) {
       val begin = System.nanoTime
-      val sum = sc.parallelize(1L to n, slices).map {i => 2L * i}.
-                treeReduce(_ + _, depth)
+      val sum = rdd.treeReduce(_ + _, depth)
       val end = System.nanoTime
       println("Sum of " + n + " elements took " + (end - begin)/1e3 + " microseconds")
     }

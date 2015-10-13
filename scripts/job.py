@@ -495,6 +495,16 @@ class Job:
       total_runtime += stage.total_runtime()
     return total_scheduler_delay * 1.0 / total_runtime
 
+  def fraction_time_task_deserialization(self):
+    """ Of the total time spent across all machines in the cluster, what fraction of time was
+    spent waiting for task deserialization?"""
+    total_deserialization = 0
+    total_runtime = 0
+    for id, stage in self.stages.iteritems():
+      total_deserialization += sum([t.executor_deserialize_time for t in stage.tasks])
+      total_runtime += stage.total_runtime()
+    return total_deserialization * 1.0 / total_runtime
+
   def fraction_time_waiting_on_shuffle_read(self):
     """ Of the total time spent across all machines in the cluster, what fraction of time was
     spent waiting on the network? """
@@ -556,6 +566,16 @@ class Job:
     """ Returns the time the job would have taken if all compute time had been eliminated. """
     return self.calculate_speedup(
       "Computing speedup with no compute", lambda t: t.runtime(), lambda t: t.runtime_no_compute())
+
+  def fraction_time_executing(self):
+    total_execution_time = 0
+    total_runtime = 0
+    for stage in self.stages.values():
+      for task in stage.tasks:
+        total_execution_time += task.executor_run_time
+        total_runtime += task.runtime()
+    return total_execution_time * 1.0 / total_runtime
+
 
   def fraction_time_waiting_on_compute(self):
     total_compute_wait_time = 0

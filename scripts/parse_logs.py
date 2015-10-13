@@ -72,7 +72,8 @@ class Analyzer:
       self.__output_job_info(job, filename, agg_results_filename)
 
   def __output_job_info(self, job, filename, agg_results_filename):
-    job.print_stage_info()
+    #job.print_stage_info()
+    job.print_heading("Job")
 
     job.write_task_write_times_scatter(filename)
 
@@ -84,6 +85,8 @@ class Analyzer:
     print ("\nFraction time scheduler delay: %s" % fraction_time_scheduler_delay)
     fraction_time_waiting_on_shuffle_read = job.fraction_time_waiting_on_shuffle_read()
     print "\nFraction time waiting on shuffle read: %s" % fraction_time_waiting_on_shuffle_read
+    fraction_time_spent_deserializing = job.fraction_time_task_deserialization()
+    print "\nFraction time waiting on task deserialization: %s" % fraction_time_spent_deserializing
     #no_input_disk_speedup = job.no_input_disk_speedup()[0]
     #print "Speedup from eliminating disk for input: %s" % no_input_disk_speedup
     #no_output_disk_speedup = job.no_output_disk_speedup()[0]
@@ -104,10 +107,13 @@ class Analyzer:
       job.fraction_time_gc())
     #no_compute_speedup = job.no_compute_speedup()[0]
     #print "\nSpeedup from eliminating compute: %s" % no_compute_speedup
-    fraction_time_waiting_on_compute = job.fraction_time_waiting_on_compute()
-    print "\nFraction of time waiting on compute: %s" % fraction_time_waiting_on_compute
-    fraction_time_computing = job.fraction_time_computing()
-    print "\nFraction of time computing: %s" % fraction_time_computing
+    # fraction_time_waiting_on_compute = job.fraction_time_waiting_on_compute()
+    # print "\nFraction of time waiting on compute: %s" % fraction_time_waiting_on_compute
+    # fraction_time_computing = job.fraction_time_computing()
+    # print "\nFraction of time computing: %s" % fraction_time_computing
+
+    fraction_time_executor_runs = job.fraction_time_executing()
+    print "\nFraction of time spent executing: %s" % fraction_time_executor_runs
     
     #replace_all_tasks_with_average_speedup = job.replace_all_tasks_with_average_speedup(filename)
     #no_stragglers_replace_with_median_speedup = job.replace_all_tasks_with_median_speedup()
