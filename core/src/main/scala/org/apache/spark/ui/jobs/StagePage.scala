@@ -195,6 +195,14 @@ private[ui] class StagePage(parent: StagesTab) extends WebUIPage("stage") {
                 </span>
               </li>
               {if (stageData.hasShuffleRead) {
+              <li>
+                <span data-toggle="tooltip"
+                      title={ToolTips.MAP_OUTPUT_LOCATIONS_FETCH_TIME} data-placement="right">
+                  <input type="checkbox"
+                         name={TaskDetailsClassNames.MAP_OUTPUT_LOCATIONS_FETCH_TIME}/>
+                  <span class="additional-metric-title">Map Output Location Fetch Time</span>
+                </span>
+              </li>
                 <li>
                   <span data-toggle="tooltip"
                         title={ToolTips.SHUFFLE_READ_BLOCKED_TIME} data-placement="right">
@@ -421,6 +429,19 @@ private[ui] class StagePage(parent: StagesTab) extends WebUIPage("stage") {
           val outputQuantiles = <td>Output Size / Records</td> +:
             getFormattedSizeQuantilesWithRecords(outputSizes, outputRecords)
 
+          val mapOutputFetchTimes = validTasks.map { case TaskUIData(_, metrics, _) =>
+            metrics.get.shuffleReadMetrics.map(_.mapOutputLocationsFetchTimeMillis).getOrElse(0L)
+              .toDouble
+          }
+          val mapOutputFetchQuantiles =
+            <td>
+              <span data-toggle="tooltip"
+                    title={ToolTips.MAP_OUTPUT_LOCATIONS_FETCH_TIME} data-placement="right">
+                Map Output Location Fetch Time
+              </span>
+            </td> +:
+              getFormattedTimeQuantiles(mapOutputFetchTimes)
+
           val shuffleReadBlockedTimes = validTasks.map { case TaskUIData(_, metrics, _) =>
             metrics.get.shuffleReadMetrics.map(_.fetchWaitTime).getOrElse(0L).toDouble
           }
@@ -504,6 +525,9 @@ private[ui] class StagePage(parent: StagesTab) extends WebUIPage("stage") {
             if (stageData.hasInput) <tr>{inputQuantiles}</tr> else Nil,
             if (stageData.hasOutput) <tr>{outputQuantiles}</tr> else Nil,
             if (stageData.hasShuffleRead) {
+              <tr class={TaskDetailsClassNames.MAP_OUTPUT_LOCATIONS_FETCH_TIME}>
+                {mapOutputFetchQuantiles}
+              </tr>
               <tr class={TaskDetailsClassNames.SHUFFLE_READ_BLOCKED_TIME}>
                 {shuffleReadBlockedQuantiles}
               </tr>
@@ -762,6 +786,8 @@ private[ui] case class TaskTableRowInputData(inputSortable: Long, inputReadable:
 private[ui] case class TaskTableRowOutputData(outputSortable: Long, outputReadable: String)
 
 private[ui] case class TaskTableRowShuffleReadData(
+    mapOutputLocationsFetchTimeSortable: Long,
+    mapOutputLocationsFetchTimeReadable: String,
     shuffleReadBlockedTimeSortable: Long,
     shuffleReadBlockedTimeReadable: String,
     shuffleReadSortable: Long,
@@ -877,6 +903,12 @@ private[ui] class TaskDataSource(
     val outputRecords = maybeOutput.map(_.recordsWritten.toString).getOrElse("")
 
     val maybeShuffleRead = metrics.flatMap(_.shuffleReadMetrics)
+    val mapOutputLocationsFetchTimeSortable =
+      maybeShuffleRead.map(_.mapOutputLocationsFetchTimeMillis).getOrElse(0L)
+    val mapOutputLocationsFetchTimeReadable =
+      maybeShuffleRead.map(
+        ms => UIUtils.formatDuration(ms.mapOutputLocationsFetchTimeMillis)).getOrElse("")
+
     val shuffleReadBlockedTimeSortable = maybeShuffleRead.map(_.fetchWaitTime).getOrElse(0L)
     val shuffleReadBlockedTimeReadable =
       maybeShuffleRead.map(ms => UIUtils.formatDuration(ms.fetchWaitTime)).getOrElse("")
@@ -929,6 +961,8 @@ private[ui] class TaskDataSource(
     val shuffleRead =
       if (hasShuffleRead) {
         Some(TaskTableRowShuffleReadData(
+          mapOutputLocationsFetchTimeSortable,
+          mapOutputLocationsFetchTimeReadable,
           shuffleReadBlockedTimeSortable,
           shuffleReadBlockedTimeReadable,
           shuffleReadSortable,
@@ -1082,6 +1116,17 @@ private[ui] class TaskDataSource(
             "Cannot sort by Output Size / Records because of no outputs")
         }
       // ShuffleRead
+      case "Map Output Locations Fetch Time" =>
+        if (hasShuffleRead) {
+          new Ordering[TaskTableRowData] {
+            override def compare(x: TaskTableRowData, y: TaskTableRowData): Int =
+              Ordering.Long.compare(x.shuffleRead.get.mapOutputLocationsFetchTimeSortable,
+                y.shuffleRead.get.mapOutputLocationsFetchTimeSortable)
+          }
+        } else {
+          throw new IllegalArgumentException(
+            "Cannot sort by Shuffle Read Blocked Time because of no shuffle reads")
+        }
       case "Shuffle Read Blocked Time" =>
         if (hasShuffleRead) {
           new Ordering[TaskTableRowData] {
@@ -1254,7 +1299,10 @@ private[ui] class TaskPagedTable(
         {if (hasInput) Seq(("Input Size / Records", "")) else Nil} ++
         {if (hasOutput) Seq(("Output Size / Records", "")) else Nil} ++
         {if (hasShuffleRead) {
-          Seq(("Shuffle Read Blocked Time", TaskDetailsClassNames.SHUFFLE_READ_BLOCKED_TIME),
+          Seq(
+            ("Map Output Locations Fetch Time",
+              TaskDetailsClassNames.MAP_OUTPUT_LOCATIONS_FETCH_TIME),
+            ("Shuffle Read Blocked Time", TaskDetailsClassNames.SHUFFLE_READ_BLOCKED_TIME),
             ("Shuffle Read Size / Records", ""),
             ("Shuffle Remote Reads", TaskDetailsClassNames.SHUFFLE_READ_REMOTE_SIZE))
         } else {
@@ -1341,6 +1389,9 @@ private[ui] class TaskPagedTable(
         <td>{task.output.get.outputReadable}</td>
       }}
       {if (task.shuffleRead.nonEmpty) {
+        <td class={TaskDetailsClassNames.MAP_OUTPUT_LOCATIONS_FETCH_TIME}>
+          {task.shuffleRead.get.mapOutputLocationsFetchTimeReadable}
+        </td>
         <td class={TaskDetailsClassNames.SHUFFLE_READ_BLOCKED_TIME}>
           {task.shuffleRead.get.shuffleReadBlockedTimeReadable}
         </td>

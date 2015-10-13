@@ -28,6 +28,10 @@ private[spark] object ToolTips {
     """Time spent deserializing the task closure on the executor, including the time to read the
        broadcasted task."""
 
+  val MAP_OUTPUT_LOCATIONS_FETCH_TIME =
+    """Time spent fetching the locations of all of the map outputs, so that the Spark task knows
+       where to read the shuffle data from."""
+
   val SHUFFLE_READ_BLOCKED_TIME =
     "Time that the task spent blocked waiting for shuffle data to be read from remote machines."
 

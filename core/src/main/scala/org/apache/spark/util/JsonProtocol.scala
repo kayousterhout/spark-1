@@ -317,6 +317,8 @@ private[spark] object JsonProtocol {
   }
 
   def shuffleReadMetricsToJson(shuffleReadMetrics: ShuffleReadMetrics): JValue = {
+    ("Map Output Locations Fetch Time Millis" ->
+      shuffleReadMetrics.mapOutputLocationsFetchTimeMillis) ~
     ("Remote Blocks Fetched" -> shuffleReadMetrics.remoteBlocksFetched) ~
     ("Local Blocks Fetched" -> shuffleReadMetrics.localBlocksFetched) ~
     ("Fetch Wait Time" -> shuffleReadMetrics.fetchWaitTime) ~
@@ -733,6 +735,8 @@ private[spark] object JsonProtocol {
 
   def shuffleReadMetricsFromJson(json: JValue): ShuffleReadMetrics = {
     val metrics = new ShuffleReadMetrics
+    metrics.incMapOutputLocationsFetchTimeMilis(
+      (json \\ "Map Output Locations Fetch Time Millis").extract[Long])
     metrics.incRemoteBlocksFetched((json \ "Remote Blocks Fetched").extract[Int])
     metrics.incLocalBlocksFetched((json \ "Local Blocks Fetched").extract[Int])
     metrics.incFetchWaitTime((json \ "Fetch Wait Time").extract[Long])

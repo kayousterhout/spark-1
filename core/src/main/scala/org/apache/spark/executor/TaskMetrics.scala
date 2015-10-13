@@ -200,6 +200,7 @@ class TaskMetrics extends Serializable {
     if (!depsShuffleReadMetrics.isEmpty) {
       val merged = new ShuffleReadMetrics()
       for (depMetrics <- depsShuffleReadMetrics) {
+        merged.incMapOutputLocationsFetchTimeMilis(depMetrics.mapOutputLocationsFetchTimeMillis)
         merged.incFetchWaitTime(depMetrics.fetchWaitTime)
         merged.incLocalBlocksFetched(depMetrics.localBlocksFetched)
         merged.incRemoteBlocksFetched(depMetrics.remoteBlocksFetched)
@@ -344,6 +345,14 @@ case class OutputMetrics(writeMethod: DataWriteMethod.Value) {
  */
 @DeveloperApi
 class ShuffleReadMetrics extends Serializable {
+  /**
+   * Time taken to fetch information about where the map outputs are located.
+   */
+  private var _mapOutputLocationsFetchTimeMillis: Long = _
+  def mapOutputLocationsFetchTimeMillis: Long = _mapOutputLocationsFetchTimeMillis
+  private[spark] def incMapOutputLocationsFetchTimeMilis(value: Long) =
+    _mapOutputLocationsFetchTimeMillis += value
+
   /**
    * Number of remote blocks fetched in this shuffle by this task
    */

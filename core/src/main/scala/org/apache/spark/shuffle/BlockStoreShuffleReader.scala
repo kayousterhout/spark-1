@@ -40,11 +40,20 @@ private[spark] class BlockStoreShuffleReader[K, C](
 
   /** Read the combined key-values for this reduce task */
   override def read(): Iterator[Product2[K, C]] = {
+    // Update the context task metrics for each record read.
+    val readMetrics = context.taskMetrics.createShuffleReadMetricsForDependency()
+
+    val mapOutputLocationFetchStartTime = System.currentTimeMillis()
+    val mapOutputLocations =
+      mapOutputTracker.getMapSizesByExecutorId(handle.shuffleId, startPartition, endPartition)
+    readMetrics.incMapOutputLocationsFetchTimeMilis(
+      System.currentTimeMillis() - mapOutputLocationFetchStartTime)
+
     val blockFetcherItr = new ShuffleBlockFetcherIterator(
       context,
       blockManager.shuffleClient,
       blockManager,
-      mapOutputTracker.getMapSizesByExecutorId(handle.shuffleId, startPartition, endPartition),
+      mapOutputLocations,
       // Note: we use getSizeAsMb when no suffix is provided for backwards compatibility
       SparkEnv.get.conf.getSizeAsMb("spark.reducer.maxSizeInFlight", "48m") * 1024 * 1024)
 
@@ -64,8 +73,6 @@ private[spark] class BlockStoreShuffleReader[K, C](
       serializerInstance.deserializeStream(wrappedStream).asKeyValueIterator
     }
 
-    // Update the context task metrics for each record read.
-    val readMetrics = context.taskMetrics.createShuffleReadMetricsForDependency()
     val metricIter = CompletionIterator[(Any, Any), Iterator[(Any, Any)]](
       recordIter.map(record => {
         readMetrics.incRecordsRead(1)
