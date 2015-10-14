@@ -76,9 +76,7 @@ class Analyzer:
     job.print_heading("Job")
 
     job.write_task_write_times_scatter(filename)
-
     #job.make_cdfs_for_performance_model(filename)
-
     job.write_waterfall(filename)
 
     fraction_time_scheduler_delay = job.fraction_time_scheduler_delay()
@@ -112,7 +110,7 @@ class Analyzer:
     # fraction_time_computing = job.fraction_time_computing()
     # print "\nFraction of time computing: %s" % fraction_time_computing
 
-    fraction_time_executor_runs = job.fraction_time_executing()
+    fraction_time_executor_runs = job.fraction_time_waiting_on_compute()
     print "\nFraction of time spent executing: %s" % fraction_time_executor_runs
     
     #replace_all_tasks_with_average_speedup = job.replace_all_tasks_with_average_speedup(filename)

@@ -27,6 +27,7 @@ class Task:
     self.executor_run_time = task_metrics["Executor Run Time"]
     self.executor_deserialize_time = task_metrics["Executor Deserialize Time"]
     self.result_serialization_time = task_metrics["Result Serialization Time"]
+    self.broadcast_block_time = task_metrics["Broadcast Blocked Nanos"] / 1.0e6
     self.gc_time = task_metrics["JVM GC Time"]
     # TODO: looks like this is never used.
     self.executor_id = task_info["Executor ID"]
@@ -89,6 +90,7 @@ class Task:
     shuffle_read_metrics = task_metrics[SHUFFLE_READ_METRICS_KEY]
       
     self.fetch_wait = shuffle_read_metrics["Fetch Wait Time"]
+    self.map_output_fetch_wait = shuffle_read_metrics["Map Output Locations Fetch Time Millis"]
     self.local_blocks_read = shuffle_read_metrics["Local Blocks Fetched"]
     self.remote_blocks_read = shuffle_read_metrics["Remote Blocks Fetched"]
     self.remote_mb_read = shuffle_read_metrics["Remote Bytes Read"] / 1048576.
@@ -226,7 +228,7 @@ class Task:
      if self.has_fetch:
        # Subtract off of the time to read local data (which typically comes from disk) because
        # this read happens before any of the computation starts.
-       compute_time = compute_time - self.fetch_wait - self.local_read_time
+       compute_time = compute_time - self.fetch_wait - self.local_read_time - self.map_output_fetch_wait
      return compute_time
 
   def compute_time(self):
@@ -250,10 +252,10 @@ class Task:
     # The final reason that this is an approximation is that the shuffle write time could overlap with
     # the shuffle time (if a task is both reading shuffle inputs and writing shuffle outputs).
     # We should be able to fix the logging to correct this issue.
-    compute_wait_time = self.finish_time - self.start_time - self.shuffle_write_time - self.scheduler_delay - self.gc_time - self.input_read_time
+    compute_wait_time = self.finish_time - self.start_time - self.shuffle_write_time - self.scheduler_delay - self.gc_time - self.input_read_time - self.broadcast_block_time
     if self.has_fetch:
       #compute_wait_time = compute_wait_time - shuffle_time
-      compute_wait_time = compute_wait_time - self.fetch_wait
+      compute_wait_time = compute_wait_time - self.fetch_wait - self.map_output_fetch_wait
     return self.runtime() - compute_wait_time
 
   def runtime_no_disk(self):
@@ -318,7 +320,7 @@ class Task:
 
   def runtime_no_remote_shuffle_read(self):
     if self.has_fetch:
-      return self.finish_time - self.fetch_wait - self.start_time
+      return self.finish_time - self.fetch_wait - self.start_time - self.map_output_fetch_wait
     else:
       return self.runtime()
 

@@ -61,7 +61,7 @@ class Stage:
     return sum([t.finish_time - t.start_time for t in self.tasks])
 
   def total_fetch_wait(self):
-    return sum([t.fetch_wait for t in self.tasks if t.has_fetch])
+    return sum([t.fetch_wait + t.map_output_fetch_wait for t in self.tasks if t.has_fetch])
 
   def total_runtime_no_remote_shuffle_read(self):
     return sum([t.runtime_no_remote_shuffle_read() for t in self.tasks])
