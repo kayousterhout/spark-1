@@ -39,6 +39,12 @@ private[spark] class DiskWriteMonotask(
 
   override def execute(): Unit = {
     val startDiskCounters = new DiskCounters()
+    val diskName = if (diskId.get.indexOf("mnt2") >= 0) {
+      "xvdf"
+    } else {
+      "xvdb"
+    }
+
     val rawDiskId = diskId.getOrElse(throw new IllegalStateException(
       s"Writing block $blockId to disk failed because the diskId parameter was not set."))
     val blockFileManager = blockManager.blockFileManager
@@ -56,14 +62,30 @@ private[spark] class DiskWriteMonotask(
     val stream = new FileOutputStream(file)
     val channel = stream.getChannel()
     try {
+      val beforeChannelWriterCounters = new DiskCounters()
+      val leadupUtil =
+        DiskUtilization(startDiskCounters, beforeChannelWriterCounters).getString(diskName)
+      logInfo(s"KAY utilization leading up: $leadupUtil")
       val dataCopy = data.duplicate()
       channel.write(dataCopy)
 
+      val afterChannelWriteCounters = new DiskCounters()
+      val writeUtil =
+        DiskUtilization(beforeChannelWriterCounters, afterChannelWriteCounters).getString(diskName)
+      logInfo(s"KAY channel write utilization: $writeUtil")
+
       blockManager.updateBlockInfoOnWrite(blockId, rawDiskId, data.limit())
       channel.force(true)
+      val forceUtil =
+        DiskUtilization(afterChannelWriteCounters, new DiskCounters()).getString(diskName)
+      logInfo(s"Kay force utilization: $forceUtil")
     } finally {
+      val beforeCloseUtil = new DiskCounters()
       channel.close()
       stream.close()
+      val closeUtil =
+        DiskUtilization(beforeCloseUtil, new DiskCounters()).getString(diskName)
+      logInfo(s"KAY close utilization: $closeUtil")
     }
     val endTimeMillis = System.currentTimeMillis()
     logDebug(s"Block ${file.getName()} stored as ${Utils.bytesToString(data.limit())} file " +
@@ -76,16 +98,7 @@ private[spark] class DiskWriteMonotask(
     }
 
     val endDiskCounters = new DiskCounters()
-    val diskName = if (diskId.get.indexOf("mnt2") >= 0) {
-      "xvdf"
-    } else {
-      "xvdb"
-    }
-    val utilization = DiskUtilization(startDiskCounters, endDiskCounters)
-      .deviceNameToUtilization.get(diskName).map {blockUtil =>
-      s"${blockUtil.diskUtilization.toString} " +
-        s"(${Utils.bytesToString(blockUtil.writeThroughput.toLong)}/s)"
-    }.mkString(", ")
+    val utilization = DiskUtilization(startDiskCounters, endDiskCounters).getString(diskName)
     logInfo(s"KAY Utilization while running disk monotask on $diskName: $utilization")
   }
 
