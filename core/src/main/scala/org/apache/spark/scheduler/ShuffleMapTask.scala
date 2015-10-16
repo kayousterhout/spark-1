@@ -57,13 +57,25 @@ private[spark] class ShuffleMapTask(
     if (locs == null) Nil else locs.toSet.toSeq
   }
 
-  override def runTask(context: TaskContext): MapStatus = {
+  var rdd: RDD[_] = null
+
+  var dep: ShuffleDependency[_, _, _] = null
+
+  override def prepTask(context: TaskContext): Unit = {
     // Deserialize the RDD using the broadcast variable.
     val deserializeStartTime = System.currentTimeMillis()
     val ser = SparkEnv.get.closureSerializer.newInstance()
-    val (rdd, dep) = ser.deserialize[(RDD[_], ShuffleDependency[_, _, _])](
+    val (rddI, depI) = ser.deserialize[(RDD[_], ShuffleDependency[_, _, _])](
       ByteBuffer.wrap(taskBinary.value), Thread.currentThread.getContextClassLoader)
     _executorDeserializeTime = System.currentTimeMillis() - deserializeStartTime
+    rdd = rddI
+    dep = depI
+  }
+
+  override def runTask(context: TaskContext): MapStatus = {
+    if (dep == null || rdd == null) {
+      prepTask(context)
+    }
 
     metrics = Some(context.taskMetrics)
     var writer: ShuffleWriter[Any, Any] = null

@@ -54,14 +54,26 @@ private[spark] class ResultTask[T, U](
     if (locs == null) Nil else locs.toSet.toSeq
   }
 
-  override def runTask(context: TaskContext): U = {
+  var rdd: RDD[T] = null
+
+  var func: (TaskContext, Iterator[T]) => U = null
+
+  override def prepTask(context: TaskContext): Unit = {
     // Deserialize the RDD and the func using the broadcast variables.
     val deserializeStartTime = System.currentTimeMillis()
     val ser = SparkEnv.get.closureSerializer.newInstance()
-    val (rdd, func) = ser.deserialize[(RDD[T], (TaskContext, Iterator[T]) => U)](
+    val (rddI, funcI) = ser.deserialize[(RDD[T], (TaskContext, Iterator[T]) => U)](
       ByteBuffer.wrap(taskBinary.value), Thread.currentThread.getContextClassLoader)
     _executorDeserializeTime = System.currentTimeMillis() - deserializeStartTime
+    rdd = rddI
+    func = funcI
 
+  }
+
+  override def runTask(context: TaskContext): U = {
+    if (func == null || rdd == null) {
+      prepTask(context)
+    }
     metrics = Some(context.taskMetrics)
     func(context, rdd.iterator(partition, context))
   }

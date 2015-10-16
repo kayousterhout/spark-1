@@ -48,7 +48,7 @@ private[spark] abstract class Task[T](
     val stageId: Int,
     val stageAttemptId: Int,
     val partitionId: Int,
-    internalAccumulators: Seq[Accumulator[Long]]) extends Serializable {
+    val internalAccumulators: Seq[Accumulator[Long]]) extends Serializable {
 
   /**
    * The key of the Map is the accumulator id and the value of the Map is the latest accumulator
@@ -108,6 +108,8 @@ private[spark] abstract class Task[T](
   def setTaskMemoryManager(taskMemoryManager: TaskMemoryManager): Unit = {
     this.taskMemoryManager = taskMemoryManager
   }
+
+  def prepTask(context: TaskContext): Unit
 
   def runTask(context: TaskContext): T
 
