@@ -42,6 +42,9 @@ private[spark] class NetworkResponseMonotask(
     context: TaskContextImpl)
   extends NetworkMonotask(context) with Logging {
 
+  val creationTime = System.nanoTime()
+  var initiatedResponseTime = 0L
+
   /**
    * Failure message to respond to the remote executor with. Set only when the request to fetch
    * data has failed.
@@ -68,6 +71,9 @@ private[spark] class NetworkResponseMonotask(
       case None =>
         try {
           val buffer = SparkEnv.get.blockManager.getBlockData(blockId)
+          logInfo(s"Responding to ${channel.remoteAddress()} with block $blockId of size " +
+            s"${buffer.size()} at ${System.currentTimeMillis()}")
+          initiatedResponseTime = System.nanoTime()
           respond(new BlockFetchSuccess(blockId.toString(), buffer))
         } catch {
           case NonFatal(t) =>
@@ -85,7 +91,11 @@ private[spark] class NetworkResponseMonotask(
     channel.writeAndFlush(result).addListener(new ChannelFutureListener {
       def operationComplete(future: ChannelFuture) {
         if (future.isSuccess) {
-          logInfo(s"Sent result $result to client $remoteAddress")
+          val creationToRequestStart = (initiatedResponseTime - creationTime).toDouble / 1.0e6
+          val timeForRequest = (System.nanoTime - initiatedResponseTime).toDouble / 1.0e6
+          logInfo(s"Sent result $result (block $blockId) to client $remoteAddress" +
+            s"($creationToRequestStart until initiation; $timeForRequest to actually issue; at " +
+            s"${System.currentTimeMillis()})")
           // Regardless of whether we responded with BlockFetchSuccess or BlockFetchFailure,
           // from the perspective of the LocalDagScheduler, this monotask has succeeded at its
           // job of responding to the remote executor.

@@ -41,6 +41,8 @@ private[spark] abstract class HdfsDiskMonotask(
   /** The path to the HDFS file that this HdfsDiskMonotask will access. */
   protected var pathOpt: Option[Path] = None
 
+  protected var diskId: Option[String] = None
+
   protected def getPath(): Path =
     pathOpt.getOrElse(
       throw new UnsupportedOperationException("This HdfsDiskMonotask's path has not been set."))
@@ -95,6 +97,7 @@ private[spark] abstract class HdfsDiskMonotask(
     }
 
     val chosenLocalDir = sparkLocalDirs(chosenLocalDirIndex)
+    diskId = Some(chosenLocalDir)
     logDebug(s"Choosing Spark local directory $chosenLocalDir for HDFS file $pathString " +
       s"(blockId: $blockId).")
     chosenLocalDir

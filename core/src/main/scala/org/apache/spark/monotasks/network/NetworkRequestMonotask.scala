@@ -80,6 +80,7 @@ private[spark] class NetworkRequestMonotask(
         "was configured")
     }
 
+    logInfo(s"Received block $blockId from BlockManagerId $remoteAddress")
     // Increment the ref count because we need to pass this to a different thread.
     // This needs to be released after use.
     buf.retain()

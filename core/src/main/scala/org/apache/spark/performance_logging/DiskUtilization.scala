@@ -17,6 +17,7 @@
 package org.apache.spark.performance_logging
 
 import scala.collection.mutable.HashMap
+import org.apache.spark.util.{Utils => SparkUtils}
 
 /** Utilization of a particular block device. */
 class BlockDeviceUtilization(
@@ -39,7 +40,16 @@ class BlockDeviceUtilization(
 class DiskUtilization(
     val elapsedMillis: Long,
     val deviceNameToUtilization: HashMap[String, BlockDeviceUtilization])
-  extends Serializable
+  extends Serializable {
+
+  def getString(blockDeviceName: String): String = {
+    val utilizationString =  deviceNameToUtilization.get(blockDeviceName).map { blockUtil =>
+      s"${blockUtil.diskUtilization.toString} " +
+        s"(${SparkUtils.bytesToString(blockUtil.writeThroughput.toLong)}/s)"
+    }.getOrElse("")
+    s"Elapsed time: ${elapsedMillis}ms; utilization: $utilizationString"
+  }
+}
 
 object DiskUtilization {
   // This is not at all portable -- can be obtained for a particular machine with "fdisk -l".

@@ -27,6 +27,7 @@ import org.apache.hadoop.mapreduce.lib.output.{FileOutputCommitter, FileOutputFo
 import org.apache.spark.{Logging, SparkEnv, TaskContextImpl}
 import org.apache.spark.executor.{DataWriteMethod, OutputMetrics}
 import org.apache.spark.mapred.SparkHadoopMapRedUtil
+import org.apache.spark.performance_logging.{DiskCounters, DiskUtilization}
 import org.apache.spark.storage.BlockId
 
 /**
@@ -119,6 +120,7 @@ private[spark] class HdfsWriteMonotask(
       "This HdfsWriteMonotask's's stream has not been set. Make sure that the \"initialize()\" " +
         "method has been called."))
 
+    val countersBeforeDiskWrite = new DiskCounters()
     if (buffer.hasRemaining()) {
       if (buffer.hasArray()) {
         // The ByteBuffer has a backing array that can be accessed without copying the bytes.
@@ -135,15 +137,40 @@ private[spark] class HdfsWriteMonotask(
       }
     }
 
+    val countersBeforeHsync = new DiskCounters()
     stream.hsync()
     logInfo(s"Block $blockId (composed of $numRecords records) was successfully written to HDFS " +
       s"at location: ${getPath().toString()}")
 
+    val countersBeforeClose = new DiskCounters()
     // The stream must be closed before the task is committed.
     stream.close()
+    val countersAfterClose = new DiskCounters()
     streamOpt = None
     SparkHadoopMapRedUtil.commitTask(outputCommitter, hadoopTaskContext, sparkTaskContext)
+    val countersAfterTaskCommit = new DiskCounters()
     hadoopTaskInProgress = false
+
+    // Print metrics about the disk utilization.
+    val diskName = if (diskId.get.indexOf("mnt2") >= 0) {
+      "xvdf"
+    } else {
+      "xvdb"
+    }
+    val utilizationDuringWrite =
+      DiskUtilization(countersBeforeDiskWrite, countersBeforeHsync).getString(diskName)
+    val utilizationDuringHsync =
+      DiskUtilization(countersBeforeHsync, countersBeforeClose).getString(diskName)
+    val utilizationDuringClose =
+      DiskUtilization(countersBeforeClose, countersAfterClose).getString(diskName)
+    val utilizationDuringCommit =
+      DiskUtilization(countersAfterClose, countersAfterTaskCommit).getString(diskName)
+    val utilizationOverall =
+      DiskUtilization(countersBeforeDiskWrite, countersAfterClose).getString(diskName)
+    logInfo(s"Disk $diskName utilization during HdfsWriteMonotask: " +
+      s"Write $utilizationDuringWrite; hsync $utilizationDuringHsync; " +
+      s"close $utilizationDuringClose; commit $utilizationDuringCommit; " +
+      s"overall $utilizationOverall")
 
     val outputMetrics = new OutputMetrics(DataWriteMethod.Hadoop)
     sparkTaskContext.taskMetrics.outputMetrics = Some(outputMetrics)

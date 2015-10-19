@@ -19,6 +19,7 @@ package org.apache.spark.monotasks.disk
 import java.io.FileOutputStream
 
 import org.apache.spark.{Logging, TaskContextImpl}
+import org.apache.spark.performance_logging.{DiskCounters, DiskUtilization}
 import org.apache.spark.storage.{BlockId, ShuffleBlockId}
 import org.apache.spark.util.Utils
 
@@ -37,6 +38,13 @@ private[spark] class DiskWriteMonotask(
   var diskId: Option[String] = None
 
   override def execute(): Unit = {
+    val startDiskCounters = new DiskCounters()
+    val diskName = if (diskId.get.indexOf("mnt2") >= 0) {
+      "xvdf"
+    } else {
+      "xvdb"
+    }
+
     val rawDiskId = diskId.getOrElse(throw new IllegalStateException(
       s"Writing block $blockId to disk failed because the diskId parameter was not set."))
     val blockFileManager = blockManager.blockFileManager
@@ -56,13 +64,29 @@ private[spark] class DiskWriteMonotask(
     val stream = new FileOutputStream(file)
     val channel = stream.getChannel()
     try {
+      val beforeChannelWriterCounters = new DiskCounters()
+      val leadupUtil =
+        DiskUtilization(startDiskCounters, beforeChannelWriterCounters).getString(diskName)
+      logInfo(s"KAY utilization leading up: $leadupUtil")
       channel.write(data)
+
+      val afterChannelWriteCounters = new DiskCounters()
+      val writeUtil =
+        DiskUtilization(beforeChannelWriterCounters, afterChannelWriteCounters).getString(diskName)
+      logInfo(s"KAY channel write utilization: $writeUtil")
 
       blockManager.updateBlockInfoOnWrite(blockId, rawDiskId, data.limit())
       channel.force(true)
+      val forceUtil =
+        DiskUtilization(afterChannelWriteCounters, new DiskCounters()).getString(diskName)
+      logInfo(s"Kay force utilization: $forceUtil")
     } finally {
+      val beforeCloseUtil = new DiskCounters()
       channel.close()
       stream.close()
+      val closeUtil =
+        DiskUtilization(beforeCloseUtil, new DiskCounters()).getString(diskName)
+      logInfo(s"KAY close utilization: $closeUtil")
     }
     logDebug(s"Block ${file.getName()} stored as ${Utils.bytesToString(data.limit())} file " +
       s"(${file.getAbsolutePath()}) on disk $diskId in " +
@@ -73,6 +97,10 @@ private[spark] class DiskWriteMonotask(
     if (!blockId.isInstanceOf[ShuffleBlockId]) {
       recordUpdatedBlocksInTaskMetrics(blockId)
     }
+
+    val endDiskCounters = new DiskCounters()
+    val utilization = DiskUtilization(startDiskCounters, endDiskCounters).getString(diskName)
+    logInfo(s"KAY Utilization while running disk monotask on $diskName: $utilization")
   }
 
   private def recordUpdatedBlocksInTaskMetrics(blockId: BlockId): Unit = {

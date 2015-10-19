@@ -99,7 +99,7 @@ public class TransportClient implements Closeable {
         public void operationComplete(ChannelFuture future) throws Exception {
           if (future.isSuccess()) {
             long timeTaken = System.currentTimeMillis() - startTime;
-            logger.trace("Sending request {} to {} took {} ms", blockId, serverAddr,
+            logger.info("Sending request {} to {} took {} ms", blockId, serverAddr,
               timeTaken);
           } else {
             String errorMsg = String.format("Failed to send request %s to %s: %s", blockId,

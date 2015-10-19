@@ -256,15 +256,19 @@ private[spark] class BlockManager(
 
     // Try to send the block back from in-memory.
     if (memoryStore.contains(blockId)) {
+      logInfo(s"Immediately submitting network response monotask for $blockIdStr " +
+        s"(at ${System.currentTimeMillis})")
       localDagScheduler.post(SubmitMonotask(networkResponseMonotask))
     } else {
       // Try to load the block from disk.
+      logInfo(s"Trying to fetch data from disk for monotask for $blockIdStr")
       getBlockLoadMonotask(blockId, localDagScheduler.genericTaskContext) match {
         case Some(blockLoadMonotask) =>
           blockLoadMonotask.addAlternateFailureHandler { failureReason: TaskFailedReason =>
             networkResponseMonotask.markAsFailed(failureReason.toErrorString)
           }
           networkResponseMonotask.addDependency(blockLoadMonotask)
+          logInfo(s"Submitting block load monotask for block $blockId")
           localDagScheduler.post(SubmitMonotasks(Seq(networkResponseMonotask, blockLoadMonotask)))
 
         case None =>
