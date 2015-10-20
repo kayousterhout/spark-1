@@ -41,7 +41,6 @@ class Analyzer:
         # Add the event to all of the jobs that depend on the stage.
         for job_id in self.jobs_for_stage[stage_id]:
           self.jobs[job_id].add_event(json_data)
-      self.jobs[0].add_event(line, False)
 
     print "Finished reading input data:"
     for job_id, job in self.jobs.iteritems():

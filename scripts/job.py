@@ -101,9 +101,6 @@ class Job:
     # inside the nested add_tasks_to_totals() function.
     total_time = [0]
     total_faster_time = [0]
-    # Combine all of the tasks for stages that can be combined -- since they can use the cluster
-    # concurrently.
-    tasks_for_combined_stages = []
 
     def add_tasks_to_totals(unsorted_tasks):
       # Sort the tasks by the start time, not the finish time -- otherwise the longest tasks
@@ -123,14 +120,7 @@ class Job:
 
     for id, stage in self.stages.iteritems():
       print "STAGE", id, stage
-      if id in self.stages_to_combine:
-        tasks_for_combined_stages.extend(stage.tasks)
-      else:
-        add_tasks_to_totals(stage.tasks)
-
-    if len(tasks_for_combined_stages) > 0:
-      print "Combined stages", self.stages_to_combine
-      add_tasks_to_totals(tasks_for_combined_stages)
+      add_tasks_to_totals(stage.tasks)
 
     print "Faster time: %s, base time: %s" % (total_faster_time[0], total_time[0])
     return total_faster_time[0] * 1.0 / total_time[0], total_time[0], total_faster_time[0]
@@ -142,10 +132,16 @@ class Job:
       lambda t: (t.runtime() - t.scheduler_delay))
 
   def no_map_output_fetch_speedup(self):
+    def get_time_with_no_output_fetch(t):
+      if t.has_fetch:
+        return t.runtime() - t.map_output_fetch_wait
+      else:
+        return t.runtime()
+
     return self.calculate_speedup(
       "Computing speedup without time to fetch map output locations",
       lambda t: t.runtime(),
-      lambda t: (t.runtime() - t.map_output_fetch_time))
+      lambda t: get_time_with_no_output_fetch(t))
 
   def no_broadcast_speedup(self):
     return self.calculate_speedup(
@@ -159,10 +155,16 @@ class Job:
     to eliminate: no time to retrieve broadcast variables, no time to fetch map outputs,
     and no scheduler delay.
     """
+    def get_time_with_no_overhead(t):
+      map_output_fetch_time = 0
+      if t.has_fetch:
+        map_output_fetch_time = t.map_output_fetch_wait
+      return t.runtime() - t.scheduler_delay - map_output_fetch_time - t.broadcast_block_time
+
     return self.calculate_speedup(
       "Computing speedup without any scheduling overheads",
       lambda t: t.runtime(),
-      lambda t: (t.runtime() - t.scheduler_delay - t.map_output_fetch_time - t.broadcast_block_time))
+      lambda t: get_time_with_no_overhead(t))
 
   def no_network_speedup(self):
     return self.calculate_speedup(

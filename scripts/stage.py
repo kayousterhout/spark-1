@@ -16,19 +16,10 @@ class Stage:
     else:
       input_method = self.tasks[0].input_read_method
     return (("%s tasks (avg runtime: %s, max runtime: %s) Start: %s, runtime: %s, "
-      "Max concurrency: %s, "
-      "Input MB: %s (from %s), Output MB: %s, Straggers: %s, Progress rate straggers: %s, "
-      "Progress rate stragglers explained by scheduler delay (%s), HDFS read (%s), "
-      "HDFS and read (%s), GC (%s), Network (%s), JIT (%s), output rate stragglers: %s") %
+      "Max concurrency: %s, Input MB: %s (from %s), Output MB: %s") %
       (len(self.tasks), self.average_task_runtime(), max_task_runtime, self.start_time,
        self.finish_time() - self.start_time, concurrency.get_max_concurrency(self.tasks),
-       self.input_mb(), input_method, self.output_mb(),
-       self.traditional_stragglers(), self.progress_rate_stragglers()[0],
-       self.scheduler_delay_stragglers()[0], self.hdfs_read_stragglers()[0],
-       self.hdfs_read_and_scheduler_delay_stragglers()[0], self.gc_stragglers()[0],
-       # Do not compute the JIT stragglers here! Screws up the calculation.
-       self.network_stragglers()[0], -1,
-       self.output_progress_rate_stragglers()[0]))
+       self.input_mb(), input_method, self.output_mb()))
 
   def verbose_str(self):
     # Get info about the longest task.
