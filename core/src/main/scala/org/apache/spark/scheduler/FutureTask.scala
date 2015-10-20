@@ -54,9 +54,11 @@ private[spark] class FutureTask[U](
 
   // Returns the earliest shuffle dependency encountered while walking up the DAG
   // from the RDD being computed by the Task.
-  // Returns None if no such dependency exists
 
-  // NOTE: prepTask should be called before this method ?
+  // Returns None if no such dependency exists
+  // TODO(shivaram): This won't work if we have multiple shuffle dependencies
+
+  // NOTE(shivaram): prepTask should be called before this method
   // Or should we just call prepTask inside this method ?
   def getFirstShuffleDep: Option[ShuffleDependency[_, _, _]] = {
     val rddToCompute = task match {

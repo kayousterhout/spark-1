@@ -145,7 +145,7 @@ class LargeTask(stageId: Int) extends Task[Array[Byte]](stageId, 0, 0, Seq.empty
   random.nextBytes(randomBuffer)
 
   override def runTask(context: TaskContext): Array[Byte] = randomBuffer
-  override def prepTask(context: TaskContext): Unit = ()
+  override def prepTask(): Unit = ()
   override def preferredLocations: Seq[TaskLocation] = Seq[TaskLocation]()
 }
 

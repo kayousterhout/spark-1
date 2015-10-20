@@ -28,7 +28,7 @@ private[spark] class NotSerializableFakeTask(myId: Int, stageId: Int)
   extends Task[Array[Byte]](stageId, 0, 0, Seq.empty) {
 
   override def runTask(context: TaskContext): Array[Byte] = Array.empty[Byte]
-  override def prepTask(context: TaskContext) = ()
+  override def prepTask() = ()
   override def preferredLocations: Seq[TaskLocation] = Seq[TaskLocation]()
 
   @throws(classOf[IOException])
