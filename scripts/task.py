@@ -3,11 +3,8 @@ import numpy
 import logging
 
 class Task:
-  def __init__(self, data, is_json):
-    if is_json:
-      self.initialize_from_json(data)
-    else:
-      self.initialize_from_job_logger(data)
+  def __init__(self, data):
+    self.initialize_from_json(data)
 
     self.scheduler_delay = (self.finish_time - self.executor_run_time -
       self.executor_deserialize_time - self.result_serialization_time - self.start_time)
@@ -105,111 +102,6 @@ class Task:
     if LOCAL_READ_TIME_KEY in shuffle_read_metrics:
       self.local_read_time = shuffle_read_metrics[LOCAL_READ_TIME_KEY]
     self.total_time_fetching = shuffle_read_metrics["Fetch Wait Time"]
-
-  def initialize_from_job_logger(self, line):
-    self.logger = logging.getLogger("Task")
-
-    items = line.split(" ")
-    items_dict = {}
-    for pair in items:
-      if pair.find("=") == -1:
-        continue
-      key, value = pair.split("=")
-      items_dict[key] = value
-
-    self.start_time = int(items_dict["START_TIME"])
-    self.finish_time = int(items_dict["FINISH_TIME"])
-    self.executor = items_dict["HOST"]
-    self.executor_run_time = int(items_dict["EXECUTOR_RUN_TIME"])
-    self.executor_deserialize_time = int(items_dict["EXECUTOR_DESERIALIZE_TIME"])
-    # TODO: Add result serialization time to job logger metrics.
-    self.result_serialization_time = 0
-    self.gc_time = int(items_dict["GC_TIME"])
-    self.executor_id = int(items_dict["EXECUTOR_ID"])
-
-    # Estimate serialization and deserialization time based on samples.
-    # TODO: Report an estimated error here based on variation in samples?
-    self.estimated_serialization_millis = 0
-    if "SERIALIZATED_ITEMS" in items_dict:
-      serialized_items = int(items_dict["SERIALIZATED_ITEMS"])
-      # Samples are times in nanoseconds.
-      serialized_samples = [int(sample) for sample in items_dict["SERIALIZED_SAMPLES"].split(",")]
-      print "Serialized %s items, sampled %s" % (serialized_items, len(serialized_samples))
-      self.estimated_serialization_millis = serialized_items * numpy.mean(serialized_samples[0::10]) / 1e6
-
-    self.estimated_deserialization_millis = 0
-    if "DESERIALIZED_ITEMS" in items_dict:
-      deserialized_items = int(items_dict["DESERIALIZED_ITEMS"])
-      deserialized_samples = [
-        int(sample) for sample in items_dict["DESERIALIZATION_TIME_NANOS"].split(",")]
-      print "Deserialized %s items, sampled %s" % (deserialized_items, len(deserialized_samples))
-      self.estimated_deserialization_millis = (
-        deserialized_items * numpy.median(deserialized_samples[0::1]) / 1e6)
-
-    # Utilization metrics.
-    # Map of device name to (utilization, read throughput, write throughout).
-    self.disk_utilization = {}
-    utilization_str = items_dict["DISK_UTILIZATION"]
-    for block_utilization_str in utilization_str.split(";"):
-      if block_utilization_str:
-        device_name, numbers = block_utilization_str.split(":")
-        self.disk_utilization[device_name] = [float(x) for x in numbers.split(",")]
-
-    network_throughput_items = [
-      float(x.split(":")[1]) for x in items_dict["NETWORK_UTILIZATION"].split(",")] 
-    self.network_bytes_transmitted_ps = network_throughput_items[1]
-    self.network_bytes_received_ps = network_throughput_items[0]
-
-    cpu_utilization_numbers = [
-      float(x.split(":")[1]) for x in items_dict["CPU_UTILIZATION"].split(",")]
-    # Record the total CPU utilization as the total system CPU use + total user CPU use.
-    self.process_cpu_utilization = cpu_utilization_numbers[0] + cpu_utilization_numbers[1]
-    self.total_cpu_utilization = cpu_utilization_numbers[2] + cpu_utilization_numbers[3]
-
-    # Should be set to true if this task is a straggler and we know the cause of the
-    # straggler behavior.
-    self.straggler_behavior_explained = False
-
-    self.shuffle_write_time = 0
-    self.shuffle_mb_written = 0
-    SHUFFLE_WRITE_TIME_KEY = "SHUFFLE_WRITE_TIME"
-    if SHUFFLE_WRITE_TIME_KEY in items_dict:
-      # Convert to milliseconds (from nanoseconds).
-      self.shuffle_write_time = int(items_dict[SHUFFLE_WRITE_TIME_KEY]) / 1.0e6
-      self.shuffle_mb_written = int(items_dict["SHUFFLE_BYTES_WRITTEN"]) / 1048576.
-
-    INPUT_METHOD_KEY = "READ_METHOD"
-    self.input_read_time = 0
-    self.input_read_method = "unknown"
-    self.input_mb = 0
-    if INPUT_METHOD_KEY in items_dict:
-      self.input_read_time = int(items_dict["READ_TIME_NANOS"]) / 1.0e6
-      self.input_read_method = items_dict["READ_METHOD"]
-      self.input_mb = float(items_dict["INPUT_BYTES"]) / 1048576.
-
-    self.output_write_time = int(items_dict["OUTPUT_WRITE_BLOCKED_NANOS"]) / 1.0e6
-    self.output_mb = 0
-    if "OUTPUT_BYTES" in items_dict:
-      self.output_mb = int(items_dict["OUTPUT_BYTES"]) / 1048576.
-
-    self.has_fetch = True
-    # False if the task was a map task that did not run locally with its input data.
-    self.data_local = True
-    if line.find("FETCH") < 0:
-      if "LOCALITY" in items_dict and items_dict["LOCALITY"] != "NODE_LOCAL":
-        self.data_local = False
-      self.has_fetch = False
-      return
-      
-    self.fetch_wait = int(items_dict["REMOTE_FETCH_WAIT_TIME"])
-    self.local_blocks_read = int(items_dict["BLOCK_FETCHED_LOCAL"])
-    self.remote_blocks_read = int(items_dict["BLOCK_FETCHED_REMOTE"])
-    self.remote_mb_read = int(items_dict["REMOTE_BYTES_READ"]) / 1048576.
-    self.local_mb_read = int(items_dict["LOCAL_READ_BYTES"]) / 1048576.
-    # The local read time is not included in the fetch wait time: the task blocks
-    # on reading data locally in the BlockFetcherIterator.initialize() method.
-    self.local_read_time = int(items_dict["LOCAL_READ_TIME"])
-    self.total_time_fetching = int(items_dict["REMOTE_FETCH_TIME"])
 
   def input_size_mb(self):
     if self.has_fetch:

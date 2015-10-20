@@ -24,19 +24,11 @@ class Job:
     # Map of stage IDs to Stages.
     self.stages = collections.defaultdict(stage.Stage)
   
-  def add_event(self, data, is_json):
-    if is_json:
-      event_type = data["Event"]
-      if event_type == "SparkListenerTaskEnd":
-        stage_id = data["Stage ID"]
-        self.stages[stage_id].add_event(data, True)
-    else:
-      STAGE_ID_MARKER = "STAGE_ID="
-      stage_id_loc = data.find(STAGE_ID_MARKER)
-      if stage_id_loc != -1:
-        stage_id_and_suffix = data[stage_id_loc + len(STAGE_ID_MARKER):]
-        stage_id = stage_id_and_suffix[:stage_id_and_suffix.find(" ")]
-        self.stages[stage_id].add_event(data, False)
+  def add_event(self, data):
+    event_type = data["Event"]
+    if event_type == "SparkListenerTaskEnd":
+      stage_id = data["Stage ID"]
+      self.stages[stage_id].add_event(data)
 
   def initialize_job(self):
     """ Should be called after adding all events to the job. """

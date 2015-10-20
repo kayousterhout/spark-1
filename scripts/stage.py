@@ -288,8 +288,8 @@ class Stage:
     total_output_size = sum([t.shuffle_mb_written for t in self.tasks])
     return total_output_size
 
-  def add_event(self, data, is_json):
-    task = Task(data, is_json)
+  def add_event(self, data):
+    task = Task(data)
 
     if self.start_time == -1:
       self.start_time = task.start_time

@@ -20,41 +20,28 @@ class Analyzer:
     self.jobs_for_stage = {}
 
     f = open(filename, "r")
-    test_line = f.readline()
-    try:
-      get_json(test_line)
-      is_json = True
-      print "Parsing file %s as JSON" % filename
-    except:
-      is_json = False
-      print "Parsing file %s as JobLogger output" % filename
-    f.seek(0)
-
     for line in f:
-      if is_json:
-        json_data = get_json(line)
-        event_type = json_data["Event"]
-        if event_type == "SparkListenerJobStart":
-          if parse_as_single_job:
-            job_id = 0
+      json_data = get_json(line)
+      event_type = json_data["Event"]
+      if event_type == "SparkListenerJobStart":
+        if parse_as_single_job:
+          job_id = 0
+        else:
+          job_id = json_data["Job ID"]
+        # Avoid using "Stage Infos" here, which was added in 1.2.0.
+        stage_ids = json_data["Stage IDs"]
+        print "Stage ids: %s" % stage_ids
+        for stage_id in stage_ids:
+          if stage_id not in self.jobs_for_stage:
+            self.jobs_for_stage[stage_id] = [job_id]
           else:
-            job_id = json_data["Job ID"]
-          # Avoid using "Stage Infos" here, which was added in 1.2.0.
-          stage_ids = json_data["Stage IDs"]
-          print "Stage ids: %s" % stage_ids
-          for stage_id in stage_ids:
-            if stage_id not in self.jobs_for_stage:
-              self.jobs_for_stage[stage_id] = [job_id]
-            else:
-              self.jobs_for_stage[stage_id].append(job_id)
-        elif event_type == "SparkListenerTaskEnd":
-          stage_id = json_data["Stage ID"]
-          # Add the event to all of the jobs that depend on the stage.
-          for job_id in self.jobs_for_stage[stage_id]:
-            self.jobs[job_id].add_event(json_data, True)
-      else:
-        # The file will only contain information for one job.
-        self.jobs[0].add_event(line, False)
+            self.jobs_for_stage[stage_id].append(job_id)
+      elif event_type == "SparkListenerTaskEnd":
+        stage_id = json_data["Stage ID"]
+        # Add the event to all of the jobs that depend on the stage.
+        for job_id in self.jobs_for_stage[stage_id]:
+          self.jobs[job_id].add_event(json_data)
+      self.jobs[0].add_event(line, False)
 
     print "Finished reading input data:"
     for job_id, job in self.jobs.iteritems():
