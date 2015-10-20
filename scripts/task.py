@@ -1,5 +1,3 @@
-import numpy
-
 import logging
 
 class Task:
@@ -26,8 +24,6 @@ class Task:
     self.result_serialization_time = task_metrics["Result Serialization Time"]
     self.broadcast_block_time = task_metrics["Broadcast Blocked Nanos"] / 1.0e6
     self.gc_time = task_metrics["JVM GC Time"]
-    # TODO: looks like this is never used.
-    self.executor_id = task_info["Executor ID"]
 
     self.shuffle_write_time = 0
     self.shuffle_mb_written = 0
@@ -102,6 +98,9 @@ class Task:
     else:
       return self.input_mb
 
+  def runtime(self):
+    return self.finish_time - self.start_time
+
   def compute_time_without_gc(self):
      """ Returns the time this task spent computing.
      
@@ -124,25 +123,6 @@ class Task:
     """
     return self.compute_time_without_gc() + self.gc_time
 
-  def runtime_no_compute(self):
-    """ Returns how long the task would have run for had it not done any computation. """
-    # Time the task spent reading data over the network or from disk for the shuffle.
-    # Computation happens during this time, but if the computation were infinitely fast,
-    # this phase wouldn't have sped up because it was ultimately waiting on the network.
-    # This is an approximation because tasks don't currently log the amount of time where
-    # the network is stopped, waiting for the computation to speed up.
-    # We're also approximating because there's some disk writing that happens in parallel
-    # via the OS buffer cache.  It's basically impossible for us to account for that so
-    # we ignore it.
-    # The final reason that this is an approximation is that the shuffle write time could overlap with
-    # the shuffle time (if a task is both reading shuffle inputs and writing shuffle outputs).
-    # We should be able to fix the logging to correct this issue.
-    compute_wait_time = self.finish_time - self.start_time - self.shuffle_write_time - self.scheduler_delay - self.gc_time - self.input_read_time - self.broadcast_block_time
-    if self.has_fetch:
-      #compute_wait_time = compute_wait_time - shuffle_time
-      compute_wait_time = compute_wait_time - self.fetch_wait - self.map_output_fetch_wait
-    return self.runtime() - compute_wait_time
-
   def runtime_no_disk(self):
     """ Returns a lower bound on what the runtime would have been without disk IO.
 
@@ -153,16 +133,6 @@ class Task:
     if self.has_fetch:
       disk_time += self.local_read_time + self.fetch_wait
     return self.runtime() - disk_time
-
-  def disk_time(self):
-    """ Returns the time writing shuffle output.
-
-    Ignores disk time taken to read shuffle input as part of a transfer over the network because in
-    the traces we've seen so far, it's a very small percentage of the network time.
-    """
-    if self.has_fetch:
-      return self.shuffle_write_time + self.local_read_time
-    return self.shuffle_write_time
 
   def __str__(self):
     if self.has_fetch:
@@ -179,43 +149,6 @@ class Task:
       desc = ("Start time: %s, finish: %s, scheduler delay: %s, input read time: %s, gc time: %s, shuffle write time: %s" %
         (self.start_time, self.finish_time, self.scheduler_delay, self.input_read_time, self.gc_time, self.shuffle_write_time))
     return desc
-
-  def log_verbose(self):
-    self.logger.debug(str(self))
-
-  def runtime(self):
-    return self.finish_time - self.start_time
-
-  def runtime_no_input(self):
-    new_finish_time = self.finish_time - self.input_read_time
-    return new_finish_time - self.start_time
-
-  def runtime_no_output(self):
-    new_finish_time = self.finish_time - self.output_write_time
-    return new_finish_time - self.start_time
-
-  def runtime_no_shuffle_write(self):
-    return self.finish_time - self.shuffle_write_time - self.start_time
-
-  def runtime_no_shuffle_read(self):
-    if self.has_fetch:
-      return self.finish_time - self.fetch_wait - self.local_read_time - self.start_time
-    else:
-      return self.runtime()
-
-  def runtime_no_remote_shuffle_read(self):
-    if self.has_fetch:
-      return self.finish_time - self.fetch_wait - self.start_time - self.map_output_fetch_wait
-    else:
-      return self.runtime()
-
-  def runtime_no_output(self):
-    new_finish_time = self.finish_time - self.output_write_time
-    return new_finish_time - self.start_time
-
-  def runtime_no_input_or_output(self):
-    new_finish_time = self.finish_time - self.input_read_time - self.output_write_time
-    return new_finish_time - self.start_time
 
   def runtime_no_network(self):
     runtime_no_in_or_out = self.runtime_no_output()
