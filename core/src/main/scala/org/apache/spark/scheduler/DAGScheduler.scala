@@ -130,6 +130,8 @@ class DAGScheduler(
 
   def this(sc: SparkContext) = this(sc, sc.taskScheduler)
 
+  private val drizzle = env.conf.getBoolean("spark.scheduler.drizzle", true)
+
   private[scheduler] val metricsSource: DAGSchedulerSource = new DAGSchedulerSource(this)
 
   private[scheduler] val nextJobId = new AtomicInteger(0)
@@ -141,8 +143,18 @@ class DAGScheduler(
   private[scheduler] val shuffleToMapStage = new HashMap[Int, ShuffleMapStage]
   private[scheduler] val jobIdToActiveJob = new HashMap[Int, ActiveJob]
 
-  // Stages we need to run whose parents aren't done
+  // Stages we need to run whose parents aren't done. Only used when not using drizzle.
   private[scheduler] val waitingStages = new HashSet[Stage]
+
+  // Maps stage IDs to all of that stage's dependencies. This is used so that as soon as all of
+  // the tasks for a given stage ID have been scheduled, we can schedule all of the dependencies
+  // (we need the locations where the stage's tasks were scheduled in order to schedule the
+  // dependencies). Only used when using drizzle.
+  private[scheduler] val stageIdToDependencies = new HashMap[Int, HashSet[Stage]]
+
+  // Maps stageIds to the ID of the executor where the task was launched. Ignores speculative
+  // copies.
+  val stageToTaskLocations = new HashMap[Int, Array[String]]
 
   // Stages we are running right now
   private[scheduler] val runningStages = new HashSet[Stage]
@@ -507,6 +519,10 @@ class DAGScheduler(
                 for ((k, v) <- shuffleToMapStage.find(_._2 == stage)) {
                   shuffleToMapStage.remove(k)
                 }
+                if (stageIdToDependencies.contains(stage.id)) {
+                  logDebug("Removing stage %d from stageIdToDependencies.".format(stageId))
+                  stageIdToDependencies -= stage.id
+                }
                 if (waitingStages.contains(stage)) {
                   logDebug("Removing stage %d from waiting set.".format(stageId))
                   waitingStages -= stage
@@ -742,16 +758,21 @@ class DAGScheduler(
    * Ordinarily run on every iteration of the event loop.
    */
   private def submitWaitingStages() {
-    // TODO: We might want to run this less often, when we are sure that something has become
-    // runnable that wasn't before.
-    logTrace("Checking for newly runnable parent stages")
-    logTrace("running: " + runningStages)
-    logTrace("waiting: " + waitingStages)
-    logTrace("failed: " + failedStages)
-    val waitingStagesCopy = waitingStages.toArray
-    waitingStages.clear()
-    for (stage <- waitingStagesCopy.sortBy(_.firstJobId)) {
-      submitStage(stage)
+    if (!drizzle) {
+      // TODO: We might want to run this less often, when we are sure that something has become
+      // runnable that wasn't before.
+      logTrace("Checking for newly runnable parent stages")
+      logTrace("running: " + runningStages)
+      logTrace("waiting: " + waitingStages)
+      logTrace("failed: " + failedStages)
+      val waitingStagesCopy = waitingStages.toArray
+      waitingStages.clear()
+      for (stage <- waitingStagesCopy.sortBy(_.firstJobId)) {
+        submitStage(stage)
+      }
+    } else {
+      // Don't do anything for drizzle, since stages are scheduled right away or in
+      // handleBeginEvent.
     }
   }
 
@@ -783,7 +804,35 @@ class DAGScheduler(
     // In that case, we wouldn't have the stage anymore in stageIdToStage.
     val stageAttemptId = stageIdToStage.get(task.stageId).map(_.latestInfo.attemptId).getOrElse(-1)
     listenerBus.post(SparkListenerTaskStart(task.stageId, stageAttemptId, taskInfo))
-    submitWaitingStages()
+
+    if (drizzle) {
+      // Keep track of where the task was scheduled, so we can tell dependencies where to push
+      // data to.
+      val locationsForStage = stageToTaskLocations(task.stageId)
+      locationsForStage(task.partitionId) = taskInfo.executorId
+
+      logInfo(s"DRIZ: Task ${task.partitionId} scheduled on ${taskInfo.executorId}. Locations " +
+        s"for stage is now $locationsForStage")
+
+      if (locationsForStage.filter(_ == null).length == 0) {
+        // All of the stage's tasks have been scheduled, so schedule its dependencies.
+        val blockManagerIds = locationsForStage.map { executorId =>
+          val (host, port) = blockManagerMaster.getRpcHostPortForExecutor(executorId).get
+          BlockManagerId(executorId, host, port)
+        }
+        val stageId = task.stageId
+        logInfo(s"DRIZ: All tasks for stage $stageId have been scheduled, so scheduling " +
+          s"dependencies using locations $locationsForStage (translated to $blockManagerIds)")
+
+        // Schedule all of the stage's dependencies.
+        // TODO: If stageId isn't in here, we did something wrong. Fail gracefully.
+        val dependencies = stageIdToDependencies(stageId)
+        stageIdToDependencies.remove(stageId)
+        dependencies.foreach(submitStage(_, Some(blockManagerIds)))
+      }
+    } else {
+      submitWaitingStages()
+    }
   }
 
   private[scheduler] def handleTaskSetFailed(
@@ -901,8 +950,17 @@ class DAGScheduler(
     submitWaitingStages()
   }
 
+  /** Submits the stage to be scheduled. */
+  private def submitStage(stage: Stage, locations: Option[Seq[BlockManagerId]] = None) {
+    if (drizzle) {
+      submitStageDrizzle(stage, locations)
+    } else {
+      submitStageNormal(stage)
+    }
+  }
+
   /** Submits stage, but first recursively submits any missing parents. */
-  private def submitStage(stage: Stage) {
+  private def submitStageNormal(stage: Stage) {
     val jobId = activeJobForStage(stage)
     if (jobId.isDefined) {
       logDebug("submitStage(" + stage + ")")
@@ -913,6 +971,13 @@ class DAGScheduler(
           logInfo("Submitting " + stage + " (" + stage.rdd + "), which has no missing parents")
           submitMissingTasks(stage, jobId.get)
         } else {
+          if (missing.length > 1) {
+            // TODO: Make this case work properly (this requires changing the shuffle code on
+            //       the executor side).
+            throw new SparkException(
+              s"Stage ${stage.id} has multiple shuffle dependencies, and drizzle doesn't work " +
+                "in that case.")
+          }
           for (parent <- missing) {
             submitStage(parent)
           }
@@ -924,8 +989,51 @@ class DAGScheduler(
     }
   }
 
-  /** Called when stage's parents are available and we can now do its task. */
-  private def submitMissingTasks(stage: Stage, jobId: Int) {
+  /**
+   * Submits the stage to be run eventually (possibly as FutureTasks, if the stage's dependencies
+   * haven't yet been scheduled).
+   *
+   * locations describes the locations of the stage's dependent's tasks (assumes each stage has
+   * at most one dependent stage).
+   */
+  private def submitStageDrizzle(stage: Stage, locations: Option[Seq[BlockManagerId]] = None) {
+    val jobId = activeJobForStage(stage)
+    if (jobId.isDefined) {
+      logDebug("submitStage(" + stage + ")")
+      if (!runningStages(stage) && !failedStages(stage)) {
+        val missing = getMissingParentStages(stage).sortBy(_.id)
+        logDebug("missing: " + missing)
+        if (!missing.isEmpty) {
+          for (parent <- missing) {
+            stageIdToDependencies.getOrElseUpdate(stage.id, new HashSet()).add(parent)
+            // Don't need to recurse! The dependencies will be scheduled once all of the tasks in
+            // stage have been scheduled.
+          }
+        }
+
+        // Schedule the stage (maybe as future tasks).
+        val scheduleAsFutureTasks = !missing.isEmpty
+        submitMissingTasks(stage, jobId.get, scheduleAsFutureTasks, locations)
+      } else {
+        logInfo(s"DRIZ: didn't submit stage ${stage.id} because it was already in " +
+          s"running ($runningStages) or failed ($failedStages)")
+      }
+    } else {
+      abortStage(stage, "No active job for stage " + stage.id, None)
+    }
+  }
+
+  /**
+   * Called to schedule a stage.
+   *
+   * The stage's tasks may be scheduled as FutureTasks, because the dependencies aren't finished
+   * yet.
+   */
+  private def submitMissingTasks(
+      stage: Stage,
+      jobId: Int,
+      scheduleAsFutureTasks: Boolean = false,
+      locations: Option[Seq[BlockManagerId]] = None) {
     logDebug("submitMissingTasks(" + stage + ")")
     // Get our pending tasks and remember them in our pendingTasks entry
     stage.pendingPartitions.clear()
@@ -1016,13 +1124,13 @@ class DAGScheduler(
     }
 
     val tasks: Seq[Task[_]] = try {
-      stage match {
+      val rawTasks = stage match {
         case stage: ShuffleMapStage =>
           partitionsToCompute.map { id =>
             val locs = taskIdToLocations(id)
             val part = stage.rdd.partitions(id)
             new ShuffleMapTask(stage.id, stage.latestInfo.attemptId,
-              taskBinary, part, locs, stage.internalAccumulators)
+              taskBinary, part, locs, stage.internalAccumulators, locations)
           }
 
         case stage: ResultStage =>
@@ -1035,12 +1143,20 @@ class DAGScheduler(
               taskBinary, part, locs, id, stage.internalAccumulators)
           }
       }
+
+      if (scheduleAsFutureTasks) {
+        rawTasks.map(new FutureTask(_))
+      } else {
+        rawTasks
+      }
     } catch {
       case NonFatal(e) =>
         abortStage(stage, s"Task creation failed: $e\n${e.getStackTraceString}", Some(e))
         runningStages -= stage
         return
     }
+
+    stageToTaskLocations(stage.id) = new Array[String](tasks.length)
 
     if (tasks.size > 0) {
       logInfo("Submitting " + tasks.size + " missing tasks from " + stage + " (" + stage.rdd + ")")
@@ -1187,6 +1303,7 @@ class DAGScheduler(
               logInfo("looking for newly runnable stages")
               logInfo("running: " + runningStages)
               logInfo("waiting: " + waitingStages)
+              logInfo("queued: " + stageIdToDependencies)
               logInfo("failed: " + failedStages)
 
               // We supply true to increment the epoch number here in case this is a
