@@ -31,6 +31,7 @@ private[spark] class TaskDescription(
     val executorId: String,
     val name: String,
     val index: Int,    // Index within this task's TaskSet
+    val isFutureTask: Boolean,
     _serializedTask: ByteBuffer)
   extends Serializable {
 

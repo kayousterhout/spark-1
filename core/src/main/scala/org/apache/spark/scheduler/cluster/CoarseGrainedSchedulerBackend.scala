@@ -223,7 +223,11 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
         }
         else {
           val executorData = executorDataMap(task.executorId)
-          executorData.freeCores -= scheduler.CPUS_PER_TASK
+          if (!task.isFutureTask) {
+            logInfo(s"Task ${task.toString} is not future task, so doing freeCores accounting")
+            // TODO: Also update freeCores once the FutureTask actually starts running!
+            executorData.freeCores -= scheduler.CPUS_PER_TASK
+          }
           executorData.executorEndpoint.send(LaunchTask(new SerializableBuffer(serializedTask)))
         }
       }
