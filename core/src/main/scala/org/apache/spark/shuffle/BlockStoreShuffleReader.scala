@@ -19,7 +19,7 @@ package org.apache.spark.shuffle
 
 import org.apache.spark._
 import org.apache.spark.serializer.Serializer
-import org.apache.spark.storage.{BlockManager, ShuffleBlockFetcherIterator}
+import org.apache.spark.storage.{BlockManager, ShuffleBlockFetcherIterator, ShuffleBlockId}
 import org.apache.spark.util.CompletionIterator
 import org.apache.spark.util.collection.ExternalSorter
 
@@ -38,24 +38,54 @@ private[spark] class BlockStoreShuffleReader[K, C](
 
   private val dep = handle.dependency
 
+  def allLocalBlocks(): Boolean = {
+    (startPartition until endPartition).flatMap { reducerId =>
+      (0 until handle.numMaps).map { mapId =>
+        blockManager.getStatus(
+          ShuffleBlockId(handle.shuffleId, mapId, reducerId)).isDefined
+      }
+    }.forall(x => x)
+  }
+
   /** Read the combined key-values for this reduce task */
   override def read(): Iterator[Product2[K, C]] = {
     // Update the context task metrics for each record read.
     val readMetrics = context.taskMetrics.createShuffleReadMetricsForDependency()
 
-    val mapOutputLocationFetchStartTime = System.currentTimeMillis()
-    val mapOutputLocations =
-      mapOutputTracker.getMapSizesByExecutorId(handle.shuffleId, startPartition, endPartition)
-    readMetrics.incMapOutputLocationsFetchTimeMilis(
-      System.currentTimeMillis() - mapOutputLocationFetchStartTime)
+    // Check if all the blocks are in the local block manager
+    // as it will be for drizzle
+    val blockFetcherItr = if (allLocalBlocks) {
+      // TODO(shivaram): We construct these block ids twice. Refactor this
+      // NOTE(shivaram): We just pass in size as 0L as it doesn't matter for local reads
+      val mapOutputBlockIds = (startPartition until endPartition).flatMap { reduceId =>
+        (0 until handle.numMaps).map { mapId =>
+          (ShuffleBlockId(handle.shuffleId, mapId, reduceId), 0L)
+        }
+      }
+      val mapOutputLocations = Seq((blockManager.blockManagerId, mapOutputBlockIds))
 
-    val blockFetcherItr = new ShuffleBlockFetcherIterator(
-      context,
-      blockManager.shuffleClient,
-      blockManager,
-      mapOutputLocations,
-      // Note: we use getSizeAsMb when no suffix is provided for backwards compatibility
-      SparkEnv.get.conf.getSizeAsMb("spark.reducer.maxSizeInFlight", "48m") * 1024 * 1024)
+      new ShuffleBlockFetcherIterator(
+        context,
+        blockManager.shuffleClient,
+        blockManager,
+        mapOutputLocations,
+        // Note: we use getSizeAsMb when no suffix is provided for backwards compatibility
+        SparkEnv.get.conf.getSizeAsMb("spark.reducer.maxSizeInFlight", "48m") * 1024 * 1024)
+    } else {
+      val mapOutputLocationFetchStartTime = System.currentTimeMillis()
+      val mapOutputLocations =
+        mapOutputTracker.getMapSizesByExecutorId(handle.shuffleId, startPartition, endPartition)
+      readMetrics.incMapOutputLocationsFetchTimeMilis(
+        System.currentTimeMillis() - mapOutputLocationFetchStartTime)
+
+      new ShuffleBlockFetcherIterator(
+        context,
+        blockManager.shuffleClient,
+        blockManager,
+        mapOutputLocations,
+        // Note: we use getSizeAsMb when no suffix is provided for backwards compatibility
+        SparkEnv.get.conf.getSizeAsMb("spark.reducer.maxSizeInFlight", "48m") * 1024 * 1024)
+    }
 
     // Wrap the streams for compression based on configuration
     val wrappedStreams = blockFetcherItr.map { case (blockId, inputStream) =>
