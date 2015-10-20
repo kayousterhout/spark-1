@@ -29,13 +29,6 @@ class Task:
     # TODO: looks like this is never used.
     self.executor_id = task_info["Executor ID"]
 
-    # TODO: add utilization to task metrics output by JSON.
-    self.disk_utilization = {}
-    self.network_bytes_transmitted_ps = 0
-    self.network_bytes_received_ps = 0
-    self.process_cpu_utilization = 0
-    self.total_cpu_utilization = 0
-
     self.shuffle_write_time = 0
     self.shuffle_mb_written = 0
     SHUFFLE_WRITE_METRICS_KEY = "Shuffle Write Metrics"
