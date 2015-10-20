@@ -53,6 +53,8 @@ private[spark] class BlockResult(
     val readMethod: DataReadMethod.Value,
     val bytes: Long)
 
+private[spark] case class FutureTaskInfo(shuffleId: Int, numMaps: Int, reduceId: Int, taskId: Long, taskCb: Unit => Unit)
+
 /**
  * Manager running on every node (driver and executors) which provides interfaces for putting and
  * retrieving blocks both locally and remotely into various stores (memory, disk, and off-heap).
@@ -76,6 +78,11 @@ private[spark] class BlockManager(
   val diskBlockManager = new DiskBlockManager(this, conf)
 
   private val blockInfo = new TimeStampedHashMap[BlockId, BlockInfo]
+
+  // Key is (shuffleId, reduceId)
+  private val futureTaskInfo = new TimeStampedHashMap[(Int, Int), FutureTaskInfo]
+  // Key is (shuffleId, reduceId), value is number of blocks we are still waiting for
+  private val futureTasksBlockWait = new TimeStampedHashMap[(Int, Int), Int]
 
   private val futureExecutionContext = ExecutionContext.fromExecutorService(
     ThreadUtils.newDaemonCachedThreadPool("block-manager-future", 128))
@@ -291,6 +298,21 @@ private[spark] class BlockManager(
     if (task != null) {
       Await.ready(task, Duration.Inf)
     }
+  }
+
+  /**
+   * Submits a future task that will get triggered when all the shuffle blocks have been
+   * copied.
+   */
+  def submitFutureTask(
+      shuffleId: Int,
+      numMaps: Int,
+      reduceId: Int,
+      taskId: Long,
+      taskCb: Unit => Unit): Unit = {
+    futureTaskInfo.put((shuffleId, reduceId), FutureTaskInfo(shuffleId, numMaps, reduceId, taskId, taskCb))
+    // NOTE: Its fine not to synchrnonize here as two future tasks shouldn't be submitted at the same time
+    futureTasksBlockWait.put((shuffleId, reduceId), numMaps)
   }
 
   /**
@@ -882,6 +904,30 @@ private[spark] class BlockManager(
     } else {
       logDebug("Putting block %s without replication took %s"
         .format(blockId, Utils.getUsedTimeMs(startTimeMs)))
+    }
+
+
+    // Check if we need to trigger any of our FutureTasks
+    if (blockId.isShuffle) {
+      val shuffleBlockId = blockId.asInstanceOf[ShuffleBlockId]
+      val key = (shuffleBlockId.shuffleId, shuffleBlockId.reduceId)
+      // NOTE(shivaram): There is some doubled checked locking here
+      // but this avoids the
+      if (futureTaskInfo.contains(key)) {
+        futureTasksBlockWait.synchronized {
+          if (futureTasksBlockWait.contains(key)) {
+            futureTasksBlockWait(key) -= 1
+            if (futureTasksBlockWait(key) == 0) {
+              val cb = futureTaskInfo(key).taskCb
+              futureTasksBlockWait.remove(key)
+              futureTaskInfo.remove(key)
+              // TODO(shivaram): Run this in futureExecutionContext ?
+              // This should be cheap though as its just queuing this
+              cb()
+            }
+          }
+        }
+      }
     }
 
     updatedBlocks

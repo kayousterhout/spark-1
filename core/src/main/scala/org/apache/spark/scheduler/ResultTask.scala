@@ -58,7 +58,7 @@ private[spark] class ResultTask[T, U](
 
   var func: (TaskContext, Iterator[T]) => U = null
 
-  override def prepTask(context: TaskContext): Unit = {
+  override def prepTask(): Unit = {
     // Deserialize the RDD and the func using the broadcast variables.
     val deserializeStartTime = System.currentTimeMillis()
     val ser = SparkEnv.get.closureSerializer.newInstance()
@@ -72,7 +72,7 @@ private[spark] class ResultTask[T, U](
 
   override def runTask(context: TaskContext): U = {
     if (func == null || rdd == null) {
-      prepTask(context)
+      prepTask()
     }
     metrics = Some(context.taskMetrics)
     func(context, rdd.iterator(partition, context))

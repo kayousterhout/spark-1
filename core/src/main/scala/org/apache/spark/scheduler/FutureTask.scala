@@ -20,6 +20,7 @@ package org.apache.spark.scheduler
 import java.nio.ByteBuffer
 
 import scala.language.existentials
+import scala.collection.mutable.{HashSet, Stack}
 
 import org.apache.spark._
 import org.apache.spark.broadcast.Broadcast
@@ -37,8 +38,8 @@ private[spark] class FutureTask[U](
   extends Task[U](task.stageId, task.stageAttemptId, task.partitionId, 
     task.internalAccumulators) {
 
-  override def prepTask(context: TaskContext) = {
-    task.prepTask(context)
+  override def prepTask() = {
+    task.prepTask()
   }
 
   override def runTask(context: TaskContext): U = {
@@ -50,4 +51,50 @@ private[spark] class FutureTask[U](
   override def preferredLocations: Seq[TaskLocation] = task.preferredLocations
 
   override def toString: String = "FutureTask(%s)".format(task.toString)
+
+  // Returns the earliest shuffle dependency encountered while walking up the DAG
+  // from the RDD being computed by the Task.
+  // Returns None if no such dependency exists
+
+  // NOTE: prepTask should be called before this method ?
+  // Or should we just call prepTask inside this method ?
+  def getFirstShuffleDep: Option[ShuffleDependency[_, _, _]] = {
+    val rddToCompute = task match {
+      case smt: ShuffleMapTask => smt.rdd
+      case rt: ResultTask[_, _] => rt.rdd
+      case _ => return null
+    }
+
+    if (rddToCompute == null) {
+      return None
+    }
+
+    val visited = new HashSet[RDD[_]]
+    var shuffleDep: Option[ShuffleDependency[_, _, _]] = None
+
+    // We are manually maintaining a stack here to prevent StackOverflowError
+    // caused by recursively visiting
+    val waitingForVisit = new Stack[RDD[_]]
+    def visit(r: RDD[_]) {
+      if (!visited(r)) {
+        visited += r
+        for (dep <- r.dependencies) {
+          dep match {
+            case shufDep: ShuffleDependency[_, _, _] =>
+              shuffleDep = Some(shufDep)
+            case _ =>
+          }
+          waitingForVisit.push(dep.rdd)
+        }
+      }
+    }
+
+    waitingForVisit.push(rddToCompute)
+    // Wait only for the first shuffleDep
+    while (waitingForVisit.nonEmpty && shuffleDep.isEmpty) {
+      visit(waitingForVisit.pop())
+    }
+    shuffleDep
+  }
+
 }

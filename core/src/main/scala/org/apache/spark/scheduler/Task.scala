@@ -109,7 +109,7 @@ private[spark] abstract class Task[T](
     this.taskMemoryManager = taskMemoryManager
   }
 
-  def prepTask(context: TaskContext): Unit
+  def prepTask(): Unit
 
   def runTask(context: TaskContext): T
 

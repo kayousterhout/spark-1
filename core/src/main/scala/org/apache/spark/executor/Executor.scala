@@ -30,8 +30,9 @@ import scala.util.control.NonFatal
 import org.apache.spark._
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.deploy.SparkHadoopUtil
-import org.apache.spark.scheduler.{DirectTaskResult, IndirectTaskResult, Task}
-import org.apache.spark.shuffle.FetchFailedException
+import org.apache.spark.scheduler.{DirectTaskResult, IndirectTaskResult, Task, FutureTask}
+import org.apache.spark.serializer.SerializerInstance
+import org.apache.spark.shuffle.{FetchFailedException, BaseShuffleHandle}
 import org.apache.spark.storage.{StorageLevel, TaskResultBlockId}
 import org.apache.spark.unsafe.memory.TaskMemoryManager
 import org.apache.spark.util._
@@ -123,7 +124,20 @@ private[spark] class Executor(
       taskName: String,
       serializedTask: ByteBuffer): Unit = {
     val tr = new TaskRunner(context, taskId = taskId, attemptNumber = attemptNumber, taskName,
-      serializedTask)
+      Some(serializedTask))
+    runningTasks.put(taskId, tr)
+    threadPool.execute(tr)
+  }
+
+  def launchFutureTask(
+      context: ExecutorBackend,
+      taskId: Long,
+      attemptNumber: Int,
+      taskName: String,
+      futureTask: FutureTask[_]): Unit = {
+    val tr = new FutureTaskRunner(context, taskId = taskId, attemptNumber = attemptNumber, taskName,
+      futureTask)
+    // TODO: Send an update here to the driver that we are executing this task ?
     runningTasks.put(taskId, tr)
     threadPool.execute(tr)
   }
@@ -151,16 +165,105 @@ private[spark] class Executor(
     ManagementFactory.getGarbageCollectorMXBeans.asScala.map(_.getCollectionTime).sum
   }
 
+  def runDeserializedTask(
+      execBackend: ExecutorBackend,
+      task: Task[_],
+      taskName: String,
+      attemptNumber: Int,
+      taskId: Long,
+      deserializeStartTime: Long,
+      startGCTime: Long,
+      ser: SerializerInstance): Unit = {
+    val taskMemoryManager = new TaskMemoryManager(env.executorMemoryManager)
+    execBackend.statusUpdate(taskId, TaskState.RUNNING, EMPTY_BYTE_BUFFER)
+    task.setTaskMemoryManager(taskMemoryManager)
+
+    logDebug("Task " + taskId + "'s epoch is " + task.epoch)
+    env.mapOutputTracker.updateEpoch(task.epoch)
+
+    // Run the actual task and measure its runtime.
+    val taskStart = System.currentTimeMillis()
+    var threwException = true
+    val (value, accumUpdates) = try {
+      val res = task.run(
+        taskAttemptId = taskId,
+        attemptNumber = attemptNumber,
+        metricsSystem = env.metricsSystem)
+      threwException = false
+      res
+    } finally {
+      val freedMemory = taskMemoryManager.cleanUpAllAllocatedMemory()
+      if (freedMemory > 0) {
+        val errMsg = s"Managed memory leak detected; size = $freedMemory bytes, TID = $taskId"
+        if (conf.getBoolean("spark.unsafe.exceptionOnMemoryLeak", false) && !threwException) {
+          throw new SparkException(errMsg)
+        } else {
+          logError(errMsg)
+        }
+      }
+    }
+    val taskFinish = System.currentTimeMillis()
+
+    // If the task has been killed, let's fail it.
+    if (task.killed) {
+      throw new TaskKilledException
+    }
+
+    val resultSer = env.serializer.newInstance()
+    val beforeSerialization = System.currentTimeMillis()
+    val valueBytes = resultSer.serialize(value)
+    val afterSerialization = System.currentTimeMillis()
+
+    for (m <- task.metrics) {
+      // Deserialization happens in two parts: first, we deserialize a Task object, which
+      // includes the Partition. Second, Task.run() deserializes the RDD and function to be run.
+      m.setExecutorDeserializeTime(
+        (taskStart - deserializeStartTime) + task.executorDeserializeTime)
+      m.broadcastBlockedNanos = Broadcast.blockedNanos.get()
+      // We need to subtract Task.run()'s deserialization time to avoid double-counting
+      m.setExecutorRunTime((taskFinish - taskStart) - task.executorDeserializeTime)
+      m.setJvmGCTime(computeTotalGcTime() - startGCTime)
+      m.setResultSerializationTime(afterSerialization - beforeSerialization)
+      m.updateAccumulators()
+    }
+
+    val directResult = new DirectTaskResult(valueBytes, accumUpdates, task.metrics.orNull)
+    val serializedDirectResult = ser.serialize(directResult)
+    val resultSize = serializedDirectResult.limit
+
+    // directSend = sending directly back to the driver
+    val serializedResult: ByteBuffer = {
+      if (maxResultSize > 0 && resultSize > maxResultSize) {
+        logWarning(s"Finished $taskName (TID $taskId). Result is larger than maxResultSize " +
+          s"(${Utils.bytesToString(resultSize)} > ${Utils.bytesToString(maxResultSize)}), " +
+          s"dropping it.")
+        ser.serialize(new IndirectTaskResult[Any](TaskResultBlockId(taskId), resultSize))
+      } else if (resultSize >= akkaFrameSize - AkkaUtils.reservedSizeBytes) {
+        val blockId = TaskResultBlockId(taskId)
+        env.blockManager.putBytes(
+          blockId, serializedDirectResult, StorageLevel.MEMORY_AND_DISK_SER)
+        logInfo(
+          s"Finished $taskName (TID $taskId). $resultSize bytes result sent via BlockManager)")
+        ser.serialize(new IndirectTaskResult[Any](blockId, resultSize))
+      } else {
+        logInfo(s"Finished $taskName (TID $taskId). $resultSize bytes result sent to driver")
+        serializedDirectResult
+      }
+    }
+
+    execBackend.statusUpdate(taskId, TaskState.FINISHED, serializedResult)
+  }
+
   class TaskRunner(
       execBackend: ExecutorBackend,
       val taskId: Long,
       val attemptNumber: Int,
       taskName: String,
-      serializedTask: ByteBuffer)
+      serializedTask: Option[ByteBuffer])
     extends Runnable {
 
     /** Whether this task has been killed. */
-    @volatile private var killed = false
+    @volatile var killed = false
 
     /** How much the JVM process has spent in GC when the task starts to run. */
     @volatile var startGCTime: Long = _
@@ -180,12 +283,10 @@ private[spark] class Executor(
     }
 
     override def run(): Unit = {
-      val taskMemoryManager = new TaskMemoryManager(env.executorMemoryManager)
       val deserializeStartTime = System.currentTimeMillis()
       Thread.currentThread.setContextClassLoader(replClassLoader)
       val ser = env.closureSerializer.newInstance()
       logInfo(s"Running $taskName (TID $taskId)")
-      execBackend.statusUpdate(taskId, TaskState.RUNNING, EMPTY_BYTE_BUFFER)
       var taskStart: Long = 0
       startGCTime = computeTotalGcTime()
 
@@ -193,11 +294,9 @@ private[spark] class Executor(
       Broadcast.blockedNanos.set(0L)
 
       try {
-        val (taskFiles, taskJars, taskBytes) = Task.deserializeWithDependencies(serializedTask)
+        val (taskFiles, taskJars, taskBytes) = Task.deserializeWithDependencies(serializedTask.get)
         updateDependencies(taskFiles, taskJars)
         task = ser.deserialize[Task[Any]](taskBytes, Thread.currentThread.getContextClassLoader)
-        task.setTaskMemoryManager(taskMemoryManager)
-
         // If this task has been killed before we deserialized it, let's quit now. Otherwise,
         // continue executing the task.
         if (killed) {
@@ -208,81 +307,106 @@ private[spark] class Executor(
           throw new TaskKilledException
         }
 
-        logDebug("Task " + taskId + "'s epoch is " + task.epoch)
-        env.mapOutputTracker.updateEpoch(task.epoch)
+        // If this is a future task, check if there is a shuffle dependency
+        // behind it
+        if (task.isInstanceOf[FutureTask[_]]) {
+          // Check if there is a shuffle dependency here and if so ask the
+          // block manager to schedule this task once it gets the inputs
+          val futureTask = task.asInstanceOf[FutureTask[_]]
+          futureTask.prepTask()
 
-        // Run the actual task and measure its runtime.
-        taskStart = System.currentTimeMillis()
-        var threwException = true
-        val (value, accumUpdates) = try {
-          val res = task.run(
-            taskAttemptId = taskId,
-            attemptNumber = attemptNumber,
-            metricsSystem = env.metricsSystem)
-          threwException = false
-          res
-        } finally {
-          val freedMemory = taskMemoryManager.cleanUpAllAllocatedMemory()
-          if (freedMemory > 0) {
-            val errMsg = s"Managed memory leak detected; size = $freedMemory bytes, TID = $taskId"
-            if (conf.getBoolean("spark.unsafe.exceptionOnMemoryLeak", false) && !threwException) {
-              throw new SparkException(errMsg)
-            } else {
-              logError(errMsg)
-            }
+          val shuffleDep = futureTask.getFirstShuffleDep
+          if (!shuffleDep.isEmpty) {
+            val baseShuffleHandle = shuffleDep.get.shuffleHandle.asInstanceOf[BaseShuffleHandle[_, _, _]]
+            env.blockManager.submitFutureTask(baseShuffleHandle.shuffleId, baseShuffleHandle.numMaps,
+              futureTask.partitionId, taskId, (a: Unit) => launchFutureTask(execBackend, taskId,
+                attemptNumber, taskName, futureTask))
+            // TODO(shivaram): Should we send some status update here ?
+            return
           }
         }
-        val taskFinish = System.currentTimeMillis()
 
-        // If the task has been killed, let's fail it.
-        if (task.killed) {
+        runDeserializedTask(execBackend, task, taskName, attemptNumber, taskId, deserializeStartTime, startGCTime, ser)
+      } catch {
+        case ffe: FetchFailedException =>
+          val reason = ffe.toTaskEndReason
+          execBackend.statusUpdate(taskId, TaskState.FAILED, ser.serialize(reason))
+
+        case _: TaskKilledException | _: InterruptedException if task.killed =>
+          logInfo(s"Executor killed $taskName (TID $taskId)")
+          execBackend.statusUpdate(taskId, TaskState.KILLED, ser.serialize(TaskKilled))
+
+        case cDE: CommitDeniedException =>
+          val reason = cDE.toTaskEndReason
+          execBackend.statusUpdate(taskId, TaskState.FAILED, ser.serialize(reason))
+
+        case t: Throwable =>
+          // Attempt to exit cleanly by informing the driver of our failure.
+          // If anything goes wrong (or this was a fatal exception), we will delegate to
+          // the default uncaught exception handler, which will terminate the Executor.
+          logError(s"Exception in $taskName (TID $taskId)", t)
+
+          val metrics: Option[TaskMetrics] = Option(task).flatMap { task =>
+            task.metrics.map { m =>
+              m.setExecutorRunTime(System.currentTimeMillis() - taskStart)
+              m.setJvmGCTime(computeTotalGcTime() - startGCTime)
+              m.updateAccumulators()
+              m
+            }
+          }
+          val serializedTaskEndReason = {
+            try {
+              ser.serialize(new ExceptionFailure(t, metrics))
+            } catch {
+              case _: NotSerializableException =>
+                // t is not serializable so just send the stacktrace
+                ser.serialize(new ExceptionFailure(t, metrics, false))
+            }
+          }
+          execBackend.statusUpdate(taskId, TaskState.FAILED, serializedTaskEndReason)
+
+          // Don't forcibly exit unless the exception was inherently fatal, to avoid
+          // stopping other tasks unnecessarily.
+          if (Utils.isFatalError(t)) {
+            SparkUncaughtExceptionHandler.uncaughtException(t)
+          }
+      } finally {
+        runningTasks.remove(taskId)
+      }
+    }
+  }
+
+  class FutureTaskRunner(
+      execBackend: ExecutorBackend,
+      taskId: Long,
+      attemptNumber: Int,
+      taskName: String,
+      futureTask: FutureTask[_])
+    extends TaskRunner(execBackend, taskId, attemptNumber, taskName, None)  {
+
+    override def run(): Unit = {
+      Thread.currentThread.setContextClassLoader(replClassLoader)
+      val ser = env.closureSerializer.newInstance()
+
+      logInfo(s"Running $taskName (TID $taskId)")
+      var taskStart: Long = 0
+      startGCTime = computeTotalGcTime()
+
+      // Reset broadcast time before doing any task deserialization.
+      Broadcast.blockedNanos.set(0L)
+
+      try {
+        // If this task has been killed before we deserialized it, let's quit now. Otherwise,
+        // continue executing the task.
+        if (killed) {
+          // Throw an exception rather than returning, because returning within a try{} block
+          // causes a NonLocalReturnControl exception to be thrown. The NonLocalReturnControl
+          // exception will be caught by the catch block, leading to an incorrect ExceptionFailure
+          // for the task.
           throw new TaskKilledException
         }
 
-        val resultSer = env.serializer.newInstance()
-        val beforeSerialization = System.currentTimeMillis()
-        val valueBytes = resultSer.serialize(value)
-        val afterSerialization = System.currentTimeMillis()
-
-        for (m <- task.metrics) {
-          // Deserialization happens in two parts: first, we deserialize a Task object, which
-          // includes the Partition. Second, Task.run() deserializes the RDD and function to be run.
-          m.setExecutorDeserializeTime(
-            (taskStart - deserializeStartTime) + task.executorDeserializeTime)
-          m.broadcastBlockedNanos = Broadcast.blockedNanos.get()
-          // We need to subtract Task.run()'s deserialization time to avoid double-counting
-          m.setExecutorRunTime((taskFinish - taskStart) - task.executorDeserializeTime)
-          m.setJvmGCTime(computeTotalGcTime() - startGCTime)
-          m.setResultSerializationTime(afterSerialization - beforeSerialization)
-          m.updateAccumulators()
-        }
-
-        val directResult = new DirectTaskResult(valueBytes, accumUpdates, task.metrics.orNull)
-        val serializedDirectResult = ser.serialize(directResult)
-        val resultSize = serializedDirectResult.limit
-
-        // directSend = sending directly back to the driver
-        val serializedResult: ByteBuffer = {
-          if (maxResultSize > 0 && resultSize > maxResultSize) {
-            logWarning(s"Finished $taskName (TID $taskId). Result is larger than maxResultSize " +
-              s"(${Utils.bytesToString(resultSize)} > ${Utils.bytesToString(maxResultSize)}), " +
-              s"dropping it.")
-            ser.serialize(new IndirectTaskResult[Any](TaskResultBlockId(taskId), resultSize))
-          } else if (resultSize >= akkaFrameSize - AkkaUtils.reservedSizeBytes) {
-            val blockId = TaskResultBlockId(taskId)
-            env.blockManager.putBytes(
-              blockId, serializedDirectResult, StorageLevel.MEMORY_AND_DISK_SER)
-            logInfo(
-              s"Finished $taskName (TID $taskId). $resultSize bytes result sent via BlockManager)")
-            ser.serialize(new IndirectTaskResult[Any](blockId, resultSize))
-          } else {
-            logInfo(s"Finished $taskName (TID $taskId). $resultSize bytes result sent to driver")
-            serializedDirectResult
-          }
-        }
-
-        execBackend.statusUpdate(taskId, TaskState.FINISHED, serializedResult)
-
+        runDeserializedTask(execBackend, futureTask, taskName, attemptNumber, taskId, 0, startGCTime, ser)
       } catch {
         case ffe: FetchFailedException =>
           val reason = ffe.toTaskEndReason
@@ -332,6 +456,7 @@ private[spark] class Executor(
       }
     }
   }
+
 
   /**
    * Create a ClassLoader for use in tasks, adding any JARs specified by the user or any classes

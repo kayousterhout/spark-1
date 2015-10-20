@@ -25,6 +25,9 @@ import org.apache.spark._
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
 import org.apache.spark.shuffle.ShuffleWriter
+import org.apache.spark.storage.BlockManagerId
+import org.apache.spark.storage.ShuffleBlockId
+import org.apache.spark.storage.StorageLevel
 
 /**
 * A ShuffleMapTask divides the elements of an RDD into multiple buckets (based on a partitioner
@@ -37,6 +40,8 @@ import org.apache.spark.shuffle.ShuffleWriter
  *                   the type should be (RDD[_], ShuffleDependency[_, _, _]).
  * @param partition partition of the RDD this task is associated with
  * @param locs preferred task execution locations for locality scheduling
+ * @param nextStageLocs task locations of next stage (for future tasks in Drizzle)
+ *        TODO: Can we send BlockManagerIds or is that too expensive ?
  */
 private[spark] class ShuffleMapTask(
     stageId: Int,
@@ -44,7 +49,8 @@ private[spark] class ShuffleMapTask(
     taskBinary: Broadcast[Array[Byte]],
     partition: Partition,
     @transient private var locs: Seq[TaskLocation],
-    internalAccumulators: Seq[Accumulator[Long]])
+    internalAccumulators: Seq[Accumulator[Long]],
+    nextStageLocs: Option[Seq[BlockManagerId]] = None)
   extends Task[MapStatus](stageId, stageAttemptId, partition.index, internalAccumulators)
   with Logging {
 
@@ -61,7 +67,7 @@ private[spark] class ShuffleMapTask(
 
   var dep: ShuffleDependency[_, _, _] = null
 
-  override def prepTask(context: TaskContext): Unit = {
+  override def prepTask(): Unit = {
     // Deserialize the RDD using the broadcast variable.
     val deserializeStartTime = System.currentTimeMillis()
     val ser = SparkEnv.get.closureSerializer.newInstance()
@@ -74,7 +80,7 @@ private[spark] class ShuffleMapTask(
 
   override def runTask(context: TaskContext): MapStatus = {
     if (dep == null || rdd == null) {
-      prepTask(context)
+      prepTask()
     }
 
     metrics = Some(context.taskMetrics)
@@ -83,7 +89,24 @@ private[spark] class ShuffleMapTask(
       val manager = SparkEnv.get.shuffleManager
       writer = manager.getWriter[Any, Any](dep.shuffleHandle, partitionId, context)
       writer.write(rdd.iterator(partition, context).asInstanceOf[Iterator[_ <: Product2[Any, Any]]])
-      writer.stop(success = true).get
+      val status = writer.stop(success = true).get
+
+      // If we have locations for next stage push map outputs to those block managers
+      // TODO(shivaram): These calls are all non-blocking. Should we wait for any of them ?
+      if (!nextStageLocs.isEmpty && dep.partitioner.numPartitions == nextStageLocs.get.length) {
+        // NOTE(shivaram): Assumes reduce ids are from 0 to n-1
+        nextStageLocs.get.zipWithIndex.foreach { case (loc, reduceId) =>
+          val blockId = ShuffleBlockId(dep.shuffleId, partitionId, reduceId)
+          SparkEnv.get.blockTransferService.uploadBlock(
+            loc.host,
+            loc.port,
+            loc.executorId,
+            blockId,
+            SparkEnv.get.shuffleManager.shuffleBlockResolver.getBlockData(blockId),
+            StorageLevel.DISK_ONLY)
+        }
+      }
+      status
     } catch {
       case e: Exception =>
         try {
