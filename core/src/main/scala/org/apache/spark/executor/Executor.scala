@@ -310,7 +310,7 @@ private[spark] class Executor(
         // If this is a future task, check if there is a shuffle dependency
         // behind it
         if (task.isInstanceOf[FutureTask[_]]) {
-          logDebug(s"Got future task with id $taskId and name $taskName")
+          logDebug(s"DRIZ: Got future task with id $taskId and name $taskName")
           // Check if there is a shuffle dependency here and if so ask the
           // block manager to schedule this task once it gets the inputs
           val futureTask = task.asInstanceOf[FutureTask[_]]
@@ -319,13 +319,15 @@ private[spark] class Executor(
           val shuffleDep = futureTask.getFirstShuffleDep
           if (!shuffleDep.isEmpty) {
             val baseShuffleHandle = shuffleDep.get.shuffleHandle.asInstanceOf[BaseShuffleHandle[_, _, _]]
-            logDebug(s"Future task $taskId shuffleDep is not empty. Queuing with $baseShuffleHandle.numMaps")
+            logDebug(s"DRIZ: Future task $taskId shuffleDep is not empty. Queuing with ${baseShuffleHandle.numMaps}")
             env.blockManager.submitFutureTask(baseShuffleHandle.shuffleId, baseShuffleHandle.numMaps,
               futureTask.partitionId, taskId, (a: Unit) => launchFutureTask(execBackend, taskId,
                 attemptNumber, taskName, futureTask))
             // TODO(shivaram): Should we send some status update here ?
             return
           }
+        } else {
+          logDebug(s"DRIZ: NOT a future task with id $taskId and name $taskName")
         }
 
         runDeserializedTask(execBackend, task, taskName, attemptNumber, taskId, deserializeStartTime, startGCTime, ser)

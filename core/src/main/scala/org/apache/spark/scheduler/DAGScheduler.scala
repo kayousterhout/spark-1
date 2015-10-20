@@ -812,7 +812,7 @@ class DAGScheduler(
       locationsForStage(task.partitionId) = taskInfo.executorId
 
       logInfo(s"DRIZ: Task ${task.partitionId} scheduled on ${taskInfo.executorId}. Locations " +
-        s"for stage is now $locationsForStage")
+        s"for stage is now ${locationsForStage.mkString(",")}")
 
       if (locationsForStage.filter(_ == null).length == 0) {
         // All of the stage's tasks have been scheduled, so schedule its dependencies.
@@ -822,13 +822,16 @@ class DAGScheduler(
         }
         val stageId = task.stageId
         logInfo(s"DRIZ: All tasks for stage $stageId have been scheduled, so scheduling " +
-          s"dependencies using locations $locationsForStage (translated to $blockManagerIds)")
+          s"dependencies using locations ${locationsForStage.mkString(",")} " + 
+          s"(translated to ${blockManagerIds.mkString(",")})")
 
         // Schedule all of the stage's dependencies.
         // TODO: If stageId isn't in here, we did something wrong. Fail gracefully.
-        val dependencies = stageIdToDependencies(stageId)
-        stageIdToDependencies.remove(stageId)
-        dependencies.foreach(submitStage(_, Some(blockManagerIds)))
+        if (stageIdToDependencies.contains(stageId)) {
+          val dependencies = stageIdToDependencies(stageId)
+          stageIdToDependencies.remove(stageId)
+          dependencies.foreach(submitStage(_, Some(blockManagerIds)))
+        }
       }
     } else {
       submitWaitingStages()
