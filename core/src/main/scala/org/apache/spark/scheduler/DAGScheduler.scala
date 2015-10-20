@@ -817,8 +817,7 @@ class DAGScheduler(
       if (locationsForStage.filter(_ == null).length == 0) {
         // All of the stage's tasks have been scheduled, so schedule its dependencies.
         val blockManagerIds = locationsForStage.map { executorId =>
-          val (host, port) = blockManagerMaster.getRpcHostPortForExecutor(executorId).get
-          BlockManagerId(executorId, host, port)
+          blockManagerMaster.getBlockManagerIdForExecutor(executorId)
         }
         val stageId = task.stageId
         logInfo(s"DRIZ: All tasks for stage $stageId have been scheduled, so scheduling " +
