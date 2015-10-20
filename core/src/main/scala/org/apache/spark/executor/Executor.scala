@@ -310,6 +310,7 @@ private[spark] class Executor(
         // If this is a future task, check if there is a shuffle dependency
         // behind it
         if (task.isInstanceOf[FutureTask[_]]) {
+          logDebug(s"Got future task with id $taskId and name $taskName")
           // Check if there is a shuffle dependency here and if so ask the
           // block manager to schedule this task once it gets the inputs
           val futureTask = task.asInstanceOf[FutureTask[_]]
@@ -318,6 +319,7 @@ private[spark] class Executor(
           val shuffleDep = futureTask.getFirstShuffleDep
           if (!shuffleDep.isEmpty) {
             val baseShuffleHandle = shuffleDep.get.shuffleHandle.asInstanceOf[BaseShuffleHandle[_, _, _]]
+            logDebug(s"Future task $taskId shuffleDep is not empty. Queuing with $baseShuffleHandle.numMaps")
             env.blockManager.submitFutureTask(baseShuffleHandle.shuffleId, baseShuffleHandle.numMaps,
               futureTask.partitionId, taskId, (a: Unit) => launchFutureTask(execBackend, taskId,
                 attemptNumber, taskName, futureTask))
@@ -388,7 +390,7 @@ private[spark] class Executor(
       Thread.currentThread.setContextClassLoader(replClassLoader)
       val ser = env.closureSerializer.newInstance()
 
-      logInfo(s"Running $taskName (TID $taskId)")
+      logInfo(s"Running FutureTask $taskName (TID $taskId)")
       var taskStart: Long = 0
       startGCTime = computeTotalGcTime()
 

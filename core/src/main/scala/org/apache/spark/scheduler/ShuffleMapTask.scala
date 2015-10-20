@@ -91,12 +91,14 @@ private[spark] class ShuffleMapTask(
       writer.write(rdd.iterator(partition, context).asInstanceOf[Iterator[_ <: Product2[Any, Any]]])
       val status = writer.stop(success = true).get
 
+      logDebug("In ShuffleMapTask $taskId, got $nextStageLocs.map(_.size).getOrElse(0)")
       // If we have locations for next stage push map outputs to those block managers
       // TODO(shivaram): These calls are all non-blocking. Should we wait for any of them ?
       if (!nextStageLocs.isEmpty && dep.partitioner.numPartitions == nextStageLocs.get.length) {
         // NOTE(shivaram): Assumes reduce ids are from 0 to n-1
         nextStageLocs.get.zipWithIndex.foreach { case (loc, reduceId) =>
           val blockId = ShuffleBlockId(dep.shuffleId, partitionId, reduceId)
+          logDebug(s"Sending $blockId to $loc")
           SparkEnv.get.blockTransferService.uploadBlock(
             loc.host,
             loc.port,

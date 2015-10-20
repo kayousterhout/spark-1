@@ -911,18 +911,25 @@ private[spark] class BlockManager(
     if (blockId.isShuffle) {
       val shuffleBlockId = blockId.asInstanceOf[ShuffleBlockId]
       val key = (shuffleBlockId.shuffleId, shuffleBlockId.reduceId)
+      logDebug(
+        s"Checking for shuffle $shuffleBlockId.shuffleId and reduce $shuffleBlockId.reduceId")
       // NOTE(shivaram): There is some doubled checked locking here
       // but this avoids the
       if (futureTaskInfo.contains(key)) {
         futureTasksBlockWait.synchronized {
+          logDebug(s"Found FT for shuffle $shuffleBlockId.shuffleId and reduce $shuffleBlockId.reduceId")
           if (futureTasksBlockWait.contains(key)) {
             futureTasksBlockWait(key) -= 1
+            logDebug(s"FT for shuffle $shuffleBlockId.shuffleId, reduce $shuffleBlockId.reduceId " +
+              "waiting for $futureTasksBlockWait(key) maps")
             if (futureTasksBlockWait(key) == 0) {
               val cb = futureTaskInfo(key).taskCb
               futureTasksBlockWait.remove(key)
               futureTaskInfo.remove(key)
               // TODO(shivaram): Run this in futureExecutionContext ?
               // This should be cheap though as its just queuing this
+              logDebug(s"All maps recv. Running taskf ro shuffle $shuffleBlockId.shuffleId, reduce "
+                + "$shuffleBlockId.reduceId")
               cb()
             }
           }
