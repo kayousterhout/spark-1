@@ -1226,7 +1226,10 @@ class DAGScheduler(
    * modify the scheduler's internal state. Use taskEnded() to post a task end event from outside.
    */
   private[scheduler] def handleTaskCompletion(event: CompletionEvent) {
-    val task = event.task
+    val task = event.task match {
+      case f: FutureTask[_] => f.task
+      case _ => event.task
+    }
     val stageId = task.stageId
     val taskType = Utils.getFormattedClassName(task)
 

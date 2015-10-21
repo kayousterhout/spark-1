@@ -59,7 +59,7 @@ private[spark] class BlockStoreShuffleReader[K, C](
       // NOTE(shivaram): We just pass in size as 0L as it doesn't matter for local reads
       val mapOutputBlockIds = (startPartition until endPartition).flatMap { reduceId =>
         (0 until handle.numMaps).map { mapId =>
-          (ShuffleBlockId(handle.shuffleId, mapId, reduceId), 0L)
+          (ShuffleBlockId(handle.shuffleId, mapId, reduceId), 1L)
         }
       }
       val mapOutputLocations = Seq((blockManager.blockManagerId, mapOutputBlockIds))

@@ -97,15 +97,19 @@ private[spark] class ShuffleMapTask(
       if (!nextStageLocs.isEmpty && dep.partitioner.numPartitions == nextStageLocs.get.length) {
         // NOTE(shivaram): Assumes reduce ids are from 0 to n-1
         nextStageLocs.get.zipWithIndex.foreach { case (loc, reduceId) =>
-          val blockId = ShuffleBlockId(dep.shuffleId, partitionId, reduceId)
-          logDebug(s"DRIZ: Sending $blockId to $loc")
-          SparkEnv.get.blockTransferService.uploadBlock(
-            loc.host,
-            loc.port,
-            loc.executorId,
-            blockId,
-            SparkEnv.get.shuffleManager.shuffleBlockResolver.getBlockData(blockId),
-            StorageLevel.DISK_ONLY)
+          // TODO(shivaram): Don't make this copy if loc is same as local block manager
+          //if (loc != SparkEnv.get.blockManager.blockManagerId) {
+            val blockId = ShuffleBlockId(dep.shuffleId, partitionId, reduceId)
+            logDebug(s"DRIZ: Sending $blockId to $loc")
+            SparkEnv.get.blockTransferService.uploadBlock(
+              loc.host,
+              loc.port,
+              loc.executorId,
+              blockId,
+              SparkEnv.get.shuffleManager.shuffleBlockResolver.getBlockData(blockId),
+              // TODO: Will this get freed correctly ??
+              StorageLevel.MEMORY_ONLY)
+          //}
         }
       }
       status

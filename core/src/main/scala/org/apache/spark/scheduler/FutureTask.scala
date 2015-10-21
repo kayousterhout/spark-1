@@ -34,7 +34,7 @@ import org.apache.spark.shuffle.ShuffleWriter
  * @param stageId id of the stage this task belongs to
  */
 private[spark] class FutureTask[U](
-    task: Task[U])
+    val task: Task[U])
   extends Task[U](task.stageId, task.stageAttemptId, task.partitionId, 
     task.internalAccumulators) {
 
