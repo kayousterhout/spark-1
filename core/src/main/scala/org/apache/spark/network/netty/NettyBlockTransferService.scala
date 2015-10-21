@@ -133,6 +133,8 @@ class NettyBlockTransferService(conf: SparkConf, securityManager: SecurityManage
       data
     }
 
+    logDebug(s"Uploading block $blockId with size ${array.size} to $hostname")
+
     client.sendRpc(new UploadBlock(appId, execId, blockId.toString, levelBytes, array).toByteArray,
       new RpcResponseCallback {
         override def onSuccess(response: Array[Byte]): Unit = {
