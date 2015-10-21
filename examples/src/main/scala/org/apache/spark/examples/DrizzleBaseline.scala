@@ -8,11 +8,17 @@ import org.apache.spark._
 object DrizzleBaseline {
   def main(args: Array[String]) {
     val NUM_TRIALS = 5
-    val conf = new SparkConf().setAppName("Drizzle Baseline")
-    val sc = new SparkContext(conf)
     val slices = if (args.length > 0) args(0).toInt else 2
     val depth = if (args.length > 1) args(1).toInt else 3    
     val n = math.min(1000000L * slices, Long.MaxValue).toInt // avoid overflow
+
+    val conf = new SparkConf()
+    if (conf.getBoolean("spark.scheduler.drizzle", true)) {
+      conf.setAppName("Drizzle")
+    } else {
+      conf.setAppName("Baseline")
+    }
+    val sc = new SparkContext(conf)
 
     // Let all the executors join
     Thread.sleep(5000)
