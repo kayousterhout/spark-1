@@ -91,7 +91,11 @@ private[spark] class MemoryStore(blockManager: BlockManager, maxMemory: Long)
     val bytes = _bytes.duplicate()
     bytes.rewind()
     if (level.deserialized) {
-      val values = blockManager.dataDeserialize(blockId, bytes)
+      val values = if (bytes.hasRemaining()) {
+        blockManager.dataDeserialize(blockId, bytes)
+      } else {
+        Iterator.empty.asInstanceOf[Iterator[Any]]
+      }
       putIterator(blockId, values, level, returnValues = true)
     } else {
       val putAttempt = tryToPut(blockId, bytes, bytes.limit, deserialized = false)

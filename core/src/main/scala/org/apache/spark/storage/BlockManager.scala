@@ -310,9 +310,22 @@ private[spark] class BlockManager(
       reduceId: Int,
       taskId: Long,
       taskCb: Unit => Unit): Unit = {
-    futureTaskInfo.put((shuffleId, reduceId), FutureTaskInfo(shuffleId, numMaps, reduceId, taskId, taskCb))
-    // NOTE: Its fine not to synchrnonize here as two future tasks shouldn't be submitted at the same time
-    futureTasksBlockWait.put((shuffleId, reduceId), numMaps)
+    // Check if all the blocks already exist. If so just trigger taskCb
+
+    val allLocalBlocks = 
+      (0 until numMaps).map { mapId =>
+        getStatus(
+          ShuffleBlockId(shuffleId, mapId, reduceId)).isDefined
+      }.forall(x => x)
+
+    if (allLocalBlocks) {
+      logDebug(s"DRIZ: All blocks already exists for FutureTask $taskId. Returning")
+      taskCb()
+    } else {
+      futureTaskInfo.put((shuffleId, reduceId), FutureTaskInfo(shuffleId, numMaps, reduceId, taskId, taskCb))
+      // NOTE: Its fine not to synchrnonize here as two future tasks shouldn't be submitted at the same time
+      futureTasksBlockWait.put((shuffleId, reduceId), numMaps)
+    }
   }
 
   /**
@@ -320,7 +333,7 @@ private[spark] class BlockManager(
    * cannot be read successfully.
    */
   override def getBlockData(blockId: BlockId): ManagedBuffer = {
-    if (blockId.isShuffle) {
+    if (blockId.isShuffle && !getStatus(blockId).isDefined) {
       shuffleManager.shuffleBlockResolver.getBlockData(blockId.asInstanceOf[ShuffleBlockId])
     } else {
       val blockBytesOpt = doGetLocal(blockId, asBlockResult = false)
@@ -735,14 +748,21 @@ private[spark] class BlockManager(
       blockId: BlockId,
       data: BlockValues,
       level: StorageLevel,
-      tellMaster: Boolean = true,
+      tellMasterArg: Boolean = true,
       effectiveStorageLevel: Option[StorageLevel] = None)
     : Seq[(BlockId, BlockStatus)] = {
 
+    logDebug(s"Putting block $blockId")
     require(blockId != null, "BlockId is null")
     require(level != null && level.isValid, "StorageLevel is null or invalid")
     effectiveStorageLevel.foreach { level =>
       require(level != null && level.isValid, "Effective StorageLevel is null or invalid")
+    }
+
+    val tellMaster = if (blockId.isShuffle) {
+      false
+    } else {
+      tellMasterArg
     }
 
     // Return value
@@ -912,24 +932,24 @@ private[spark] class BlockManager(
       val shuffleBlockId = blockId.asInstanceOf[ShuffleBlockId]
       val key = (shuffleBlockId.shuffleId, shuffleBlockId.reduceId)
       logDebug(
-        s"Checking for shuffle $shuffleBlockId.shuffleId and reduce $shuffleBlockId.reduceId")
+        s"Checking for shuffle ${shuffleBlockId.shuffleId} and reduce ${shuffleBlockId.reduceId}")
       // NOTE(shivaram): There is some doubled checked locking here
       // but this avoids the
       if (futureTaskInfo.contains(key)) {
         futureTasksBlockWait.synchronized {
-          logDebug(s"Found FT for shuffle $shuffleBlockId.shuffleId and reduce $shuffleBlockId.reduceId")
+          logDebug(s"Found FT for shuffle ${shuffleBlockId.shuffleId} and reduce ${shuffleBlockId.reduceId}")
           if (futureTasksBlockWait.contains(key)) {
             futureTasksBlockWait(key) -= 1
-            logDebug(s"FT for shuffle $shuffleBlockId.shuffleId, reduce $shuffleBlockId.reduceId " +
-              "waiting for $futureTasksBlockWait(key) maps")
+            logDebug(s"FT for shuffle ${shuffleBlockId.shuffleId}, reduce ${shuffleBlockId.reduceId} " +
+              s"waiting for ${futureTasksBlockWait(key)} maps")
             if (futureTasksBlockWait(key) == 0) {
               val cb = futureTaskInfo(key).taskCb
               futureTasksBlockWait.remove(key)
               futureTaskInfo.remove(key)
               // TODO(shivaram): Run this in futureExecutionContext ?
               // This should be cheap though as its just queuing this
-              logDebug(s"All maps recv. Running taskf ro shuffle $shuffleBlockId.shuffleId, reduce "
-                + "$shuffleBlockId.reduceId")
+              logDebug(s"All maps recv. Running task for shuffle ${shuffleBlockId.shuffleId}, reduce "
+                + s"${shuffleBlockId.reduceId}")
               cb()
             }
           }
