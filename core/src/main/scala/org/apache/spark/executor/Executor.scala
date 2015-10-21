@@ -134,9 +134,10 @@ private[spark] class Executor(
       taskId: Long,
       attemptNumber: Int,
       taskName: String,
-      futureTask: FutureTask[_]): Unit = {
+      futureTask: FutureTask[_],
+      deserializeTime: Long): Unit = {
     val tr = new FutureTaskRunner(context, taskId = taskId, attemptNumber = attemptNumber, taskName,
-      futureTask)
+      futureTask, deserializeTime)
     // TODO: Send an update here to the driver that we are executing this task ?
     runningTasks.put(taskId, tr)
     threadPool.execute(tr)
@@ -171,8 +172,7 @@ private[spark] class Executor(
       taskName: String,
       attemptNumber: Int,
       taskId: Long,
-      deserializeStartTime: Long,
-      startGCTime: Long,
+      deserializeTime: Long,
       ser: SerializerInstance): Unit = {
     val taskMemoryManager = new TaskMemoryManager(env.executorMemoryManager)
     execBackend.statusUpdate(taskId, TaskState.RUNNING, EMPTY_BYTE_BUFFER)
@@ -180,6 +180,8 @@ private[spark] class Executor(
 
     logDebug("Task " + taskId + "'s epoch is " + task.epoch)
     env.mapOutputTracker.updateEpoch(task.epoch)
+
+    val startGCTime = computeTotalGcTime()
 
     // Run the actual task and measure its runtime.
     val taskStart = System.currentTimeMillis()
@@ -217,11 +219,12 @@ private[spark] class Executor(
     for (m <- task.metrics) {
       // Deserialization happens in two parts: first, we deserialize a Task object, which
       // includes the Partition. Second, Task.run() deserializes the RDD and function to be run.
-      m.setExecutorDeserializeTime(
-        (taskStart - deserializeStartTime) + task.executorDeserializeTime)
+      // We count both of them.
+      m.setExecutorDeserializeTime(deserializeTime)
+      // TODO(shivaram): Get rid of this ?
       m.broadcastBlockedNanos = Broadcast.blockedNanos.get()
-      // We need to subtract Task.run()'s deserialization time to avoid double-counting
-      m.setExecutorRunTime((taskFinish - taskStart) - task.executorDeserializeTime)
+      m.setExecutorRunTime((taskFinish - taskStart))
+      // TODO: Add old gc time here
       m.setJvmGCTime(computeTotalGcTime() - startGCTime)
       m.setResultSerializationTime(afterSerialization - beforeSerialization)
       m.updateAccumulators()
@@ -307,6 +310,10 @@ private[spark] class Executor(
           throw new TaskKilledException
         }
 
+        task.prepTask()
+
+        val deserializeStopTime = System.currentTimeMillis()
+
         // If this is a future task, check if there is a shuffle dependency
         // behind it
         if (task.isInstanceOf[FutureTask[_]]) {
@@ -314,7 +321,6 @@ private[spark] class Executor(
           // Check if there is a shuffle dependency here and if so ask the
           // block manager to schedule this task once it gets the inputs
           val futureTask = task.asInstanceOf[FutureTask[_]]
-          futureTask.prepTask()
 
           val shuffleDep = futureTask.getFirstShuffleDep
           if (!shuffleDep.isEmpty) {
@@ -322,7 +328,7 @@ private[spark] class Executor(
             logDebug(s"DRIZ: Future task $taskId shuffleDep is not empty. Queuing with ${baseShuffleHandle.numMaps}")
             env.blockManager.submitFutureTask(baseShuffleHandle.shuffleId, baseShuffleHandle.numMaps,
               futureTask.partitionId, taskId, (a: Unit) => launchFutureTask(execBackend, taskId,
-                attemptNumber, taskName, futureTask))
+                attemptNumber, taskName, futureTask, deserializeStopTime - deserializeStartTime))
             // TODO(shivaram): Should we send some status update here ?
             return
           }
@@ -330,7 +336,7 @@ private[spark] class Executor(
           logDebug(s"DRIZ: NOT a future task with id $taskId and name $taskName")
         }
 
-        runDeserializedTask(execBackend, task, taskName, attemptNumber, taskId, deserializeStartTime, startGCTime, ser)
+        runDeserializedTask(execBackend, task, taskName, attemptNumber, taskId, deserializeStopTime-deserializeStartTime, ser)
       } catch {
         case ffe: FetchFailedException =>
           val reason = ffe.toTaskEndReason
@@ -385,7 +391,8 @@ private[spark] class Executor(
       taskId: Long,
       attemptNumber: Int,
       taskName: String,
-      futureTask: FutureTask[_])
+      futureTask: FutureTask[_],
+      deserializeTime: Long)
     extends TaskRunner(execBackend, taskId, attemptNumber, taskName, None)  {
 
     override def run(): Unit = {
@@ -410,7 +417,7 @@ private[spark] class Executor(
           throw new TaskKilledException
         }
 
-        runDeserializedTask(execBackend, futureTask, taskName, attemptNumber, taskId, 0, startGCTime, ser)
+        runDeserializedTask(execBackend, futureTask.task, taskName, attemptNumber, taskId, deserializeTime, ser)
       } catch {
         case ffe: FetchFailedException =>
           val reason = ffe.toTaskEndReason
