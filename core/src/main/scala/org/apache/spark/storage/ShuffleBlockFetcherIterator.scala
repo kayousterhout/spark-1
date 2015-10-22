@@ -23,7 +23,7 @@ import java.util.concurrent.LinkedBlockingQueue
 import scala.collection.mutable.{ArrayBuffer, HashSet, Queue}
 import scala.util.control.NonFatal
 
-import org.apache.spark.{Logging, SparkException, TaskContext}
+import org.apache.spark.{Logging, SparkException, TaskContext, SparkEnv}
 import org.apache.spark.network.buffer.ManagedBuffer
 import org.apache.spark.network.shuffle.{BlockFetchingListener, ShuffleClient}
 import org.apache.spark.shuffle.FetchFailedException
@@ -97,6 +97,8 @@ final class ShuffleBlockFetcherIterator(
    * the number of bytes in flight is limited to maxBytesInFlight.
    */
   private[this] val fetchRequests = new Queue[FetchRequest]
+
+  private val drizzle = SparkEnv.get.conf.getBoolean("spark.scheduler.drizzle", true)
 
   /** Current bytes in flight from our requests */
   private[this] var bytesInFlight = 0L
@@ -245,7 +247,7 @@ final class ShuffleBlockFetcherIterator(
         }
         // Some set of blocks might not be available yet. We will sign up to be
         // notified about when they are available.
-        if (blockManager.getStatus(blockId).isDefined) {
+        if (!drizzle || blockManager.getStatus(blockId).isDefined) {
           insertBlock()
         } else {
           logInfo(s"DRIZ: $blockId is local but unavailable. Registering a callback to wait")
