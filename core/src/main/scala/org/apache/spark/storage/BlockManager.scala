@@ -89,6 +89,7 @@ private[spark] class BlockManager(
   private val futureTasksAllBlocks = new TimeStampedHashMap[(Int, Int), Int]
   // How many blocks to wait for
   private val fractionBlocksToWaitFor = conf.getDouble("spark.scheduler.drizzle.wait", 1.0)
+  logInfo(s"DRIZ: Going to wait $fractionBlocksToWaitFor blocks")
 
   // This allows for notifications when a block is available, we should perhaps
   // combine this with the future task bits?
