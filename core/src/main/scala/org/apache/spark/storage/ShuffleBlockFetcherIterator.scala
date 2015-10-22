@@ -235,11 +235,22 @@ final class ShuffleBlockFetcherIterator(
     while (iter.hasNext) {
       val blockId = iter.next()
       try {
-        val buf = blockManager.getBlockData(blockId)
-        shuffleMetrics.incLocalBlocksFetched(1)
-        shuffleMetrics.incLocalBytesRead(buf.size)
-        buf.retain()
-        results.put(new SuccessFetchResult(blockId, blockManager.blockManagerId, 0, buf))
+        val insertBlock: Unit => Unit  = _ => {
+          val buf = blockManager.getBlockData(blockId)
+          logInfo(s"DRIZ: $blockId is now locally available")
+          shuffleMetrics.incLocalBlocksFetched(1)
+          shuffleMetrics.incLocalBytesRead(buf.size)
+          buf.retain()
+          results.put(new SuccessFetchResult(blockId, blockManager.blockManagerId, 0, buf))
+        }
+        // Some set of blocks might not be available yet. We will sign up to be
+        // notified about when they are available.
+        if (blockManager.getStatus(blockId).isDefined) {
+          insertBlock()
+        } else {
+          logInfo(s"DRIZ: $blockId is local but unavailable. Registering a callback to wait")
+          blockManager.registerBlockAvailableCallback(blockId, insertBlock);
+        }
       } catch {
         case e: Exception =>
           // If we see an exception, stop immediately.

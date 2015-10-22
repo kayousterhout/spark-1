@@ -54,6 +54,7 @@ private[spark] class BlockResult(
     val bytes: Long)
 
 private[spark] case class FutureTaskInfo(shuffleId: Int, numMaps: Int, reduceId: Int, taskId: Long, taskCb: Unit => Unit)
+private[spark] case class BlockCallback(blockId: BlockId, callback: Unit => Unit)
 
 /**
  * Manager running on every node (driver and executors) which provides interfaces for putting and
@@ -83,6 +84,15 @@ private[spark] class BlockManager(
   private val futureTaskInfo = new TimeStampedHashMap[(Int, Int), FutureTaskInfo]
   // Key is (shuffleId, reduceId), value is number of blocks we are still waiting for
   private val futureTasksBlockWait = new TimeStampedHashMap[(Int, Int), Int]
+  // Key is (shuffleId, reduceId), value is number of total blocks in this
+  // future task
+  private val futureTasksAllBlocks = new TimeStampedHashMap[(Int, Int), Int]
+  // How many blocks to wait for
+  private val fractionBlocksToWaitFor = conf.getDouble("spark.scheduler.drizzle.wait", 1.0)
+
+  // This allows for notifications when a block is available, we should perhaps
+  // combine this with the future task bits?
+  private val blockAvailableCallback = new TimeStampedHashMap[BlockId, BlockCallback]
 
   private val futureExecutionContext = ExecutionContext.fromExecutorService(
     ThreadUtils.newDaemonCachedThreadPool("block-manager-future", 128))
@@ -180,6 +190,19 @@ private[spark] class BlockManager(
       numUsableCores: Int) = {
     this(execId, rpcEnv, master, serializer, BlockManager.getMaxMemory(conf),
       conf, mapOutputTracker, shuffleManager, blockTransferService, securityManager, numUsableCores)
+  }
+
+  /* Check if a block is currently local, or will be local (in case of Drizzle) */
+  private[spark] def willBeLocal(shuffleId: Int, mapId: Int, reducerId: Int) : Boolean = {
+    // Synchronizing here so that a concurrent change cannot remove from info.
+    // We use all blocks since we want to report the blocks as local even when
+    // we have notified
+    futureTasksAllBlocks.synchronized {
+      val ret = futureTasksAllBlocks.contains((shuffleId, reducerId)) || 
+        this.getStatus(
+          ShuffleBlockId(shuffleId, mapId, reducerId)).isDefined
+      ret
+    }
   }
 
   /**
@@ -323,8 +346,12 @@ private[spark] class BlockManager(
       taskCb()
     } else {
       futureTaskInfo.put((shuffleId, reduceId), FutureTaskInfo(shuffleId, numMaps, reduceId, taskId, taskCb))
-      // NOTE: Its fine not to synchrnonize here as two future tasks shouldn't be submitted at the same time
-      futureTasksBlockWait.put((shuffleId, reduceId), numMaps)
+      // NOTE: Its fine not to synchronize here as two future tasks shouldn't be submitted at the same time
+      // Calculate the number of blocks to wait for before starting future task
+      val mapsToWait = Math.ceil(numMaps * fractionBlocksToWaitFor).toInt
+      futureTasksBlockWait.put((shuffleId, reduceId), mapsToWait)
+      futureTasksAllBlocks.put((shuffleId, reduceId), numMaps)
+      logDebug(s"DRIZ: For $taskId with $numMaps outputs going to wait for $mapsToWait blocks")
     }
   }
 
@@ -955,9 +982,46 @@ private[spark] class BlockManager(
           }
         }
       }
+
+      // This is mostly just to ensure no resource leaks. Correctness does not
+      // depend on this check
+      if (futureTasksAllBlocks.contains(key)) {
+        futureTasksAllBlocks.synchronized {
+          futureTasksAllBlocks(key) -= 1
+          if (futureTasksAllBlocks(key) == 0) {
+            futureTasksAllBlocks.remove(key)
+          }
+        }
+      }
+    }
+
+    // TODO: Might we have more than one waiter for a block? Currently assume
+    // exactly one (else lots of things break)
+    if (blockAvailableCallback.contains(blockId)) {
+      var cb : Unit => Unit = null
+      blockAvailableCallback.synchronized {
+        logDebug(s"Notifying ShuffleBlockFetcherIterator that $blockId is available")
+        cb = blockAvailableCallback(blockId).callback
+        blockAvailableCallback.remove(blockId)
+      }
+      cb()
     }
 
     updatedBlocks
+  }
+
+  private[spark] def registerBlockAvailableCallback(blockId: BlockId, callback: Unit => Unit) {
+    var call: Boolean = false;
+    blockAvailableCallback.synchronized {
+      call = getStatus(blockId).isDefined
+      if (!call) {
+        blockAvailableCallback.put(blockId, BlockCallback(blockId, callback)) 
+      }
+    }
+    // We did not add to the hashmap since block is already available
+    if (call) {
+      callback()
+    }
   }
 
   /**

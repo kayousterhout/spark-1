@@ -41,8 +41,7 @@ private[spark] class BlockStoreShuffleReader[K, C](
   def allLocalBlocks(): Boolean = {
     (startPartition until endPartition).flatMap { reducerId =>
       (0 until handle.numMaps).map { mapId =>
-        blockManager.getStatus(
-          ShuffleBlockId(handle.shuffleId, mapId, reducerId)).isDefined
+        blockManager.willBeLocal(handle.shuffleId, mapId, reducerId)
       }
     }.forall(x => x)
   }
@@ -55,6 +54,7 @@ private[spark] class BlockStoreShuffleReader[K, C](
     // Check if all the blocks are in the local block manager
     // as it will be for drizzle
     val blockFetcherItr = if (allLocalBlocks) {
+      logDebug(s"DRIZ: Shuffle everything is local")
       // TODO(shivaram): We construct these block ids twice. Refactor this
       // NOTE(shivaram): We just pass in size as 0L as it doesn't matter for local reads
       val mapOutputBlockIds = (startPartition until endPartition).flatMap { reduceId =>
@@ -72,6 +72,7 @@ private[spark] class BlockStoreShuffleReader[K, C](
         // Note: we use getSizeAsMb when no suffix is provided for backwards compatibility
         SparkEnv.get.conf.getSizeAsMb("spark.reducer.maxSizeInFlight", "48m") * 1024 * 1024)
     } else {
+      logDebug(s"DRIZ: Shuffle everything is not local")
       val mapOutputLocationFetchStartTime = System.currentTimeMillis()
       val mapOutputLocations =
         mapOutputTracker.getMapSizesByExecutorId(handle.shuffleId, startPartition, endPartition)
