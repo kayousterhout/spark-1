@@ -112,6 +112,8 @@ private[spark] class Executor(
   // Maintains the list of running tasks.
   private val runningTasks = new ConcurrentHashMap[Long, TaskRunner]
 
+  private val futureTaskEnqueueTime = new ConcurrentHashMap[Long, Long] 
+
   // Executor for the heartbeat task.
   private val heartbeater = ThreadUtils.newDaemonSingleThreadScheduledExecutor("driver-heartbeater")
 
@@ -138,6 +140,11 @@ private[spark] class Executor(
       deserializeTime: Long): Unit = {
     val tr = new FutureTaskRunner(context, taskId = taskId, attemptNumber = attemptNumber, taskName,
       futureTask, deserializeTime)
+    if (futureTaskEnqueueTime.containsKey(taskId)) {
+      val enqueueTime = System.nanoTime - futureTaskEnqueueTime.get(taskId)
+      futureTaskEnqueueTime.remove(taskId)
+      logInfo(s"DRIZ: Future task $taskId was enqueued for ${enqueueTime/1e3} us")
+    } 
     // TODO: Send an update here to the driver that we are executing this task ?
     runningTasks.put(taskId, tr)
     threadPool.execute(tr)
@@ -325,6 +332,7 @@ private[spark] class Executor(
           val shuffleDep = futureTask.getFirstShuffleDep
           if (!shuffleDep.isEmpty) {
             val baseShuffleHandle = shuffleDep.get.shuffleHandle.asInstanceOf[BaseShuffleHandle[_, _, _]]
+            futureTaskEnqueueTime.put(taskId, System.nanoTime) 
             logDebug(s"DRIZ: Future task $taskId shuffleDep is not empty. Queuing for ${baseShuffleHandle.numMaps} maps")
             env.blockManager.submitFutureTask(baseShuffleHandle.shuffleId, baseShuffleHandle.numMaps,
               futureTask.partitionId, taskId, (a: Unit) => launchFutureTask(execBackend, taskId,
