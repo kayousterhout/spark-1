@@ -32,17 +32,15 @@ def get_identity_file_argument(identity_file):
 def get_slaves():
   return [slave_line.strip("\n") for slave_line in open("/root/spark/conf/slaves").readlines()]
 
-def copy_and_zip_all_logs(experiment_name):
+def copy_and_zip_all_logs_experiment(experiment_name):
   """
   A wrapper for copy_and_zip_all_logs that automatically fills in the slaves.
-
   Accepts a name for the experiment (used in naming the output) as a parameter.
   """
   copy_and_zip_all_logs([experiment_name], get_slaves())
 
 def copy_and_zip_all_logs(stringified_parameters, slaves):
   """ Packages up all of the logs from running an experiment.
-
   Args:
     stringified_parameters: A list of strings that were parameters to the experiment. Used
       only in naming the resulting directory.
@@ -55,14 +53,18 @@ def copy_and_zip_all_logs(stringified_parameters, slaves):
   os.makedirs(log_directory_name)
 
   for slave_hostname in slaves:
-    continuous_monitor_relative_filename = ssh_get_stdout(
+    app_id = ssh_get_stdout(
       slave_hostname,
-      "ls -t /tmp/ | grep continuous_monitor | head -n 1").strip("\n").strip("\r")
-    continuous_monitor_filename = "/tmp/%s" % continuous_monitor_relative_filename
-    local_continuous_monitor_file = "%s/%s_executor_monitor" % (log_directory_name, slave_hostname)
-    print ("Copying continuous monitor from file %s on host %s back to %s" %
-      (continuous_monitor_filename, slave_hostname, local_continuous_monitor_file))
-    scp_from(slave_hostname, continuous_monitor_filename, local_continuous_monitor_file)
+      "ls -t /root/spark/work/ | head -n 1").strip("\n").strip("\r")
+    app_folder = "/root/spark/work/%s" % app_id
+    app_subfolder = ssh_get_stdout(
+      slave_hostname,
+      "ls -t %s | head -n 1" % app_folder).strip("\n").strip("\r")
+    stderr_file = "%s/%s/stderr" % (app_folder, app_subfolder)
+    local_stderr_file = "%s/%s_stderr" % (log_directory_name, slave_hostname)
+    print ("Copying log (in stderr) from file %s on host %s back to %s" %
+      (stderr_file, slave_hostname, local_stderr_file))
+    scp_from(slave_hostname, stderr_file, local_stderr_file)
 
   event_log_relative_filename = subprocess.Popen(
     "ls -t /tmp/spark-events | head -n 1", stdout=subprocess.PIPE, shell=True).communicate()[0]
@@ -85,3 +87,4 @@ def copy_and_zip_all_logs(stringified_parameters, slaves):
 
   subprocess.check_call("tar czfv %s --directory=/mnt %s" % (tar_filename, log_subdirectory_name),
     shell=True)
+
