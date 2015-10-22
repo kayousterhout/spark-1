@@ -55,14 +55,18 @@ def copy_and_zip_all_logs(stringified_parameters, slaves):
   os.makedirs(log_directory_name)
 
   for slave_hostname in slaves:
-    continuous_monitor_relative_filename = ssh_get_stdout(
+    app_id = ssh_get_stdout(
       slave_hostname,
-      "ls -t /tmp/ | grep continuous_monitor | head -n 1").strip("\n").strip("\r")
-    continuous_monitor_filename = "/tmp/%s" % continuous_monitor_relative_filename
-    local_continuous_monitor_file = "%s/%s_executor_monitor" % (log_directory_name, slave_hostname)
-    print ("Copying continuous monitor from file %s on host %s back to %s" %
-      (continuous_monitor_filename, slave_hostname, local_continuous_monitor_file))
-    scp_from(slave_hostname, continuous_monitor_filename, local_continuous_monitor_file)
+      "ls -t /root/spark/work/ | head -n 1").strip("\n").strip("\r")
+    app_folder = "/root/spark/work/%s" % app_id
+    app_subfolder = ssh_get_stdout(
+      slave_hostname,
+      "ls -t %s | head -n 1" % app_folder)
+    stderr_file = "%s/%s" % (app_folder, app_subfolder)
+    local_stderr_file = "%s/%s_stderr" % (log_directory_name, slave_hostname)
+    print ("Copying log (in stderr) from file %s on host %s back to %s" %
+      (sterr_file, slave_hostname, local_stderr_file))
+    scp_from(slave_hostname, stderr_file, local_stderr_file)
 
   event_log_relative_filename = subprocess.Popen(
     "ls -t /tmp/spark-events | head -n 1", stdout=subprocess.PIPE, shell=True).communicate()[0]
