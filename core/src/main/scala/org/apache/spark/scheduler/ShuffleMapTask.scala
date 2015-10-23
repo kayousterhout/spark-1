@@ -91,25 +91,28 @@ private[spark] class ShuffleMapTask(
       writer.write(rdd.iterator(partition, context).asInstanceOf[Iterator[_ <: Product2[Any, Any]]])
       val status = writer.stop(success = true).get
 
-      logDebug("DRIZ: In ShuffleMapTask $taskId, got $nextStageLocs.map(_.size).getOrElse(0)")
-      // If we have locations for next stage push map outputs to those block managers
-      // TODO(shivaram): These calls are all non-blocking. Should we wait for any of them ?
+      logDebug(s"DRIZ: In ShuffleMapTask ${partition.index} for stage $stageId, got " +
+        s"${nextStageLocs.map(_.size).getOrElse(0)}")
       if (!nextStageLocs.isEmpty && dep.partitioner.numPartitions == nextStageLocs.get.length) {
-        // NOTE(shivaram): Assumes reduce ids are from 0 to n-1
-        nextStageLocs.get.zipWithIndex.foreach { case (loc, reduceId) =>
-          // TODO(shivaram): Don't make this copy if loc is same as local block manager
-          //if (loc != SparkEnv.get.blockManager.blockManagerId) {
-            val blockId = ShuffleBlockId(dep.shuffleId, partitionId, reduceId)
-            logDebug(s"DRIZ: Sending $blockId to $loc")
-            SparkEnv.get.blockTransferService.uploadBlock(
-              loc.host,
-              loc.port,
-              loc.executorId,
-              blockId,
-              SparkEnv.get.shuffleManager.shuffleBlockResolver.getBlockData(blockId),
-              // TODO: Will this get freed correctly ??
-              StorageLevel.MEMORY_ONLY)
-          //}
+        val pushShuffleData = SparkEnv.get.conf.getBoolean("spark.scheduler.drizzle.push", true)
+        if (pushShuffleData) {
+          uploadOutputToNextTaskLocations()
+        } else {
+          // Push metadata saying that this map task finished, so that the tasks in the next stage
+          // know they can begin pulling the data.
+          logDebug(s"DRIZ: In ShuffleMapTask ${partition.index} for stage $stageId, sending " +
+            "MapOutputStatus to all reduce locs")
+          val numReduces = nextStageLocs.get.length
+          val uniqueLocations = nextStageLocs.get.toSet
+          uniqueLocations.foreach { blockManagerId =>
+            SparkEnv.get.blockTransferService.mapOutputReady(
+              blockManagerId.host,
+              blockManagerId.port,
+              dep.shuffleId,
+              partition.index,
+              numReduces,
+              status)
+          }
         }
       }
       status
@@ -124,6 +127,31 @@ private[spark] class ShuffleMapTask(
             log.debug("Could not stop writer", e)
         }
         throw e
+    }
+  }
+
+
+  /**
+   * If we have the locations for the tasks in the next stage, pushes the shuffle blocks output by
+   * this task to the appropriate next task. */
+  private def uploadOutputToNextTaskLocations() {
+    // TODO(shivaram): These calls are all non-blocking. Should we wait for any of them ?
+    // NOTE(shivaram): Assumes reduce ids are from 0 to n-1
+    nextStageLocs.get.zipWithIndex.foreach {
+      case (loc, reduceId) =>
+        // TODO(shivaram): Don't make this copy if loc is same as local block manager
+        //if (loc != SparkEnv.get.blockManager.blockManagerId) {
+        val blockId = ShuffleBlockId(dep.shuffleId, partitionId, reduceId)
+        logDebug(s"DRIZ: Sending $blockId to $loc")
+        SparkEnv.get.blockTransferService.uploadBlock(
+          loc.host,
+          loc.port,
+          loc.executorId,
+          blockId,
+          SparkEnv.get.shuffleManager.shuffleBlockResolver.getBlockData(blockId),
+          // TODO: Will this get freed correctly ??
+          StorageLevel.MEMORY_ONLY)
+      //}
     }
   }
 

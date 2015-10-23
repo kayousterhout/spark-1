@@ -26,7 +26,9 @@ import org.apache.spark.network.BlockDataManager
 import org.apache.spark.network.buffer.{ManagedBuffer, NioManagedBuffer}
 import org.apache.spark.network.client.{RpcResponseCallback, TransportClient}
 import org.apache.spark.network.server.{OneForOneStreamManager, RpcHandler, StreamManager}
-import org.apache.spark.network.shuffle.protocol.{BlockTransferMessage, OpenBlocks, StreamHandle, UploadBlock}
+import org.apache.spark.network.shuffle.protocol.{BlockTransferMessage, MapOutputReady, OpenBlocks,
+  StreamHandle, UploadBlock}
+import org.apache.spark.scheduler.MapStatus
 import org.apache.spark.serializer.Serializer
 import org.apache.spark.storage.{BlockId, StorageLevel}
 
@@ -67,6 +69,12 @@ class NettyBlockRpcServer(
         val data = new NioManagedBuffer(ByteBuffer.wrap(uploadBlock.blockData))
         blockManager.putBlockData(BlockId(uploadBlock.blockId), data, level)
         responseContext.onSuccess(new Array[Byte](0))
+
+      case mapOutputReady: MapOutputReady =>
+        val mapStatus: MapStatus =
+          serializer.newInstance().deserialize(ByteBuffer.wrap(mapOutputReady.serializedMapStatus))
+        blockManager.mapOutputReady(
+          mapOutputReady.shuffleId, mapOutputReady.mapId, mapOutputReady.numReduces, mapStatus)
     }
   }
 

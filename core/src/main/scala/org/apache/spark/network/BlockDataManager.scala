@@ -18,6 +18,7 @@
 package org.apache.spark.network
 
 import org.apache.spark.network.buffer.ManagedBuffer
+import org.apache.spark.scheduler.MapStatus
 import org.apache.spark.storage.{BlockId, StorageLevel}
 
 private[spark]
@@ -33,4 +34,9 @@ trait BlockDataManager {
    * Put the block locally, using the given storage level.
    */
   def putBlockData(blockId: BlockId, data: ManagedBuffer, level: StorageLevel): Unit
+
+  /**
+   * Acknowledges that the given map output is now ready.
+   */
+  def mapOutputReady(shuffleId: Int, mapId: Int, numReduces: Int, mapStatus: MapStatus): Unit
 }

@@ -125,6 +125,38 @@ private[spark] abstract class MapOutputTracker(conf: SparkConf) extends Logging 
   }
 
   /**
+   * Adds information about output for a given shuffle.
+   *
+   * This method is synchronized because the BlockManager may call it multiple times concurrently
+   * with updates from different map tasks.
+   */
+  def addStatus(
+      shuffleId: Int,
+      mapId: Int,
+      mapStatus: MapStatus): Unit = synchronized {
+    val statuses = {
+      val currentStatuses = mapStatuses.getOrElseUpdate(shuffleId, new Array[MapStatus](mapId))
+
+      if (mapId >= currentStatuses.length) {
+        // Possibly create a bigger Array and copy over the statuses. We always at least double
+        // the array, to avoid copying the data too many times, and because there's little cost to
+        // having extra entries.
+        val newSize = mapId + 1
+        val newStatuses = currentStatuses ++ new Array[MapStatus](newSize - currentStatuses.length)
+        mapStatuses.put(shuffleId, newStatuses)
+        newStatuses
+      } else {
+        currentStatuses
+      }
+    }
+    statuses(mapId) = mapStatus
+  }
+
+  def getNumAvailableMapOutputs(shuffleId: Int): Int = synchronized {
+    mapStatuses.get(shuffleId).map(_.count(_ != null)).getOrElse(0)
+  }
+
+  /**
    * Called from executors to get the server URIs and output sizes for each shuffle block that
    * needs to be read from a given reduce task.
    *

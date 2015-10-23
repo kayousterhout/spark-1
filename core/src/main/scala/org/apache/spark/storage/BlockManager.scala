@@ -37,6 +37,7 @@ import org.apache.spark.network.netty.SparkTransportConf
 import org.apache.spark.network.shuffle.ExternalShuffleClient
 import org.apache.spark.network.shuffle.protocol.ExecutorShuffleInfo
 import org.apache.spark.rpc.RpcEnv
+import org.apache.spark.scheduler.MapStatus
 import org.apache.spark.serializer.{SerializerInstance, Serializer}
 import org.apache.spark.shuffle.ShuffleManager
 import org.apache.spark.shuffle.hash.HashShuffleManager
@@ -335,11 +336,16 @@ private[spark] class BlockManager(
       taskId: Long,
       taskCb: Unit => Unit): Unit = {
     // Check if all the blocks already exist. If so just trigger taskCb
-    val availableBlocks =
+    val availableBlocks = if (SparkEnv.get.conf.getBoolean("spark.scheduler.drizzle.push", true)) {
+      // Count the number of blocks that are already in the BlockManager.
       (0 until numMaps).map { mapId =>
         getStatus(
           ShuffleBlockId(shuffleId, mapId, reduceId)).isDefined
       }.count(x => x)
+    } else {
+      // Count how many outputs have been registered with the MapOutputTracker.
+      mapOutputTracker.getNumAvailableMapOutputs(shuffleId)
+    }
 
     val mapsToWait = Math.ceil(numMaps * fractionBlocksToWaitFor).toInt
     val numMapsPending = numMaps - availableBlocks
@@ -961,42 +967,11 @@ private[spark] class BlockManager(
     // Check if we need to trigger any of our FutureTasks
     if (blockId.isShuffle) {
       val shuffleBlockId = blockId.asInstanceOf[ShuffleBlockId]
-      val key = (shuffleBlockId.shuffleId, shuffleBlockId.reduceId)
       logDebug(
         s"Checking for shuffle ${shuffleBlockId.shuffleId} and reduce ${shuffleBlockId.reduceId}")
       // NOTE(shivaram): There is some doubled checked locking here
       // but this avoids the
-      if (futureTaskInfo.contains(key)) {
-        futureTasksBlockWait.synchronized {
-          logDebug(s"Found FT for shuffle ${shuffleBlockId.shuffleId} and reduce ${shuffleBlockId.reduceId}")
-          if (futureTasksBlockWait.contains(key)) {
-            futureTasksBlockWait(key) -= 1
-            logDebug(s"FT for shuffle ${shuffleBlockId.shuffleId}, reduce ${shuffleBlockId.reduceId} " +
-              s"waiting for ${futureTasksBlockWait(key)} maps")
-            if (futureTasksBlockWait(key) == 0) {
-              val cb = futureTaskInfo(key).taskCb
-              futureTasksBlockWait.remove(key)
-              futureTaskInfo.remove(key)
-              // TODO(shivaram): Run this in futureExecutionContext ?
-              // This should be cheap though as its just queuing this
-              logDebug(s"All maps recv. Running task for shuffle ${shuffleBlockId.shuffleId}, reduce "
-                + s"${shuffleBlockId.reduceId}")
-              cb()
-            }
-          }
-        }
-      }
-
-      // This is mostly just to ensure no resource leaks. Correctness does not
-      // depend on this check
-      if (futureTasksAllBlocks.contains(key)) {
-        futureTasksAllBlocks.synchronized {
-          futureTasksAllBlocks(key) -= 1
-          if (futureTasksAllBlocks(key) == 0) {
-            futureTasksAllBlocks.remove(key)
-          }
-        }
-      }
+      addOutputForFutureTask(shuffleBlockId)
     }
 
     // TODO: Might we have more than one waiter for a block? Currently assume
@@ -1012,6 +987,50 @@ private[spark] class BlockManager(
     }
 
     updatedBlocks
+  }
+
+  private def addOutputForFutureTask(shuffleBlockId: ShuffleBlockId): Unit = {
+    val key = (shuffleBlockId.shuffleId, shuffleBlockId.reduceId)
+    if (futureTaskInfo.contains(key)) {
+      futureTasksBlockWait.synchronized {
+        logDebug(s"Found FT for shuffle ${shuffleBlockId.shuffleId} and reduce ${shuffleBlockId.reduceId}")
+        if (futureTasksBlockWait.contains(key)) {
+          futureTasksBlockWait(key) -= 1
+          logDebug(s"FT for shuffle ${shuffleBlockId.shuffleId}, reduce ${shuffleBlockId.reduceId} " +
+            s"waiting for ${futureTasksBlockWait(key)} maps")
+          if (futureTasksBlockWait(key) == 0) {
+            val cb = futureTaskInfo(key).taskCb
+            futureTasksBlockWait.remove(key)
+            futureTaskInfo.remove(key)
+            // TODO(shivaram): Run this in futureExecutionContext ?
+            // This should be cheap though as its just queuing this
+            logDebug(s"All maps recv. Running task for shuffle ${shuffleBlockId.shuffleId}, reduce "
+              + s"${shuffleBlockId.reduceId}")
+            cb()
+          }
+        }
+      }
+    }
+
+    // This is mostly just to ensure no resource leaks. Correctness does not
+    // depend on this check
+    if (futureTasksAllBlocks.contains(key)) {
+      futureTasksAllBlocks.synchronized {
+        futureTasksAllBlocks(key) -= 1
+        if (futureTasksAllBlocks(key) == 0) {
+          futureTasksAllBlocks.remove(key)
+        }
+      }
+    }
+  }
+
+  override def mapOutputReady(shuffleId: Int, mapId: Int, numReduces: Int, mapStatus: MapStatus) {
+    // Register the output for each reduce task.
+    (0 until numReduces).foreach { reduceId =>
+      addOutputForFutureTask(new ShuffleBlockId(shuffleId, mapId, reduceId))
+    }
+
+    mapOutputTracker.addStatus(shuffleId, mapId, mapStatus)
   }
 
   private[spark] def registerBlockAvailableCallback(blockId: BlockId, callback: Unit => Unit) {

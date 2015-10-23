@@ -27,7 +27,8 @@ import org.apache.spark.network.client.{TransportClientBootstrap, RpcResponseCal
 import org.apache.spark.network.sasl.{SaslClientBootstrap, SaslServerBootstrap}
 import org.apache.spark.network.server._
 import org.apache.spark.network.shuffle.{RetryingBlockFetcher, BlockFetchingListener, OneForOneBlockFetcher}
-import org.apache.spark.network.shuffle.protocol.UploadBlock
+import org.apache.spark.network.shuffle.protocol.{MapOutputReady, UploadBlock}
+import org.apache.spark.scheduler.MapStatus
 import org.apache.spark.serializer.JavaSerializer
 import org.apache.spark.storage.{BlockId, StorageLevel}
 import org.apache.spark.util.Utils
@@ -143,6 +144,33 @@ class NettyBlockTransferService(conf: SparkConf, securityManager: SecurityManage
         }
         override def onFailure(e: Throwable): Unit = {
           logError(s"Error while uploading block $blockId", e)
+          result.failure(e)
+        }
+      })
+
+    result.future
+  }
+
+  override def mapOutputReady(
+      hostname: String,
+      port: Int,
+      shuffleId: Int,
+      mapId: Int,
+      numReduces: Int,
+      mapStatus: MapStatus): Future[Unit] = {
+    val result = Promise[Unit]()
+    val client = clientFactory.createClient(hostname, port)
+
+    val statusBytes = serializer.newInstance().serialize(mapStatus).array()
+
+    // TODO: If we always ignore the callback, might be good to create one to re-use for all of
+    // the RPCs to avoid the extra object creation.
+    client.sendRpc(new MapOutputReady(shuffleId, mapId, numReduces, statusBytes).toByteArray,
+      new RpcResponseCallback {
+        override def onSuccess(response: Array[Byte]): Unit = {
+          result.success((): Unit)
+        }
+        override def onFailure(e: Throwable): Unit = {
           result.failure(e)
         }
       })

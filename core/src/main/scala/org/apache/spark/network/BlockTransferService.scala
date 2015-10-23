@@ -26,6 +26,7 @@ import scala.concurrent.duration.Duration
 import org.apache.spark.Logging
 import org.apache.spark.network.buffer.{NioManagedBuffer, ManagedBuffer}
 import org.apache.spark.network.shuffle.{ShuffleClient, BlockFetchingListener}
+import org.apache.spark.scheduler.MapStatus
 import org.apache.spark.storage.{BlockManagerId, BlockId, StorageLevel}
 
 private[spark]
@@ -77,6 +78,14 @@ abstract class BlockTransferService extends ShuffleClient with Closeable with Lo
       blockId: BlockId,
       blockData: ManagedBuffer,
       level: StorageLevel): Future[Unit]
+
+  def mapOutputReady(
+      hostname: String,
+      port: Int,
+      shuffleId: Int,
+      mapId: Int,
+      numReduces: Int,
+      mapStatus: MapStatus): Future[Unit]
 
   /**
    * A special case of [[fetchBlocks]], as it fetches only one block and is blocking.
