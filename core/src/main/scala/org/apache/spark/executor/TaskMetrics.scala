@@ -55,6 +55,12 @@ class TaskMetrics extends Serializable {
   def executorDeserializeTime: Long = _executorDeserializeTime
   private[spark] def setExecutorDeserializeTime(value: Long) = _executorDeserializeTime = value
 
+  /**
+   * Time that a future task waits for its input in milliseconds. Zero for normal tasks.
+   */
+  private var _futureTaskQueueTime: Long = _
+  def futureTaskQueueTime: Long = _futureTaskQueueTime
+  private[spark] def setFutureTaskQueueTime(value: Long) = _futureTaskQueueTime = value
 
   /**
    * Time the executor spends actually running the task (including fetching shuffle data)

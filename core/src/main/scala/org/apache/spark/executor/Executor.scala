@@ -112,8 +112,6 @@ private[spark] class Executor(
   // Maintains the list of running tasks.
   private val runningTasks = new ConcurrentHashMap[Long, TaskRunner]
 
-  private val futureTaskEnqueueTime = new ConcurrentHashMap[Long, Long] 
-
   // Executor for the heartbeat task.
   private val heartbeater = ThreadUtils.newDaemonSingleThreadScheduledExecutor("driver-heartbeater")
 
@@ -137,14 +135,10 @@ private[spark] class Executor(
       attemptNumber: Int,
       taskName: String,
       futureTask: FutureTask[_],
-      deserializeTime: Long): Unit = {
+      deserializeTime: Long,
+      taskQueueStart: Long): Unit = {
     val tr = new FutureTaskRunner(context, taskId = taskId, attemptNumber = attemptNumber, taskName,
-      futureTask, deserializeTime)
-    if (futureTaskEnqueueTime.containsKey(taskId)) {
-      val enqueueTime = System.nanoTime - futureTaskEnqueueTime.get(taskId)
-      futureTaskEnqueueTime.remove(taskId)
-      logInfo(s"DRIZ: Future task $taskId was enqueued for ${enqueueTime/1e3} us")
-    } 
+      futureTask, deserializeTime, ((System.nanoTime - taskQueueStart)/1e6).toLong)
     // TODO: Send an update here to the driver that we are executing this task ?
     runningTasks.put(taskId, tr)
     threadPool.execute(tr)
@@ -180,6 +174,7 @@ private[spark] class Executor(
       attemptNumber: Int,
       taskId: Long,
       deserializeTime: Long,
+      taskQueueTime: Long,
       ser: SerializerInstance): Unit = {
     val taskMemoryManager = new TaskMemoryManager(env.executorMemoryManager)
     execBackend.statusUpdate(taskId, TaskState.RUNNING, EMPTY_BYTE_BUFFER)
@@ -231,7 +226,8 @@ private[spark] class Executor(
       // TODO(shivaram): Get rid of this ?
       m.broadcastBlockedNanos = Broadcast.blockedNanos.get()
       m.setExecutorRunTime((taskFinish - taskStart))
-      // TODO: Add old gc time here
+      m.setFutureTaskQueueTime(taskQueueTime)
+      // TODO: Add gc time during task serialization here
       m.setJvmGCTime(computeTotalGcTime() - startGCTime)
       m.setResultSerializationTime(afterSerialization - beforeSerialization)
       m.updateAccumulators()
@@ -332,11 +328,11 @@ private[spark] class Executor(
           val shuffleDep = futureTask.getFirstShuffleDep
           if (!shuffleDep.isEmpty) {
             val baseShuffleHandle = shuffleDep.get.shuffleHandle.asInstanceOf[BaseShuffleHandle[_, _, _]]
-            futureTaskEnqueueTime.put(taskId, System.nanoTime) 
             logDebug(s"DRIZ: Future task $taskId shuffleDep is not empty. Queuing for ${baseShuffleHandle.numMaps} maps")
             env.blockManager.submitFutureTask(baseShuffleHandle.shuffleId, baseShuffleHandle.numMaps,
               futureTask.partitionId, taskId, (a: Unit) => launchFutureTask(execBackend, taskId,
-                attemptNumber, taskName, futureTask, deserializeStopTime - deserializeStartTime))
+                attemptNumber, taskName, futureTask, deserializeStopTime - deserializeStartTime,
+                System.nanoTime))
             // TODO(shivaram): Should we send some status update here ?
             return
           }
@@ -344,7 +340,8 @@ private[spark] class Executor(
           logDebug(s"DRIZ: NOT a future task with id $taskId and name $taskName")
         }
 
-        runDeserializedTask(execBackend, task, taskName, attemptNumber, taskId, deserializeStopTime-deserializeStartTime, ser)
+        runDeserializedTask(execBackend, task, taskName, attemptNumber, taskId,
+          deserializeStopTime-deserializeStartTime, 0L, ser)
       } catch {
         case ffe: FetchFailedException =>
           val reason = ffe.toTaskEndReason
@@ -400,7 +397,8 @@ private[spark] class Executor(
       attemptNumber: Int,
       taskName: String,
       futureTask: FutureTask[_],
-      deserializeTime: Long)
+      deserializeTime: Long,
+      taskQueueTime: Long)
     extends TaskRunner(execBackend, taskId, attemptNumber, taskName, None)  {
 
     override def run(): Unit = {
@@ -425,7 +423,8 @@ private[spark] class Executor(
           throw new TaskKilledException
         }
 
-        runDeserializedTask(execBackend, futureTask.task, taskName, attemptNumber, taskId, deserializeTime, ser)
+        runDeserializedTask(execBackend, futureTask.task, taskName, attemptNumber, taskId,
+          deserializeTime, taskQueueTime, ser)
       } catch {
         case ffe: FetchFailedException =>
           val reason = ffe.toTaskEndReason

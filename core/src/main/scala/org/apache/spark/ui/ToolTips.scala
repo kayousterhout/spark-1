@@ -32,6 +32,9 @@ private[spark] object ToolTips {
     """Time blocked waiting to fetch the broadcasted task description. This is a subset of the task
        deserialization time."""
 
+  val FUTURE_TASK_QUEUE_TIME =
+    """Time spent by future tasks waiting for their input blocks to arrive."""
+
   val MAP_OUTPUT_LOCATIONS_FETCH_TIME =
     """Time spent fetching the locations of all of the map outputs, so that the Spark task knows
        where to read the shuffle data from."""

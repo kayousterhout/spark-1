@@ -201,6 +201,13 @@ private[ui] class StagePage(parent: StagesTab) extends WebUIPage("stage") {
                   <span class="additional-metric-title">Broadcast Blocked Time</span>
                 </span>
               </li>
+              <li>
+                <span data-toggle="tooltip"
+                      title={ToolTips.FUTURE_TASK_QUEUE_TIME} data-placement="right">
+                  <input type="checkbox" name={TaskDetailsClassNames.FUTURE_TASK_QUEUE_TIME}/>
+                  <span class="additional-metric-title">Future Task Queue Time</span>
+                </span>
+              </li>
               {if (stageData.hasShuffleRead) {
               <li>
                 <span data-toggle="tooltip"
@@ -352,6 +359,17 @@ private[ui] class StagePage(parent: StagesTab) extends WebUIPage("stage") {
                 Broadcast Blocked Time
               </span>
             </td> +: getFormattedTimeQuantiles(broadcastBlockedTimes)
+
+          val futureTaskQueueTimes = validTasks.map { case TaskUIData(_, metrics, _) =>
+            metrics.get.futureTaskQueueTime.toDouble
+          }
+          val futureTaskQueueQuantiles =
+            <td>
+              <span data-toggle="tooltip" title={ToolTips.FUTURE_TASK_QUEUE_TIME}
+                    data-placement="right">
+                Future Task Queue Times
+              </span>
+            </td> +: getFormattedTimeQuantiles(futureTaskQueueTimes)
 
           val serviceTimes = validTasks.map { case TaskUIData(_, metrics, _) =>
             metrics.get.executorRunTime.toDouble
@@ -530,6 +548,9 @@ private[ui] class StagePage(parent: StagesTab) extends WebUIPage("stage") {
             </tr>
             <tr class={TaskDetailsClassNames.BROADCAST_BLOCKED_TIME}>
               {broadcastBlockedQuantiles}
+            </tr>
+            <tr class={TaskDetailsClassNames.FUTURE_TASK_QUEUE_TIME}>
+              {futureTaskQueueQuantiles}
             </tr>
             <tr>{gcQuantiles}</tr>,
             <tr class={TaskDetailsClassNames.RESULT_SERIALIZATION_TIME}>
