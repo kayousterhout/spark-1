@@ -98,7 +98,8 @@ final class ShuffleBlockFetcherIterator(
    */
   private[this] val fetchRequests = new Queue[FetchRequest]
 
-  private val drizzle = SparkEnv.get.conf.getBoolean("spark.scheduler.drizzle", true)
+  private val pushDrizzle = SparkEnv.get.conf.getBoolean("spark.scheduler.drizzle", true) && 
+    SparkEnv.get.conf.getBoolean("spark.scheduler.drizzle.push", true)
 
   /** Current bytes in flight from our requests */
   private[this] var bytesInFlight = 0L
@@ -247,7 +248,8 @@ final class ShuffleBlockFetcherIterator(
         }
         // Some set of blocks might not be available yet. We will sign up to be
         // notified about when they are available.
-        if (!drizzle || blockManager.getStatus(blockId).isDefined) {
+        // NOTE(shivaram): This only applies for push-based shuffle
+        if (!pushDrizzle || blockManager.getStatus(blockId).isDefined) {
           insertBlock()
         } else {
           logInfo(s"DRIZ: $blockId is local but unavailable. Registering a callback to wait")

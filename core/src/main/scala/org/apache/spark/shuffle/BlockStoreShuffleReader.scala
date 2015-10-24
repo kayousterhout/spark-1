@@ -51,9 +51,12 @@ private[spark] class BlockStoreShuffleReader[K, C](
     // Update the context task metrics for each record read.
     val readMetrics = context.taskMetrics.createShuffleReadMetricsForDependency()
 
+    val pushDrizzle = SparkEnv.get.conf.getBoolean("spark.scheduler.drizzle", true) && 
+      SparkEnv.get.conf.getBoolean("spark.scheduler.drizzle.push", true)
+
     // Check if all the blocks are in the local block manager
     // as it will be for drizzle
-    val blockFetcherItr = if (allLocalBlocks) {
+    val blockFetcherItr = if (pushDrizzle) {
       logDebug(s"DRIZ: Shuffle everything is local")
       // TODO(shivaram): We construct these block ids twice. Refactor this
       // NOTE(shivaram): We just pass in size as 0L as it doesn't matter for local reads
