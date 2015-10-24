@@ -1025,6 +1025,7 @@ private[spark] class BlockManager(
   }
 
   override def mapOutputReady(shuffleId: Int, mapId: Int, numReduces: Int, mapStatus: MapStatus) {
+    logInfo(s"DRIZ: Map output is ready for shuffle $shuffleId, map $mapId, num reduces $numReduces")
     // Register the output for each reduce task.
     (0 until numReduces).foreach { reduceId =>
       addOutputForFutureTask(new ShuffleBlockId(shuffleId, mapId, reduceId))

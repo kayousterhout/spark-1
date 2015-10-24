@@ -248,6 +248,7 @@ final class ShuffleBlockFetcherIterator(
         // Some set of blocks might not be available yet. We will sign up to be
         // notified about when they are available.
         if (!drizzle || blockManager.getStatus(blockId).isDefined) {
+          logInfo(s"DRIZ: $blockId is local and available!")
           insertBlock()
         } else {
           logInfo(s"DRIZ: $blockId is local but unavailable. Registering a callback to wait")
