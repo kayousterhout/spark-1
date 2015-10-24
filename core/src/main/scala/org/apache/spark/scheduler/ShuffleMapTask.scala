@@ -92,7 +92,7 @@ private[spark] class ShuffleMapTask(
       val status = writer.stop(success = true).get
 
       logDebug(s"DRIZ: In ShuffleMapTask ${partition.index} for stage $stageId, got " +
-        s"${nextStageLocs.map(_.size).getOrElse(0)}")
+        s"${nextStageLocs.map(_.size).getOrElse(0)} locations")
       if (!nextStageLocs.isEmpty && dep.partitioner.numPartitions == nextStageLocs.get.length) {
         val pushShuffleData = SparkEnv.get.conf.getBoolean("spark.scheduler.drizzle.push", true)
         if (pushShuffleData) {
@@ -105,6 +105,8 @@ private[spark] class ShuffleMapTask(
           val numReduces = nextStageLocs.get.length
           val uniqueLocations = nextStageLocs.get.toSet
           uniqueLocations.foreach { blockManagerId =>
+            logDebug(s"DRIZ: Sending MapOutputStatus to ${blockManagerId.host}")
+            // TODO: Directly tell the local block manager.
             SparkEnv.get.blockTransferService.mapOutputReady(
               blockManagerId.host,
               blockManagerId.port,
