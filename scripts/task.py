@@ -5,6 +5,7 @@ class Task:
     self.initialize_from_json(data)
 
     self.scheduler_delay = (self.finish_time - self.executor_run_time -
+      self.future_task_queue_time -
       self.executor_deserialize_time - self.result_serialization_time - self.start_time)
     # Should be set to true if this task is a straggler and we know the cause of the
     # straggler behavior.
@@ -109,7 +110,8 @@ class Task:
      Does not include GC time.
      """
      compute_time = (self.runtime() - self.scheduler_delay - self.gc_time -
-       self.shuffle_write_time - self.input_read_time - self.output_write_time)
+       self.future_task_queue_time - self.shuffle_write_time - 
+       self.input_read_time - self.output_write_time)
      if self.has_fetch:
        # Subtract off of the time to read local data (which typically comes from disk) because
        # this read happens before any of the computation starts.
@@ -141,11 +143,11 @@ class Task:
       # Print times relative to the start time so that they're easier to read.
       desc = (("Start time: %s, local read time: %s, " +
             "fetch wait: %s, compute time: %s, gc time: %s, shuffle write time: %s, " +
-            "result ser: %s, finish: %s, shuffle bytes: %s, input bytes: %s") %
+            "result ser: %s, finish: %s, shuffle bytes: %s, input bytes: %s, future task queue: %s") %
              (self.start_time, self.local_read_time,
               self.fetch_wait, self.compute_time(), self.gc_time,
               self.shuffle_write_time, self.result_serialization_time, self.finish_time - base,
-              self.local_mb_read + self.remote_mb_read, self.input_mb)) 
+              self.local_mb_read + self.remote_mb_read, self.input_mb, self.future_task_queue_time)) 
     else:
       desc = ("Start time: %s, finish: %s, scheduler delay: %s, input read time: %s, gc time: %s, shuffle write time: %s" %
         (self.start_time, self.finish_time, self.scheduler_delay, self.input_read_time, self.gc_time, self.shuffle_write_time))
