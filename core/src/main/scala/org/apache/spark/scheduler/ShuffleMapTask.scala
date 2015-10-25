@@ -83,7 +83,6 @@ private[spark] class ShuffleMapTask(
       prepTask()
     }
 
-    metrics = Some(context.taskMetrics)
     var writer: ShuffleWriter[Any, Any] = null
     try {
       val manager = SparkEnv.get.shuffleManager
@@ -94,6 +93,8 @@ private[spark] class ShuffleMapTask(
       logDebug(s"DRIZ: In ShuffleMapTask ${partition.index} for stage $stageId, got " +
         s"${nextStageLocs.map(_.size).getOrElse(0)}")
       if (!nextStageLocs.isEmpty && dep.partitioner.numPartitions == nextStageLocs.get.length) {
+        val drizzleRpcsStart = System.nanoTime
+
         val pushShuffleData = SparkEnv.get.conf.getBoolean("spark.scheduler.drizzle.push", true)
         if (pushShuffleData) {
           uploadOutputToNextTaskLocations()
@@ -114,6 +115,8 @@ private[spark] class ShuffleMapTask(
               status)
           }
         }
+        context.taskMetrics.shuffleWriteMetrics.map(_.incShuffleWriteTime(System.nanoTime -
+          drizzleRpcsStart))
       }
       status
     } catch {
