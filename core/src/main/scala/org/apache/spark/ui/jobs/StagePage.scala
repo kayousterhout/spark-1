@@ -545,13 +545,13 @@ private[ui] class StagePage(parent: StagesTab) extends WebUIPage("stage") {
             <tr class={TaskDetailsClassNames.SCHEDULER_DELAY}>{schedulerDelayQuantiles}</tr>,
             <tr class={TaskDetailsClassNames.TASK_DESERIALIZATION_TIME}>
               {deserializationQuantiles}
-            </tr>
+            </tr>,
             <tr class={TaskDetailsClassNames.BROADCAST_BLOCKED_TIME}>
               {broadcastBlockedQuantiles}
-            </tr>
+            </tr>,
             <tr class={TaskDetailsClassNames.FUTURE_TASK_QUEUE_TIME}>
               {futureTaskQueueQuantiles}
-            </tr>
+            </tr>,
             <tr>{gcQuantiles}</tr>,
             <tr class={TaskDetailsClassNames.RESULT_SERIALIZATION_TIME}>
               {serializationQuantiles}
@@ -814,7 +814,7 @@ private[ui] object StagePage {
         metrics.resultSerializationTime)
       math.max(
         0,
-        totalExecutionTime - metrics.executorRunTime - executorOverhead -
+        totalExecutionTime - metrics.executorRunTime - executorOverhead - metrics.futureTaskQueueTime -
           getGettingResultTime(info, currentTime))
     } else {
       // The task is still running and the metrics like executorRunTime are not available.
@@ -867,6 +867,7 @@ private[ui] class TaskTableRowData(
     val schedulerDelay: Long,
     val taskDeserializationTime: Long,
     val gcTime: Long,
+    val futureTaskQueueTime: Long,
     val serializationTime: Long,
     val gettingResultTime: Long,
     val peakExecutionMemoryUsed: Long,
@@ -919,6 +920,7 @@ private[ui] class TaskDataSource(
     val taskDeserializationTime = metrics.map(_.executorDeserializeTime).getOrElse(0L)
     val serializationTime = metrics.map(_.resultSerializationTime).getOrElse(0L)
     val gettingResultTime = getGettingResultTime(info, currentTime)
+    val futureTaskQueueTime = metrics.map(_.futureTaskQueueTime).getOrElse(0L)
 
     val (taskInternalAccumulables, taskExternalAccumulables) =
       info.accumulables.partition(_.internal)
@@ -1054,6 +1056,7 @@ private[ui] class TaskDataSource(
       schedulerDelay,
       taskDeserializationTime,
       gcTime,
+      futureTaskQueueTime,
       serializationTime,
       gettingResultTime,
       peakExecutionMemoryUsed,
@@ -1114,6 +1117,10 @@ private[ui] class TaskDataSource(
       case "GC Time" => new Ordering[TaskTableRowData] {
         override def compare(x: TaskTableRowData, y: TaskTableRowData): Int =
           Ordering.Long.compare(x.gcTime, y.gcTime)
+      }
+      case "Future Task Queue Time" => new Ordering[TaskTableRowData] {
+        override def compare(x: TaskTableRowData, y: TaskTableRowData): Int =
+          Ordering.Long.compare(x.futureTaskQueueTime, y.futureTaskQueueTime)
       }
       case "Result Serialization Time" => new Ordering[TaskTableRowData] {
         override def compare(x: TaskTableRowData, y: TaskTableRowData): Int =
@@ -1328,6 +1335,7 @@ private[ui] class TaskPagedTable(
         ("Scheduler Delay", TaskDetailsClassNames.SCHEDULER_DELAY),
         ("Task Deserialization Time", TaskDetailsClassNames.TASK_DESERIALIZATION_TIME),
         ("GC Time", ""),
+        ("Future Task Queue Time", TaskDetailsClassNames.FUTURE_TASK_QUEUE_TIME),
         ("Result Serialization Time", TaskDetailsClassNames.RESULT_SERIALIZATION_TIME),
         ("Getting Result Time", TaskDetailsClassNames.GETTING_RESULT_TIME)) ++
         {
@@ -1409,6 +1417,9 @@ private[ui] class TaskPagedTable(
       </td>
       <td>
         {if (task.gcTime > 0) UIUtils.formatDuration(task.gcTime) else ""}
+      </td>
+      <td class={TaskDetailsClassNames.FUTURE_TASK_QUEUE_TIME}>
+        {UIUtils.formatDuration(task.futureTaskQueueTime)}
       </td>
       <td class={TaskDetailsClassNames.RESULT_SERIALIZATION_TIME}>
         {UIUtils.formatDuration(task.serializationTime)}
