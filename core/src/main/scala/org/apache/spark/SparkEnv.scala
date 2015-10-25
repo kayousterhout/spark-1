@@ -258,6 +258,9 @@ object SparkEnv extends Logging {
       conf.set("spark.executor.port", rpcEnv.address.port.toString)
     }
 
+    // Put the number of usable cores in the conf
+    conf.set("spark.numUsableCores", numUsableCores.toString)
+
     // Create an instance of the class with the given name, possibly initializing it with our conf
     def instantiateClass[T](className: String): T = {
       val cls = Utils.classForName(className)

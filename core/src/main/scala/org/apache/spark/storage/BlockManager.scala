@@ -1025,12 +1025,12 @@ private[spark] class BlockManager(
   }
 
   override def mapOutputReady(shuffleId: Int, mapId: Int, numReduces: Int, mapStatus: MapStatus) {
+    mapOutputTracker.addStatus(shuffleId, mapId, mapStatus)
+
     // Register the output for each reduce task.
     (0 until numReduces).foreach { reduceId =>
       addOutputForFutureTask(new ShuffleBlockId(shuffleId, mapId, reduceId))
     }
-
-    mapOutputTracker.addStatus(shuffleId, mapId, mapStatus)
   }
 
   private[spark] def registerBlockAvailableCallback(blockId: BlockId, callback: Unit => Unit) {

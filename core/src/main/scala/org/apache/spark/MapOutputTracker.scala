@@ -135,7 +135,7 @@ private[spark] abstract class MapOutputTracker(conf: SparkConf) extends Logging 
       mapId: Int,
       mapStatus: MapStatus): Unit = synchronized {
     val statuses = {
-      val currentStatuses = mapStatuses.getOrElseUpdate(shuffleId, new Array[MapStatus](mapId))
+      val currentStatuses = mapStatuses.getOrElseUpdate(shuffleId, new Array[MapStatus](mapId + 1))
 
       if (mapId >= currentStatuses.length) {
         // Possibly create a bigger Array and copy over the statuses. We always at least double
@@ -143,12 +143,14 @@ private[spark] abstract class MapOutputTracker(conf: SparkConf) extends Logging 
         // having extra entries.
         val newSize = mapId + 1
         val newStatuses = currentStatuses ++ new Array[MapStatus](newSize - currentStatuses.length)
+        logDebug(s"DRIZ: Extended MapStatus for $shuffleId to ${newStatuses.length}")
         mapStatuses.put(shuffleId, newStatuses)
         newStatuses
       } else {
         currentStatuses
       }
     }
+    logDebug(s"DRIZ: Adding status for shuffle $shuffleId and map $mapId, status $mapStatus")
     statuses(mapId) = mapStatus
   }
 
@@ -569,7 +571,7 @@ private[spark] object MapOutputTracker extends Logging {
     val splitsByAddress = new HashMap[BlockManagerId, ArrayBuffer[(BlockId, Long)]]
     for ((status, mapId) <- statuses.zipWithIndex) {
       if (status == null) {
-        val errorMessage = s"Missing an output location for shuffle $shuffleId"
+        val errorMessage = s"Missing an output location for shuffle $shuffleId map $mapId"
         logError(errorMessage)
         throw new MetadataFetchFailedException(shuffleId, startPartition, errorMessage)
       } else {

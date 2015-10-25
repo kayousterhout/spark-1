@@ -78,8 +78,14 @@ private[spark] class Executor(
     Thread.setDefaultUncaughtExceptionHandler(SparkUncaughtExceptionHandler)
   }
 
+  val numUsableCores = SparkEnv.get.conf.getOption("spark.numUsableCores")
+
   // Start worker thread pool
-  private val threadPool = ThreadUtils.newDaemonCachedThreadPool("Executor task launch worker")
+  private val threadPool = if (numUsableCores.isDefined) {
+    ThreadUtils.newDaemonFixedThreadPool(numUsableCores.get.toInt, "Executor task launch worker")
+  } else {
+    ThreadUtils.newDaemonCachedThreadPool("Executor task launch worker")
+  }
   private val executorSource = new ExecutorSource(threadPool, executorId)
 
   if (!isLocal) {
@@ -138,7 +144,7 @@ private[spark] class Executor(
       deserializeTime: Long,
       taskQueueStart: Long): Unit = {
     val tr = new FutureTaskRunner(context, taskId = taskId, attemptNumber = attemptNumber, taskName,
-      futureTask, deserializeTime, ((System.nanoTime - taskQueueStart)/1e6).toLong)
+      futureTask, deserializeTime, taskQueueStart)
     // TODO: Send an update here to the driver that we are executing this task ?
     runningTasks.put(taskId, tr)
     threadPool.execute(tr)
@@ -181,7 +187,11 @@ private[spark] class Executor(
     task.setTaskMemoryManager(taskMemoryManager)
 
     logDebug("Task " + taskId + "'s epoch is " + task.epoch)
-    env.mapOutputTracker.updateEpoch(task.epoch)
+    // Don't update epoch for drizzle as we don't use it
+    // TODO(shivaram): Check if this is the right thing to do
+    if (!SparkEnv.get.conf.getBoolean("spark.scheduler.drizzle", true)) { 
+      env.mapOutputTracker.updateEpoch(task.epoch)
+    }
 
     val startGCTime = computeTotalGcTime()
 
@@ -332,7 +342,7 @@ private[spark] class Executor(
             env.blockManager.submitFutureTask(baseShuffleHandle.shuffleId, baseShuffleHandle.numMaps,
               futureTask.partitionId, taskId, (a: Unit) => launchFutureTask(execBackend, taskId,
                 attemptNumber, taskName, futureTask, deserializeStopTime - deserializeStartTime,
-                System.nanoTime))
+                deserializeStopTime))
             // TODO(shivaram): Should we send some status update here ?
             return
           }
@@ -398,14 +408,15 @@ private[spark] class Executor(
       taskName: String,
       futureTask: FutureTask[_],
       deserializeTime: Long,
-      taskQueueTime: Long)
+      taskQueueStart: Long)
     extends TaskRunner(execBackend, taskId, attemptNumber, taskName, None)  {
 
     override def run(): Unit = {
       Thread.currentThread.setContextClassLoader(replClassLoader)
       val ser = env.closureSerializer.newInstance()
 
-      logInfo(s"Running FutureTask $taskName (TID $taskId)")
+      val taskQueueTime = System.currentTimeMillis() - taskQueueStart
+      logInfo(s"Running FutureTask $taskName (TID $taskId) queue time ${taskQueueTime}")
       var taskStart: Long = 0
       startGCTime = computeTotalGcTime()
 
