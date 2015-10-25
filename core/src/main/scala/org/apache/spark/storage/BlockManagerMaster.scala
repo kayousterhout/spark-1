@@ -92,7 +92,11 @@ class BlockManagerMaster(
   }
 
   def getBlockManagerIdForExecutor(executorId: String): BlockManagerId = {
-    driverEndpoint.askWithRetry[BlockManagerId](GetBlockManagerIdForExecutor(executorId))
+    driverEndpoint.askWithRetry[Seq[BlockManagerId]](GetBlockManagerIdForExecutor(Array(executorId))).head
+  }
+
+  def getBlockManagerIdForExecutors(executorIds: Array[String]): Seq[BlockManagerId] = {
+    driverEndpoint.askWithRetry[Seq[BlockManagerId]](GetBlockManagerIdForExecutor(executorIds))
   }
 
   /**

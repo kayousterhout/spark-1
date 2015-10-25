@@ -105,7 +105,11 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
         if (TaskState.isFinished(state)) {
           executorDataMap.get(executorId) match {
             case Some(executorInfo) =>
-              executorInfo.freeCores += scheduler.CPUS_PER_TASK
+              if (futureTasksRunning.contains(taskId)) {
+                futureTasksRunning -= taskId
+              } else {
+                executorInfo.freeCores += scheduler.CPUS_PER_TASK
+              }
               makeOffers(executorId)
             case None =>
               // Ignoring the update since we don't know about the executor.
@@ -220,13 +224,16 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
               case e: Exception => logError("Exception in error callback", e)
             }
           }
-        }
-        else {
+        } else {
           val executorData = executorDataMap(task.executorId)
           if (!task.isFutureTask) {
             logInfo(s"Task ${task.toString} is not future task, so doing freeCores accounting")
             // TODO: Also update freeCores once the FutureTask actually starts running!
             executorData.freeCores -= scheduler.CPUS_PER_TASK
+          } else {
+            futureTasksRunning += task.taskId
+            // Since the future task will not use any cores revive offers here
+            reviveOffers()
           }
           executorData.executorEndpoint.send(LaunchTask(new SerializableBuffer(serializedTask)))
         }
@@ -260,6 +267,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
 
   var driverEndpoint: RpcEndpointRef = null
   val taskIdsOnSlave = new HashMap[String, HashSet[String]]
+  val futureTasksRunning = new HashSet[Long] 
 
   override def start() {
     val properties = new ArrayBuffer[(String, String)]

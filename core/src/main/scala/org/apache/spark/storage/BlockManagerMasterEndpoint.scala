@@ -78,8 +78,8 @@ class BlockManagerMasterEndpoint(
     case GetRpcHostPortForExecutor(executorId) =>
       context.reply(getRpcHostPortForExecutor(executorId))
 
-    case GetBlockManagerIdForExecutor(executorId) =>
-      context.reply(getBlockManagerId(executorId))
+    case GetBlockManagerIdForExecutor(executorIds) =>
+      context.reply(getBlockManagerIds(executorIds))
 
     case GetMemoryStatus =>
       context.reply(memoryStatus)
@@ -403,8 +403,8 @@ class BlockManagerMasterEndpoint(
     }
   }
 
-  private def getBlockManagerId(executorId: String): BlockManagerId =
-    blockManagerIdByExecutor(executorId)
+  private def getBlockManagerIds(executorIds: Array[String]): Seq[BlockManagerId] =
+    executorIds.map(x => blockManagerIdByExecutor(x))
 
   override def onStop(): Unit = {
     askThreadPool.shutdownNow()

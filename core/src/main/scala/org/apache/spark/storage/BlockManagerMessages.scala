@@ -92,7 +92,7 @@ private[spark] object BlockManagerMessages {
 
   case class GetRpcHostPortForExecutor(executorId: String) extends ToBlockManagerMaster
 
-  case class GetBlockManagerIdForExecutor(executorId: String) extends ToBlockManagerMaster
+  case class GetBlockManagerIdForExecutor(executorIds: Array[String]) extends ToBlockManagerMaster
 
   case class RemoveExecutor(execId: String) extends ToBlockManagerMaster
 

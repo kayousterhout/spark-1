@@ -811,16 +811,14 @@ class DAGScheduler(
       val locationsForStage = stageToTaskLocations(task.stageId)
       locationsForStage(task.partitionId) = taskInfo.executorId
 
-      logInfo(s"DRIZ: Task ${task.partitionId} scheduled on ${taskInfo.executorId}. Locations " +
+      logDebug(s"DRIZ: Task ${task.partitionId} scheduled on ${taskInfo.executorId}. Locations " +
         s"for stage is now ${locationsForStage.mkString(",")}")
 
       if (locationsForStage.filter(_ == null).length == 0) {
         // All of the stage's tasks have been scheduled, so schedule its dependencies.
-        val blockManagerIds = locationsForStage.map { executorId =>
-          blockManagerMaster.getBlockManagerIdForExecutor(executorId)
-        }
+        val blockManagerIds = blockManagerMaster.getBlockManagerIdForExecutors(locationsForStage)
         val stageId = task.stageId
-        logInfo(s"DRIZ: All tasks for stage $stageId have been scheduled, so scheduling " +
+        logDebug(s"DRIZ: All tasks for stage $stageId have been scheduled, so scheduling " +
           s"dependencies using locations ${locationsForStage.mkString(",")} " + 
           s"(translated to ${blockManagerIds.mkString(",")})")
 
@@ -1001,7 +999,7 @@ class DAGScheduler(
   private def submitStageDrizzle(stage: Stage, locations: Option[Seq[BlockManagerId]] = None) {
     val jobId = activeJobForStage(stage)
     if (jobId.isDefined) {
-      logDebug("submitStage(" + stage + ")")
+      logDebug("submitStageDrizzle(" + stage + ")")
       if (!runningStages(stage) && !failedStages(stage)) {
         val missing = getMissingParentStages(stage).sortBy(_.id)
         logDebug("missing: " + missing)
@@ -1091,6 +1089,7 @@ class DAGScheduler(
     }
 
     stage.makeNewStageAttempt(partitionsToCompute.size, taskIdToLocations.values.toSeq)
+    logDebug(s"StageSubmitted $stage")
     listenerBus.post(SparkListenerStageSubmitted(stage.latestInfo, properties))
 
     // TODO: Maybe we can keep the taskBinary in Stage to avoid serializing it multiple times.
@@ -1124,6 +1123,8 @@ class DAGScheduler(
         runningStages -= stage
         return
     }
+
+    logDebug(s"Binary serialize & broadcast $stage")
 
     val tasks: Seq[Task[_]] = try {
       val rawTasks = stage match {
