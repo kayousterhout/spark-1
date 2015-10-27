@@ -81,7 +81,7 @@ private[spark] class Executor(
   val numUsableCores = SparkEnv.get.conf.getOption("spark.numUsableCores")
 
   // Start worker thread pool
-  private val threadPool = if (numUsableCores.isDefined) {
+  private val threadPool = if (numUsableCores.isDefined && numUsableCores.get.toInt > 0) {
     ThreadUtils.newDaemonFixedThreadPool(numUsableCores.get.toInt, "Executor task launch worker")
   } else {
     ThreadUtils.newDaemonCachedThreadPool("Executor task launch worker")
