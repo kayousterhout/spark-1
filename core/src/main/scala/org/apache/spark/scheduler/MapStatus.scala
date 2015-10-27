@@ -21,8 +21,10 @@ import java.io.{Externalizable, ObjectInput, ObjectOutput}
 
 import org.roaringbitmap.RoaringBitmap
 
+import org.apache.spark.Logging
 import org.apache.spark.storage.BlockManagerId
 import org.apache.spark.util.Utils
+import org.apache.spark.util.collection.PrimitiveKeyOpenHashMap
 
 /**
  * Result returned by a ShuffleMapTask to a scheduler. Includes the block manager address that the
@@ -42,13 +44,21 @@ private[spark] sealed trait MapStatus {
 }
 
 
-private[spark] object MapStatus {
+private[spark] object MapStatus extends Logging {
 
   def apply(loc: BlockManagerId, uncompressedSizes: Array[Long]): MapStatus = {
     if (uncompressedSizes.length > 2000) {
       HighlyCompressedMapStatus(loc, uncompressedSizes)
     } else {
-      new CompressedMapStatus(loc, uncompressedSizes)
+      // If number of non-zero entries is less than 10% use SparseMap
+      val nnz = uncompressedSizes.filter(x => x != 0).size
+      if (nnz.toDouble / uncompressedSizes.length < 0.1) {
+        logInfo(s"DRIZ: USING SparseMapStatus with nnz $nnz, total ${uncompressedSizes.length}")
+        val (inK, inV) = MapStatus.convertToMap(uncompressedSizes, nnz)
+        new SparseMapStatus(loc, inK, inV)
+      } else {
+        new CompressedMapStatus(loc, uncompressedSizes)
+      }
     }
   }
 
@@ -79,8 +89,70 @@ private[spark] object MapStatus {
       math.pow(LOG_BASE, compressedSize & 0xFF).toLong
     }
   }
+
+  def convertToMap(
+      uncompressedSizes: Array[Long],
+      numNonZeros: Int): (Array[Int], Array[Byte]) = {
+    val outKeys = new Array[Int](numNonZeros)
+    val outVals = new Array[Byte](numNonZeros)
+    var i = 0
+    var j = 0
+    while (i < uncompressedSizes.length) {
+      if (uncompressedSizes(i) != 0) {
+        outKeys(j) = i
+        outVals(j) = MapStatus.compressSize(uncompressedSizes(i))
+        j = j + 1
+      }
+      i = i + 1
+    }
+    (outKeys, outVals)
+  }
 }
 
+
+/**
+ * A [[MapStatus]] implementation that tracks the size of non-empty blocks. Size for each non-empty block is
+ * represented using a single byte.
+ *
+ * @param loc location where the task is being executed.
+ * @param compressedSizes size of the blocks, indexed by reduce partition id.
+ */
+private[spark] class SparseMapStatus(
+    private[this] var loc: BlockManagerId,
+    private[this] var compressedSizeKeys: Array[Int],
+    private[this] var compressedSizeVals: Array[Byte])
+  extends MapStatus with Externalizable {
+
+  // For deserialization only
+  protected def this() = this(null, null, null)
+
+  override def location: BlockManagerId = loc
+
+  override def getSizeForBlock(reduceId: Int): Long = {
+    val idx = compressedSizeKeys.indexOf(reduceId)
+    if (idx >= 0) {
+      MapStatus.decompressSize(compressedSizeVals(idx))
+    } else {
+      0L
+    }
+  }
+
+  override def writeExternal(out: ObjectOutput): Unit = Utils.tryOrIOException {
+    loc.writeExternal(out)
+    out.writeObject(compressedSizeKeys)
+    out.writeInt(compressedSizeKeys.length)
+    out.write(compressedSizeVals)
+  }
+
+  override def readExternal(in: ObjectInput): Unit = Utils.tryOrIOException {
+    loc = BlockManagerId(in)
+    compressedSizeKeys = in.readObject().asInstanceOf[Array[Int]]
+    val len = in.readInt()
+    compressedSizeVals = new Array[Byte](len)
+    in.readFully(compressedSizeVals)
+  }
+
+}
 
 /**
  * A [[MapStatus]] implementation that tracks the size of each block. Size for each block is
