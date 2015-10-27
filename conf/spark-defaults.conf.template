@@ -28,4 +28,8 @@
 # These are required for running drizzle
 # spark.shuffle.reduceLocality.enabled false
 # spark.scheduler.drizzle true
-# spark.scheduler.drizzle.wait 0.2
+# spark.scheduler.drizzle.wait 1.0
+# spark.scheduler.drizzle.push false
+#
+# spark.eventLog.enabled true
+# spark.eventLog.dir file:///mnt/spark-events
