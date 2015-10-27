@@ -3,6 +3,7 @@ import json
 import logging
 import math
 import numpy
+import os
 import sys
 
 import concurrency
@@ -226,7 +227,7 @@ class Job:
 
     plot_file.close()
 
-  def write_waterfall(self, prefix):
+  def write_waterfall(self, prefix, pdf_relative_path=False):
     """ Outputs a gnuplot file that visually shows all task runtimes. """
     all_tasks = []
     cumulative_tasks = 0
@@ -298,7 +299,11 @@ class Job:
     plot_file.write("set ytics (%s)\n" % ytics_str)
     plot_file.write("set xrange [0:%s]\n" % (last_end - first_start))
     plot_file.write("set yrange [0:%s]\n" % len(all_tasks))
-    plot_file.write("set output \"%s_waterfall.pdf\"\n" % prefix)
+    if pdf_relative_path:
+      filename_only = os.path.basename(prefix)
+      plot_file.write("set output \"%s_waterfall.pdf\"\n" % filename_only)
+    else:
+      plot_file.write("set output \"%s_waterfall.pdf\"\n" % prefix)
 
     # Hacky way to force a key to be printed.
     plot_file.write("plot -1 ls 6 title 'Scheduler delay',\\\n")

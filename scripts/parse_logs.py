@@ -13,8 +13,9 @@ def get_json(line):
   return json.loads(line.strip("\n").replace("\n", "\\n"))
 
 class Analyzer:
-  def __init__(self, filename, parse_as_single_job=False):
+  def __init__(self, filename, parse_as_single_job=False, pdf_relative_path=False):
     self.filename = filename
+    self.pdf_relative_path = pdf_relative_path
     self.jobs = collections.defaultdict(Job)
     # For each stage, jobs that rely on the stage.
     self.jobs_for_stage = {}
@@ -50,7 +51,7 @@ class Analyzer:
   def output_all_waterfalls(self):
     for job_id, job in self.jobs.iteritems():
       filename = "%s_%s" % (self.filename, job_id)
-      job.write_waterfall(filename)
+      job.write_waterfall(filename, self.pdf_relative_path)
 
   def output_all_job_info(self):
     for job_id, job in self.jobs.iteritems():
@@ -61,7 +62,7 @@ class Analyzer:
     #job.print_stage_info()
     job.print_heading("Job")
 
-    job.write_waterfall(filename)
+    job.write_waterfall(filename, self.pdf_relative_path)
 
     no_scheduler_delay_speedup = job.no_scheduler_delay_speedup()[0]
     no_map_output_fetch_speedup = job.no_map_output_fetch_speedup()[0]
@@ -84,6 +85,9 @@ def main(argv):
       "-w", "--waterfall-only", action="store_true", default=False,
       help="Output only the visualization for each job (not other stats)")
   parser.add_option(
+      "--pdf-relative-path", action="store_true", default=False,
+      help="Set the PDF path for waterfall files to be relative")
+  parser.add_option(
       "-s", "--parse-as-single-job", action="store_true", default=False,
       help="Parse the log as a single job, resulting in a single waterfall plot that " +
       "includes all tasks across all jobs")
@@ -101,7 +105,7 @@ def main(argv):
     parser.print_help()
     sys.exit(1)
 
-  analyzer = Analyzer(filename, opts.parse_as_single_job)
+  analyzer = Analyzer(filename, opts.parse_as_single_job, opts.pdf_relative_path)
 
   if opts.waterfall_only:
     analyzer.output_all_waterfalls()
