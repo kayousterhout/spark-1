@@ -335,33 +335,36 @@ private[spark] class BlockManager(
       reduceId: Int,
       taskId: Long,
       taskCb: Unit => Unit): Unit = {
-    // Check if all the blocks already exist. If so just trigger taskCb
-    val availableBlocks = if (SparkEnv.get.conf.getBoolean("spark.scheduler.drizzle.push", true)) {
-      // Count the number of blocks that are already in the BlockManager.
-      (0 until numMaps).map { mapId =>
-        getStatus(
-          ShuffleBlockId(shuffleId, mapId, reduceId)).isDefined
-      }.count(x => x)
-    } else {
-      // Count how many outputs have been registered with the MapOutputTracker.
-      mapOutputTracker.getNumAvailableMapOutputs(shuffleId)
-    }
 
-    val mapsToWait = Math.ceil(numMaps * fractionBlocksToWaitFor).toInt
-    val numMapsPending = numMaps - availableBlocks
-    if (numMapsPending > 0) {
-      futureTasksAllBlocks.put((shuffleId, reduceId), numMapsPending)
-    }
-    if (availableBlocks >= mapsToWait) {
-      logDebug(s"DRIZ: Enough blocks ($availableBlocks of $numMaps) already exists for FutureTask $taskId. Returning")
-      taskCb()
-    } else {
-      futureTaskInfo.put((shuffleId, reduceId), FutureTaskInfo(shuffleId, numMaps, reduceId, taskId, taskCb))
-      // NOTE: Its fine not to synchronize here as two future tasks shouldn't be submitted at the same time
-      // Calculate the number of blocks to wait for before starting future task
-      val waitForBlocks = mapsToWait - availableBlocks
-      futureTasksBlockWait.put((shuffleId, reduceId), waitForBlocks)
-      logDebug(s"DRIZ: For $taskId with $numMaps outputs going to wait for $waitForBlocks blocks")
+    futureTasksBlockWait.synchronized {
+      // Check if all the blocks already exist. If so just trigger taskCb
+      val availableBlocks = if (SparkEnv.get.conf.getBoolean("spark.scheduler.drizzle.push", true)) {
+        // Count the number of blocks that are already in the BlockManager.
+        (0 until numMaps).map { mapId =>
+          getStatus(
+            ShuffleBlockId(shuffleId, mapId, reduceId)).isDefined
+        }.count(x => x)
+      } else {
+        // Count how many outputs have been registered with the MapOutputTracker.
+        mapOutputTracker.getNumAvailableMapOutputs(shuffleId)
+      }
+
+      val mapsToWait = Math.ceil(numMaps * fractionBlocksToWaitFor).toInt
+      val numMapsPending = numMaps - availableBlocks
+      if (numMapsPending > 0) {
+        futureTasksAllBlocks.put((shuffleId, reduceId), numMapsPending)
+      }
+      if (availableBlocks >= mapsToWait) {
+        logDebug(s"DRIZ: Enough blocks ($availableBlocks of $numMaps) already exists for FutureTask $taskId. Returning")
+        taskCb()
+      } else {
+        futureTaskInfo.put((shuffleId, reduceId), FutureTaskInfo(shuffleId, numMaps, reduceId, taskId, taskCb))
+        // NOTE: Its fine not to synchronize here as two future tasks shouldn't be submitted at the same time
+        // Calculate the number of blocks to wait for before starting future task
+        val waitForBlocks = mapsToWait - availableBlocks
+        futureTasksBlockWait.put((shuffleId, reduceId), waitForBlocks)
+        logDebug(s"DRIZ: For $taskId with $numMaps outputs going to wait for $waitForBlocks blocks")
+      }
     }
   }
 
@@ -1025,11 +1028,13 @@ private[spark] class BlockManager(
   }
 
   override def mapOutputReady(shuffleId: Int, mapId: Int, numReduces: Int, mapStatus: MapStatus) {
-    mapOutputTracker.addStatus(shuffleId, mapId, mapStatus)
+    futureTasksBlockWait.synchronized {
+      mapOutputTracker.addStatus(shuffleId, mapId, mapStatus)
 
-    // Register the output for each reduce task.
-    (0 until numReduces).foreach { reduceId =>
-      addOutputForFutureTask(new ShuffleBlockId(shuffleId, mapId, reduceId))
+      // Register the output for each reduce task.
+      (0 until numReduces).foreach { reduceId =>
+        addOutputForFutureTask(new ShuffleBlockId(shuffleId, mapId, reduceId))
+      }
     }
   }
 
