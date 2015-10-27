@@ -83,6 +83,7 @@ private[spark] class ShuffleMapTask(
       prepTask()
     }
 
+    metrics = Some(context.taskMetrics)
     var writer: ShuffleWriter[Any, Any] = null
     try {
       val manager = SparkEnv.get.shuffleManager
@@ -115,8 +116,8 @@ private[spark] class ShuffleMapTask(
               status)
           }
         }
-        context.taskMetrics.shuffleWriteMetrics.map(_.incShuffleWriteTime(System.nanoTime -
-          drizzleRpcsStart))
+        metrics.map(_.shuffleWriteMetrics.map(_.incShuffleWriteTime(System.nanoTime -
+          drizzleRpcsStart)))
       }
       status
     } catch {
