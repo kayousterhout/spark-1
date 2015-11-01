@@ -54,7 +54,7 @@ final class ShuffleBlockFetcherIterator(
     blockManager: BlockManager,
     blocksByAddress: Seq[(BlockManagerId, Seq[(BlockId, Long)])],
     maxBytesInFlight: Long)
-  extends Iterator[(BlockId, InputStream)] with Logging {
+  extends Iterator[(BlockId, InputStream)] with BufferReleasableIterator with Logging {
 
   import ShuffleBlockFetcherIterator._
 
@@ -98,9 +98,6 @@ final class ShuffleBlockFetcherIterator(
    */
   private[this] val fetchRequests = new Queue[FetchRequest]
 
-  private val pushDrizzle = SparkEnv.get.conf.getBoolean("spark.scheduler.drizzle", true) && 
-    SparkEnv.get.conf.getBoolean("spark.scheduler.drizzle.push", true)
-
   /** Current bytes in flight from our requests */
   private[this] var bytesInFlight = 0L
 
@@ -116,7 +113,7 @@ final class ShuffleBlockFetcherIterator(
 
   // Decrements the buffer reference count.
   // The currentResult is set to null to prevent releasing the buffer again on cleanup()
-  private[storage] def releaseCurrentResultBuffer(): Unit = {
+  override def releaseCurrentResultBuffer(): Unit = {
     // Release the current buffer if necessary
     currentResult match {
       case SuccessFetchResult(_, _, _, buf) => buf.release()
@@ -238,23 +235,11 @@ final class ShuffleBlockFetcherIterator(
     while (iter.hasNext) {
       val blockId = iter.next()
       try {
-        val insertBlock: Unit => Unit  = _ => {
-          val buf = blockManager.getBlockData(blockId)
-          logInfo(s"DRIZ: $blockId is now locally available")
-          shuffleMetrics.incLocalBlocksFetched(1)
-          shuffleMetrics.incLocalBytesRead(buf.size)
-          buf.retain()
-          results.put(new SuccessFetchResult(blockId, blockManager.blockManagerId, 0, buf))
-        }
-        // Some set of blocks might not be available yet. We will sign up to be
-        // notified about when they are available.
-        // NOTE(shivaram): This only applies for push-based shuffle
-        if (!pushDrizzle || blockManager.getStatus(blockId).isDefined) {
-          insertBlock()
-        } else {
-          logInfo(s"DRIZ: $blockId is local but unavailable. Registering a callback to wait")
-          blockManager.registerBlockAvailableCallback(blockId, insertBlock);
-        }
+        val buf = blockManager.getBlockData(blockId)
+        shuffleMetrics.incLocalBlocksFetched(1)
+        shuffleMetrics.incLocalBytesRead(buf.size)
+        buf.retain()
+        results.put(new SuccessFetchResult(blockId, blockManager.blockManagerId, 0, buf))
       } catch {
         case e: Exception =>
           // If we see an exception, stop immediately.
@@ -346,9 +331,9 @@ final class ShuffleBlockFetcherIterator(
 /**
  * Helper class that ensures a ManagedBuffer is release upon InputStream.close()
  */
-private class BufferReleasingInputStream(
+private[storage] class BufferReleasingInputStream(
     private val delegate: InputStream,
-    private val iterator: ShuffleBlockFetcherIterator)
+    private val iterator: BufferReleasableIterator)
   extends InputStream {
   private[this] var closed = false
 

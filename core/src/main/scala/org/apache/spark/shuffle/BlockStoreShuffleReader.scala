@@ -20,6 +20,7 @@ package org.apache.spark.shuffle
 import org.apache.spark._
 import org.apache.spark.serializer.Serializer
 import org.apache.spark.storage.{BlockManager, ShuffleBlockFetcherIterator, ShuffleBlockId}
+import org.apache.spark.storage.FutureTaskPushBlockFetcherIterator
 import org.apache.spark.util.CompletionIterator
 import org.apache.spark.util.collection.ExternalSorter
 
@@ -38,44 +39,39 @@ private[spark] class BlockStoreShuffleReader[K, C](
 
   private val dep = handle.dependency
 
-  def allLocalBlocks(): Boolean = {
-    (startPartition until endPartition).flatMap { reducerId =>
-      (0 until handle.numMaps).map { mapId =>
-        blockManager.willBeLocal(handle.shuffleId, mapId, reducerId)
-      }
-    }.forall(x => x)
-  }
+  val drizzle = SparkEnv.get.conf.getBoolean("spark.scheduler.drizzle", true)
+  val pushDrizzle = drizzle && SparkEnv.get.conf.getBoolean("spark.scheduler.drizzle.push", true)
 
   /** Read the combined key-values for this reduce task */
   override def read(): Iterator[Product2[K, C]] = {
     // Update the context task metrics for each record read.
     val readMetrics = context.taskMetrics.createShuffleReadMetricsForDependency()
-
-    val pushDrizzle = SparkEnv.get.conf.getBoolean("spark.scheduler.drizzle", true) && 
-      SparkEnv.get.conf.getBoolean("spark.scheduler.drizzle.push", true)
-
-    // Check if all the blocks are in the local block manager
-    // as it will be for drizzle
-    val blockFetcherItr = if (pushDrizzle) {
-      logDebug(s"DRIZ: Shuffle everything is local")
-      // TODO(shivaram): We construct these block ids twice. Refactor this
-      // NOTE(shivaram): We just pass in size as 0L as it doesn't matter for local reads
-      val mapOutputBlockIds = (startPartition until endPartition).flatMap { reduceId =>
-        (0 until handle.numMaps).map { mapId =>
-          (ShuffleBlockId(handle.shuffleId, mapId, reduceId), 1L)
+    val blockFetcherItr = if (drizzle) {
+      if (pushDrizzle) {
+        // NOTE(shivaram): We just pass in size as 1L as it doesn't matter for local reads
+        val mapOutputBlockIds = (startPartition until endPartition).flatMap { reduceId =>
+          (0 until handle.numMaps).map { mapId =>
+            ShuffleBlockId(handle.shuffleId, mapId, reduceId)
+          }
         }
-      }
-      val mapOutputLocations = Seq((blockManager.blockManagerId, mapOutputBlockIds))
-
-      new ShuffleBlockFetcherIterator(
-        context,
-        blockManager.shuffleClient,
-        blockManager,
-        mapOutputLocations,
-        // Note: we use getSizeAsMb when no suffix is provided for backwards compatibility
-        SparkEnv.get.conf.getSizeAsMb("spark.reducer.maxSizeInFlight", "48m") * 1024 * 1024)
+        new FutureTaskPushBlockFetcherIterator(
+          context,
+          blockManager.shuffleClient,
+          blockManager,
+          mapOutputBlockIds)
+      } else {
+        // TODO(shivaram): Make pull based use a knob here.
+        val mapOutputLocations =
+          mapOutputTracker.getMapSizesByExecutorId(handle.shuffleId, startPartition, endPartition)
+        new ShuffleBlockFetcherIterator(
+          context,
+          blockManager.shuffleClient,
+          blockManager,
+          mapOutputLocations,
+          // Note: we use getSizeAsMb when no suffix is provided for backwards compatibility
+          SparkEnv.get.conf.getSizeAsMb("spark.reducer.maxSizeInFlight", "48m") * 1024 * 1024)
+        }
     } else {
-      logDebug(s"DRIZ: Shuffle everything is not local")
       val mapOutputLocationFetchStartTime = System.currentTimeMillis()
       val mapOutputLocations =
         mapOutputTracker.getMapSizesByExecutorId(handle.shuffleId, startPartition, endPartition)

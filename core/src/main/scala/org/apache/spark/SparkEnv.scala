@@ -35,7 +35,7 @@ import org.apache.spark.network.BlockTransferService
 import org.apache.spark.network.netty.NettyBlockTransferService
 import org.apache.spark.rpc.{RpcEndpointRef, RpcEndpoint, RpcEnv}
 import org.apache.spark.rpc.akka.AkkaRpcEnv
-import org.apache.spark.scheduler.{OutputCommitCoordinator, LiveListenerBus}
+import org.apache.spark.scheduler.{OutputCommitCoordinator, LiveListenerBus, FutureTaskWaiter}
 import org.apache.spark.scheduler.OutputCommitCoordinator.OutputCommitCoordinatorEndpoint
 import org.apache.spark.serializer.Serializer
 import org.apache.spark.shuffle.{ShuffleMemoryManager, ShuffleManager}
@@ -72,6 +72,7 @@ class SparkEnv (
     val shuffleMemoryManager: ShuffleMemoryManager,
     val executorMemoryManager: ExecutorMemoryManager,
     val outputCommitCoordinator: OutputCommitCoordinator,
+    val futureTaskWaiter: FutureTaskWaiter,
     val conf: SparkConf) extends Logging {
 
   // TODO Remove actorSystem
@@ -395,6 +396,8 @@ object SparkEnv extends Logging {
       new ExecutorMemoryManager(allocator)
     }
 
+    val futureTaskWaiter = new FutureTaskWaiter(conf, blockManager, mapOutputTracker)
+
     val envInstance = new SparkEnv(
       executorId,
       rpcEnv,
@@ -413,6 +416,7 @@ object SparkEnv extends Logging {
       shuffleMemoryManager,
       executorMemoryManager,
       outputCommitCoordinator,
+      futureTaskWaiter,
       conf)
 
     // Add a reference to tmp dir created by driver, we will delete this tmp dir when stop() is

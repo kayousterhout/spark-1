@@ -30,7 +30,7 @@ import scala.util.control.NonFatal
 import org.apache.spark._
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.deploy.SparkHadoopUtil
-import org.apache.spark.scheduler.{DirectTaskResult, IndirectTaskResult, Task, FutureTask}
+import org.apache.spark.scheduler.{DirectTaskResult, IndirectTaskResult, Task, FutureTask, FutureTaskInfo}
 import org.apache.spark.serializer.SerializerInstance
 import org.apache.spark.shuffle.{FetchFailedException, BaseShuffleHandle}
 import org.apache.spark.storage.{StorageLevel, TaskResultBlockId}
@@ -339,10 +339,10 @@ private[spark] class Executor(
           if (!shuffleDep.isEmpty) {
             val baseShuffleHandle = shuffleDep.get.shuffleHandle.asInstanceOf[BaseShuffleHandle[_, _, _]]
             logDebug(s"DRIZ: Future task $taskId shuffleDep is not empty. Queuing for ${baseShuffleHandle.numMaps} maps")
-            env.blockManager.submitFutureTask(baseShuffleHandle.shuffleId, baseShuffleHandle.numMaps,
+            env.futureTaskWaiter.submitFutureTask(FutureTaskInfo(baseShuffleHandle.shuffleId, baseShuffleHandle.numMaps,
               futureTask.partitionId, taskId, (a: Unit) => launchFutureTask(execBackend, taskId,
                 attemptNumber, taskName, futureTask, deserializeStopTime - deserializeStartTime,
-                deserializeStopTime))
+                deserializeStopTime)))
             // TODO(shivaram): Should we send some status update here ?
             return
           }

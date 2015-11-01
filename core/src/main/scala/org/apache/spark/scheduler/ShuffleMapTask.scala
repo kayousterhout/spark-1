@@ -90,35 +90,8 @@ private[spark] class ShuffleMapTask(
       writer = manager.getWriter[Any, Any](dep.shuffleHandle, partitionId, context)
       writer.write(rdd.iterator(partition, context).asInstanceOf[Iterator[_ <: Product2[Any, Any]]])
       val status = writer.stop(success = true).get
-
-      logDebug(s"DRIZ: In ShuffleMapTask ${partition.index} for stage $stageId, got " +
-        s"${nextStageLocs.map(_.size).getOrElse(0)}")
-      if (!nextStageLocs.isEmpty && dep.partitioner.numPartitions == nextStageLocs.get.length) {
-        val drizzleRpcsStart = System.nanoTime
-
-        val pushShuffleData = SparkEnv.get.conf.getBoolean("spark.scheduler.drizzle.push", true)
-        if (pushShuffleData) {
-          uploadOutputToNextTaskLocations()
-        } else {
-          // Push metadata saying that this map task finished, so that the tasks in the next stage
-          // know they can begin pulling the data.
-          logDebug(s"DRIZ: In ShuffleMapTask ${partition.index} for stage $stageId, sending " +
-            "MapOutputStatus to all reduce locs")
-          val numReduces = nextStageLocs.get.length
-          val uniqueLocations = nextStageLocs.get.toSet
-          uniqueLocations.foreach { blockManagerId =>
-            SparkEnv.get.blockTransferService.mapOutputReady(
-              blockManagerId.host,
-              blockManagerId.port,
-              dep.shuffleId,
-              partition.index,
-              numReduces,
-              status)
-          }
-        }
-        metrics.map(_.shuffleWriteMetrics.map(_.incShuffleWriteTime(System.nanoTime -
-          drizzleRpcsStart)))
-      }
+      FutureTaskNotifier.taskCompleted(status, partitionId, dep.shuffleId,
+        dep.partitioner.numPartitions, nextStageLocs, metrics.get.shuffleWriteMetrics)
       status
     } catch {
       case e: Exception =>
