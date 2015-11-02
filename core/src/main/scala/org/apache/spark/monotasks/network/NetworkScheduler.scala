@@ -23,17 +23,28 @@ import org.apache.spark.util.Utils
 
 private[spark] class NetworkScheduler() extends Logging {
   /** Number of bytes that this executor is currently waiting to receive over the network. */
-  private var currentOutstandingBytes = new AtomicLong(0)
+  private var currentOutstandingBytesToReceive = new AtomicLong(0)
+  
+  /** Number of bytes that this executor is currently waiting to send over the network. */
+  private var currentOutstandingBytesToSend = new AtomicLong(0)
 
   def submitTask(monotask: NetworkMonotask) {
     monotask.execute(NetworkScheduler.this)
   }
 
   /**
-   * Used to keep track of the bytes outstanding over the network. Can be called with a negative
-   * value to indicate bytes that are no longer outstanding.
+   * Used to keep track of the bytes that are outstanding to be received over the network. Can be
+   * called with a negative value to indicate bytes that are no longer outstanding.
    */
-  def addOutstandingBytes(bytes: Long) = currentOutstandingBytes.addAndGet(bytes)
+  def addOutstandingBytesToReceive(bytes: Long) = currentOutstandingBytesToReceive.addAndGet(bytes)
 
-  def getOutstandingBytes: Long = currentOutstandingBytes.get()
+  def getOutstandingBytesToReceive: Long = currentOutstandingBytesToReceive.get()
+
+  /**
+   * Used to keep track of the bytes that are ready to be sent out over the network. Can be called
+   * with a negative value to indicate bytes that are no longer outstanding.
+   */
+  def addOutstandingBytesToSend(bytes: Long) = currentOutstandingBytesToSend.addAndGet(bytes)
+
+  def getOutstandingBytesToSend: Long = currentOutstandingBytesToSend.get()
 }

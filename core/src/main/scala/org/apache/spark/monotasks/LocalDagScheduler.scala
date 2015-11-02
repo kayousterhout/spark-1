@@ -131,7 +131,9 @@ private[spark] class LocalDagScheduler(blockFileManager: BlockFileManager)
    */
   def getNumMacrotasksInNetwork(): Long = macrotaskIdToNumRunningNetworkMonotasks.size
 
-  def getOutstandingNetworkBytes(): Long = networkScheduler.getOutstandingBytes
+  def getOutstandingNetworkBytesToReceive(): Long = networkScheduler.getOutstandingBytesToReceive
+
+  def getOutstandingNetworkBytesToSend(): Long = networkScheduler.getOutstandingBytesToSend
 
   /**
    * This method processes events submitted to the LocalDagScheduler from external classes. It is

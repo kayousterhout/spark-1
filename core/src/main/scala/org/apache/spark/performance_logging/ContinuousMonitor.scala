@@ -34,7 +34,8 @@ import org.apache.spark.util.JsonProtocol
  */
 private[spark] class ContinuousMonitor(
     sparkConf: SparkConf,
-    getOutstandingNetworkBytes: () => Long,
+    getOutstandingNetworkBytesToReceive: () => Long,
+    getOutstandingNetworkBytesToSend: () => Long,
     getNumRunningComputeMonotasks: () => Int,
     getDiskNameToNumRunningAndQueuedDiskMonotasks: () => HashMap[String, Int],
     getNumRunningMacrotasks: () => Int,
@@ -81,7 +82,8 @@ private[spark] class ContinuousMonitor(
     ("Cpu Utilization" -> JsonProtocol.cpuUtilizationToJson(cpuUtilization)) ~
     ("Disk Utilization" -> JsonProtocol.diskUtilizationToJson(diskUtilization)) ~
     ("Network Utilization" -> JsonProtocol.networkUtilizationToJson(networkUtilization)) ~
-    ("Outstanding Network Bytes" -> getOutstandingNetworkBytes()) ~
+    ("Outstanding Network Bytes" -> getOutstandingNetworkBytesToReceive()) ~
+    ("Outstanding Network Bytes To Send" -> getOutstandingNetworkBytesToSend()) ~
     ("Running Compute Monotasks" -> getNumRunningComputeMonotasks()) ~
     ("Running Disk Monotasks" ->
       getDiskNameToCountsJson(getDiskNameToNumRunningAndQueuedDiskMonotasks())) ~

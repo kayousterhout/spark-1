@@ -51,7 +51,7 @@ private[spark] class NetworkRequestMonotask(
     logInfo(s"Sending request for block $shuffleBlockId (size (${Utils.bytesToString(size)}}) " +
       s"to $remoteAddress")
     networkScheduler = Some(scheduler)
-    scheduler.addOutstandingBytes(size)
+    scheduler.addOutstandingBytesToReceive(size)
 
     try {
       SparkEnv.get.blockTransferService.fetchBlock(
@@ -74,7 +74,7 @@ private[spark] class NetworkRequestMonotask(
   }
 
   override def onSuccess(blockId: String, buf: ManagedBuffer): Unit = {
-    networkScheduler.map(_.addOutstandingBytes(-size)).orElse {
+    networkScheduler.map(_.addOutstandingBytesToReceive(-size)).orElse {
       throw new IllegalStateException(
         s"onSuccess called for block $blockId in monotask $taskId before a NetworkScheduler " +
         "was configured")
@@ -89,7 +89,7 @@ private[spark] class NetworkRequestMonotask(
   }
 
   override def onFailure(failedBlockId: String, e: Throwable): Unit = {
-    networkScheduler.map(_.addOutstandingBytes(-size)).orElse {
+    networkScheduler.map(_.addOutstandingBytesToReceive(-size)).orElse {
       throw new IllegalStateException(
         s"onFailure called for block $failedBlockId in monotask $taskId before a " +
         "NetworkScheduler was configured")

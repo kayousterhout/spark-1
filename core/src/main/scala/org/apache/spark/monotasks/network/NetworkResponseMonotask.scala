@@ -66,7 +66,7 @@ private[spark] class NetworkResponseMonotask(
     // from in-memory and respond with that.
     failureMessage match {
       case Some(message) =>
-        respond(new BlockFetchFailure(blockId.toString(), message))
+        respond(new BlockFetchFailure(blockId.toString(), message), scheduler)
 
       case None =>
         try {
@@ -74,10 +74,12 @@ private[spark] class NetworkResponseMonotask(
           logInfo(s"Responding to ${channel.remoteAddress()} with block $blockId of size " +
             s"${buffer.size()} at ${System.currentTimeMillis()}")
           initiatedResponseTime = System.nanoTime()
-          respond(new BlockFetchSuccess(blockId.toString(), buffer))
+          respond(new BlockFetchSuccess(blockId.toString(), buffer), scheduler)
         } catch {
           case NonFatal(t) =>
-            respond(new BlockFetchFailure(blockId.toString(), Throwables.getStackTraceAsString(t)))
+            respond(
+              new BlockFetchFailure(blockId.toString(), Throwables.getStackTraceAsString(t)),
+              scheduler)
         }
     }
   }
@@ -86,10 +88,12 @@ private[spark] class NetworkResponseMonotask(
    * Responds to a single message with some Encodable object. If a failure occurs while sending,
    * it will be logged and the channel closed.
    */
-  private def respond(result: Encodable): Unit = {
+  private def respond(result: Encodable, scheduler: NetworkScheduler): Unit = {
     val remoteAddress = channel.remoteAddress.toString
+    scheduler.addOutstandingBytesToSend(result.encodedLength())
     channel.writeAndFlush(result).addListener(new ChannelFutureListener {
       def operationComplete(future: ChannelFuture) {
+        scheduler.addOutstandingBytesToSend(-result.encodedLength())
         if (future.isSuccess) {
           val creationToRequestStart = (initiatedResponseTime - creationTime).toDouble / 1.0e6
           val timeForRequest = (System.nanoTime - initiatedResponseTime).toDouble / 1.0e6
