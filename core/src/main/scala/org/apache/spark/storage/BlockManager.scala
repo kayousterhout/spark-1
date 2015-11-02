@@ -256,8 +256,8 @@ private[spark] class BlockManager(
 
     // Try to send the block back from in-memory.
     if (memoryStore.contains(blockId)) {
-      logInfo(s"Immediately submitting network response monotask for $blockIdStr " +
-        s"(at ${System.currentTimeMillis})")
+      logInfo(s"Immediately submitting network response monotask " +
+        s"${networkResponseMonotask.taskId} for $blockIdStr (at ${System.currentTimeMillis})")
       localDagScheduler.post(SubmitMonotask(networkResponseMonotask))
     } else {
       // Try to load the block from disk.

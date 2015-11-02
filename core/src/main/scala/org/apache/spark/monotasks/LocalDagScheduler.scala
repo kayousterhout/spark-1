@@ -141,8 +141,8 @@ private[spark] class LocalDagScheduler(blockFileManager: BlockFileManager)
    * not thread safe, and will be called from a single-threaded event loop.
    */
   override protected def onReceive(event: LocalDagSchedulerEvent): Unit = event match {
-    logInfo(s"Processing LocalDagSchedulerEvent: $event")
     case SubmitMonotask(monotask) =>
+      logInfo(s"Processing LocalDagSchedulerEvent: $event, task ${monotask.taskId}")
       submitMonotask(monotask)
 
     case SubmitMonotasks(monotasks) =>
