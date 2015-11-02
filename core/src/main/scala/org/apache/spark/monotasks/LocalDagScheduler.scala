@@ -26,7 +26,8 @@ import org.apache.spark.executor.ExecutorBackend
 import org.apache.spark.monotasks.compute.{ComputeMonotask, ComputeScheduler,
   ResultSerializationMonotask}
 import org.apache.spark.monotasks.disk.{DiskMonotask, DiskScheduler}
-import org.apache.spark.monotasks.network.{NetworkMonotask, NetworkScheduler}
+import org.apache.spark.monotasks.network.{NetworkMonotask, NetworkResponseMonotask,
+  NetworkScheduler}
 import org.apache.spark.storage.{BlockFileManager, MemoryStore}
 import org.apache.spark.util.{EventLoop, SparkUncaughtExceptionHandler}
 
@@ -140,6 +141,7 @@ private[spark] class LocalDagScheduler(blockFileManager: BlockFileManager)
    * not thread safe, and will be called from a single-threaded event loop.
    */
   override protected def onReceive(event: LocalDagSchedulerEvent): Unit = event match {
+    logInfo(s"Processing LocalDagSchedulerEvent: $event")
     case SubmitMonotask(monotask) =>
       submitMonotask(monotask)
 
@@ -162,7 +164,14 @@ private[spark] class LocalDagScheduler(blockFileManager: BlockFileManager)
     SparkUncaughtExceptionHandler.uncaughtException(e)
   }
 
- private def submitMonotask(monotask: Monotask): Unit = {
+  private def submitMonotask(monotask: Monotask): Unit = {
+    monotask match {
+      case net: NetworkResponseMonotask =>
+        logInfo(s"in LocalDAG, submitting NetworkResponseMonotask for ${net.blockId}")
+
+      case _ =>
+        // do nada.
+    }
     if (monotask.dependenciesSatisfied()) {
       scheduleMonotask(monotask)
     } else {
