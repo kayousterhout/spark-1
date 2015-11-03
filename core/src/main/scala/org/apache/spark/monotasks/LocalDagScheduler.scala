@@ -140,22 +140,25 @@ private[spark] class LocalDagScheduler(blockFileManager: BlockFileManager)
    * This method processes events submitted to the LocalDagScheduler from external classes. It is
    * not thread safe, and will be called from a single-threaded event loop.
    */
-  override protected def onReceive(event: LocalDagSchedulerEvent): Unit = event match {
-    case SubmitMonotask(monotask) =>
-      logInfo(s"Processing LocalDagSchedulerEvent: $event, task ${monotask.taskId}")
-      submitMonotask(monotask)
+  override protected def onReceive(event: LocalDagSchedulerEvent): Unit = {
+    logInfo(s"Received event $event at ${System.currentTimeMillis()}")
+    event match {
+      case SubmitMonotask(monotask) =>
+        logInfo(s"Processing LocalDagSchedulerEvent: $event, task ${monotask.taskId}")
+        submitMonotask(monotask)
 
-    case SubmitMonotasks(monotasks) =>
-      monotasks.foreach(submitMonotask(_))
+      case SubmitMonotasks(monotasks) =>
+        monotasks.foreach(submitMonotask(_))
 
-    case TaskSuccess(completedMonotask, serializedTaskResult) =>
-      handleTaskSuccess(completedMonotask, serializedTaskResult)
+      case TaskSuccess(completedMonotask, serializedTaskResult) =>
+        handleTaskSuccess(completedMonotask, serializedTaskResult)
 
-    case TaskFailure(failedMonotask, serializedFailureReason) =>
-      handleTaskFailure(failedMonotask, serializedFailureReason)
+      case TaskFailure(failedMonotask, serializedFailureReason) =>
+        handleTaskFailure(failedMonotask, serializedFailureReason)
 
-    case AddToMacrotask(monotask) =>
-      addToMacrotask(monotask)
+      case AddToMacrotask(monotask) =>
+        addToMacrotask(monotask)
+    }
   }
 
   /** Called when an exception is thrown in the event loop. */
@@ -167,7 +170,8 @@ private[spark] class LocalDagScheduler(blockFileManager: BlockFileManager)
   private def submitMonotask(monotask: Monotask): Unit = {
     monotask match {
       case net: NetworkResponseMonotask =>
-        logInfo(s"in LocalDAG, submitting NetworkResponseMonotask for ${net.blockId}")
+        logInfo(s"in LocalDAG, submitting NetworkResponseMonotask for ${net.blockId} at " +
+          s"${System.currentTimeMillis()}")
 
       case _ =>
         // do nada.
