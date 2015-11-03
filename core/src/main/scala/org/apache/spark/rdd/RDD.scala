@@ -1094,16 +1094,37 @@ abstract class RDD[T: ClassTag](
       var partiallyAggregated = mapPartitions(it => Iterator(aggregatePartition(it)))
       var numPartitions = partiallyAggregated.partitions.length
       val scale = math.max(math.ceil(math.pow(numPartitions, 1.0 / depth)).toInt, 2)
+
+      val createCombinerFunc = (u: U) => u
+
       // If creating an extra level doesn't help reduce
       // the wall-clock time, we stop tree aggregation.
+
 
       // Don't trigger TreeAggregation when it doesn't save wall-clock time
       while (numPartitions > scale + math.ceil(numPartitions.toDouble / scale)) {
         numPartitions /= scale
         val curNumPartitions = numPartitions
-        partiallyAggregated = partiallyAggregated.mapPartitionsWithIndex {
-          (i, iter) => iter.map((i % curNumPartitions, _))
-        }.reduceByKey(new HashPartitioner(curNumPartitions), cleanCombOp).values
+        val partitionMapFunc: Int => Int = { partId =>
+          partId % curNumPartitions
+        }
+
+        val mappedRDD = partiallyAggregated.mapPartitionsWithIndex {
+          (i, iter) => iter.map((partitionMapFunc(i), _))
+        }
+
+        val aggregator = new Aggregator[Int, U, U](
+          context.clean(createCombinerFunc),
+          cleanCombOp,
+          cleanCombOp)
+        val partitioner = new HashPartitioner(curNumPartitions)
+
+        val treeRDD = new TreeShuffledRDD[Int, U, U](mappedRDD, partitioner, partitionMapFunc)
+          .setSerializer(null)
+          .setAggregator(aggregator)
+          .setMapSideCombine(true)
+
+        partiallyAggregated = treeRDD.values
       }
       partiallyAggregated.reduce(cleanCombOp)
     }
