@@ -21,6 +21,7 @@ import java.io.{File, NotSerializableException}
 import java.lang.management.ManagementFactory
 import java.net.URL
 import java.nio.ByteBuffer
+import java.util.{PriorityQueue => JPriorityQueue}
 import java.util.concurrent.{ConcurrentHashMap, TimeUnit}
 
 import scala.collection.JavaConverters._
@@ -81,11 +82,21 @@ private[spark] class Executor(
   val numUsableCores = SparkEnv.get.conf.getOption("spark.numUsableCores")
 
   // Start worker thread pool
-  private val threadPool = if (numUsableCores.isDefined && numUsableCores.get.toInt > 0) {
-    ThreadUtils.newDaemonFixedThreadPool(numUsableCores.get.toInt, "Executor task launch worker")
+  private val threadPool = ThreadUtils.newDaemonCachedThreadPool("Executor task launch worker")
+
+  private val maxActiveTasks = if (numUsableCores.isDefined && numUsableCores.get.toInt > 0) {
+    numUsableCores.get.toInt
   } else {
-    ThreadUtils.newDaemonCachedThreadPool("Executor task launch worker")
+    // FIXME: Ideally set to some HWM we expect not to exceed
+    0
   }
+
+  private case class PendingTask (priority: Int, task: TaskRunner)
+  private object PendingTaskOrdering extends Ordering[PendingTask] {
+    def compare(a: PendingTask, b: PendingTask) = a.priority compare b.priority
+  }
+  private var currentActiveTasks = 0
+  private val taskSchedule = new JPriorityQueue[PendingTask](1024, PendingTaskOrdering)
   private val executorSource = new ExecutorSource(threadPool, executorId)
 
   if (!isLocal) {
@@ -123,6 +134,41 @@ private[spark] class Executor(
 
   startDriverHeartbeater()
 
+  private def scheduleTask(
+              priority: Int,
+              tr: TaskRunner) : Unit = {
+    taskSchedule.synchronized {
+      taskSchedule.add(PendingTask(priority, tr))
+      logInfo(s"DRIZ: Adding task ${tr.taskId} with priority ${priority} current occupancy is ${currentActiveTasks}")
+    }
+    scheduleTasks()
+  }
+
+  // FIXME: This is actually not sufficient. The actual invariant we want to
+  // enforce is that no task for a previous stage is ever blocked because of
+  // tasks belonging to a future task (since this would result in a deadlock).
+  // We currently do not do this (we do not know all the past tasks ahead of
+  // time). This partly helps (by forcing threadpool to pick tasks from previous
+  // stages) but is definitely not the solution.
+  private def scheduleTasks() : Unit = {
+    taskSchedule.synchronized {
+      logInfo(s"DRIZ: Scheduling tasks ${currentActiveTasks} ${taskSchedule.isEmpty()}")
+      while ((maxActiveTasks == 0 || currentActiveTasks < maxActiveTasks) && !taskSchedule.isEmpty()) {
+        val t = taskSchedule.poll();
+        currentActiveTasks += 1
+        threadPool.execute(t.task)
+      }
+    }
+  }
+
+  def notifyTaskEnd(taskId: Long) : Unit = {
+    runningTasks.remove(taskId)
+    taskSchedule.synchronized {
+      currentActiveTasks -= 1
+    }
+    scheduleTasks()
+  }
+
   def launchTask(
       context: ExecutorBackend,
       taskId: Long,
@@ -132,7 +178,9 @@ private[spark] class Executor(
     val tr = new TaskRunner(context, taskId = taskId, attemptNumber = attemptNumber, taskName,
       Some(serializedTask))
     runningTasks.put(taskId, tr)
-    threadPool.execute(tr)
+    logInfo(s"DRIZ: Calling schedule task")
+
+    scheduleTask(-1, tr)
   }
 
   def launchFutureTask(
@@ -147,7 +195,8 @@ private[spark] class Executor(
       futureTask, deserializeTime, taskQueueStart)
     // TODO: Send an update here to the driver that we are executing this task ?
     runningTasks.put(taskId, tr)
-    threadPool.execute(tr)
+    logInfo(s"DRIZ: Calling schedule task")
+    scheduleTask(futureTask.stageId, tr)
   }
 
   def killTask(taskId: Long, interruptThread: Boolean): Unit = {
@@ -400,7 +449,8 @@ private[spark] class Executor(
             SparkUncaughtExceptionHandler.uncaughtException(t)
           }
       } finally {
-        runningTasks.remove(taskId)
+        //runningTasks.remove(taskId)
+        notifyTaskEnd(taskId)
       }
     }
   }
@@ -485,7 +535,8 @@ private[spark] class Executor(
           }
 
       } finally {
-        runningTasks.remove(taskId)
+        //runningTasks.remove(taskId)
+        notifyTaskEnd(taskId)
       }
     }
   }
