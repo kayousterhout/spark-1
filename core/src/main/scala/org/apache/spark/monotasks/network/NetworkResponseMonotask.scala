@@ -74,7 +74,13 @@ private[spark] class NetworkResponseMonotask(
           logInfo(s"Responding to ${channel.remoteAddress()} with block $blockId of size " +
             s"${buffer.size()} at ${System.currentTimeMillis()}")
           initiatedResponseTime = System.nanoTime()
-          respond(new BlockFetchSuccess(blockId.toString(), buffer), scheduler)
+          respond(
+            new BlockFetchSuccess(
+              blockId.toString(),
+              buffer,
+              context.taskMetrics.diskNanos,
+              initiatedResponseTime - creationTime),
+            scheduler)
         } catch {
           case NonFatal(t) =>
             respond(
