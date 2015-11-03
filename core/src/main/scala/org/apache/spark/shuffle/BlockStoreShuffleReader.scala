@@ -50,8 +50,14 @@ private[spark] class BlockStoreShuffleReader[K, C](
       if (pushDrizzle) {
         // NOTE(shivaram): We just pass in size as 1L as it doesn't matter for local reads
         val mapOutputBlockIds = (startPartition until endPartition).flatMap { reduceId =>
-          (0 until handle.numMaps).map { mapId =>
-            ShuffleBlockId(handle.shuffleId, mapId, reduceId)
+          if (handle.dependency.nonEmptyPartitions.isDefined) {
+            handle.dependency.nonEmptyPartitions.get.get(reduceId).map { mapId =>
+              ShuffleBlockId(handle.shuffleId, mapId, reduceId)
+            }
+          } else {
+            (0 until handle.numMaps).map { mapId =>
+              ShuffleBlockId(handle.shuffleId, mapId, reduceId)
+            }
           }
         }
         new FutureTaskPushBlockFetcherIterator(
@@ -61,8 +67,13 @@ private[spark] class BlockStoreShuffleReader[K, C](
           mapOutputBlockIds)
       } else {
         // TODO(shivaram): Make pull based use a knob here.
-        val mapOutputLocations =
+        val mapOutputLocations = if (handle.dependency.nonEmptyPartitions.isDefined) {
+          mapOutputTracker.getMapSizesByExecutorId(handle.shuffleId, startPartition, endPartition,
+            handle.dependency.nonEmptyPartitions.get)
+        } else {
           mapOutputTracker.getMapSizesByExecutorId(handle.shuffleId, startPartition, endPartition)
+        }
+        logInfo(s"DRIZ: mapOutputLocations is $mapOutputLocations for $startPartition")
         new ShuffleBlockFetcherIterator(
           context,
           blockManager.shuffleClient,

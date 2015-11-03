@@ -35,14 +35,17 @@ private[spark] object FutureTaskNotifier extends Logging {
       shuffleId: Int,
       numReduces: Int,
       nextStageLocs: Option[Seq[BlockManagerId]],
-      shuffleWriteMetrics: Option[ShuffleWriteMetrics]): Unit = {
+      shuffleWriteMetrics: Option[ShuffleWriteMetrics],
+      skipZeroByteNotifications: Boolean): Unit = {
     if (!nextStageLocs.isEmpty && numReduces == nextStageLocs.get.length) {
       val drizzleRpcsStart = System.nanoTime
       val pushShuffleData = SparkEnv.get.conf.getBoolean("spark.scheduler.drizzle.push", true)
       if (pushShuffleData) {
-        uploadOutputToNextTaskLocations(status, mapId, shuffleId, numReduces, nextStageLocs)
+        uploadOutputToNextTaskLocations(status, mapId, shuffleId, numReduces, nextStageLocs,
+          skipZeroByteNotifications)
       } else {
-        sendMapStatusToNextTaskLocations(status, mapId, shuffleId, numReduces, nextStageLocs)
+        sendMapStatusToNextTaskLocations(status, mapId, shuffleId, numReduces, nextStageLocs,
+          skipZeroByteNotifications)
       }
       shuffleWriteMetrics.map(_.incShuffleWriteTime(System.nanoTime -
         drizzleRpcsStart))
@@ -56,11 +59,18 @@ private[spark] object FutureTaskNotifier extends Logging {
       mapId: Int,
       shuffleId: Int, 
       numReduces: Int,
-      nextStageLocs: Option[Seq[BlockManagerId]]) {
+      nextStageLocs: Option[Seq[BlockManagerId]],
+      skipZeroByteNotifications: Boolean) {
     logDebug(s"DRIZ: In ShuffleMapTask map ${mapId} shuffle $shuffleId, sending " +
       "MapOutputStatus to all reduce locs")
     val numReduces = nextStageLocs.get.length
-    val uniqueLocations = nextStageLocs.get.toSet
+    val uniqueLocations = if (skipZeroByteNotifications) {
+      nextStageLocs.get.zipWithIndex.filter { x =>
+        status.getSizeForBlock(x._2) != 0L
+      }.map(_._1).toSet
+    } else {
+      nextStageLocs.get.toSet
+    }
     uniqueLocations.foreach { blockManagerId =>
       SparkEnv.get.blockTransferService.mapOutputReady(
         blockManagerId.host,
@@ -81,24 +91,25 @@ private[spark] object FutureTaskNotifier extends Logging {
       mapId: Int,
       shuffleId: Int, 
       numReduces: Int,
-      nextStageLocs: Option[Seq[BlockManagerId]]) {
+      nextStageLocs: Option[Seq[BlockManagerId]],
+      skipZeroByteNotifications: Boolean) {
     // TODO(shivaram): These calls are all non-blocking. Should we wait for any of them ?
     // NOTE(shivaram): Assumes reduce ids are from 0 to n-1
     nextStageLocs.get.zipWithIndex.foreach {
       case (loc, reduceId) =>
         // TODO(shivaram): Don't make this copy if loc is same as local block manager
-        //if (loc != SparkEnv.get.blockManager.blockManagerId) {
-        val blockId = ShuffleBlockId(shuffleId, mapId, reduceId)
-        logDebug(s"DRIZ: Sending $blockId to $loc")
-        SparkEnv.get.blockTransferService.uploadBlock(
-          loc.host,
-          loc.port,
-          loc.executorId,
-          blockId,
-          SparkEnv.get.shuffleManager.shuffleBlockResolver.getBlockData(blockId),
-          // TODO: Will this get freed correctly ??
-          StorageLevel.MEMORY_ONLY)
-      //}
+        if (! (skipZeroByteNotifications && status.getSizeForBlock(reduceId) == 0L) ) {
+          val blockId = ShuffleBlockId(shuffleId, mapId, reduceId)
+          logDebug(s"DRIZ: Sending $blockId to $loc")
+          SparkEnv.get.blockTransferService.uploadBlock(
+            loc.host,
+            loc.port,
+            loc.executorId,
+            blockId,
+            SparkEnv.get.shuffleManager.shuffleBlockResolver.getBlockData(blockId),
+            // TODO: Will this get freed correctly ??
+            StorageLevel.MEMORY_ONLY)
+        }
     }
   }
 }

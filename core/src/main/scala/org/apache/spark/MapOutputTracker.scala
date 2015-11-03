@@ -19,6 +19,7 @@ package org.apache.spark
 
 import java.io._
 import java.util.Arrays
+import java.util.{Map => JMap}
 import java.util.concurrent.ConcurrentHashMap
 import java.util.zip.{GZIPInputStream, GZIPOutputStream}
 
@@ -154,8 +155,9 @@ private[spark] abstract class MapOutputTracker(conf: SparkConf) extends Logging 
     statuses(mapId) = mapStatus
   }
 
-  def getNumAvailableMapOutputs(shuffleId: Int): Int = synchronized {
-    mapStatuses.get(shuffleId).map(_.count(_ != null)).getOrElse(0)
+  def getAvailableMapOutputs(shuffleId: Int): Set[Int] = synchronized {
+    val statuses = mapStatuses.get(shuffleId)
+    statuses.zipWithIndex.filter(x => x._1 != null).map(_._2).toSet
   }
 
   /**
@@ -187,6 +189,43 @@ private[spark] abstract class MapOutputTracker(conf: SparkConf) extends Logging 
     // Synchronize on the returned array because, on the driver, it gets mutated in place
     statuses.synchronized {
       return MapOutputTracker.convertMapStatuses(shuffleId, startPartition, endPartition, statuses)
+    }
+  }
+
+  def getMapSizesByExecutorId(
+      shuffleId: Int,
+      startPartition: Int,
+      endPartition: Int,
+      nonZeroParts: JMap[Int, Array[Int]])
+    : Seq[(BlockManagerId, Seq[(BlockId, Long)])] = {
+
+    logDebug(s"Fetching outputs for shuffle $shuffleId, partitions $startPartition-$endPartition")
+    val statuses = getStatuses(shuffleId)
+
+    // Synchronize on the returned array because, on the driver, it gets mutated in place
+    statuses.synchronized {
+      val filteredStatuses = statuses.zipWithIndex.filter { case (status, mapId) =>
+        // Keep the status if any of the partitions need it.
+        (startPartition until endPartition).map { reducePart =>
+          nonZeroParts.containsKey(reducePart) && nonZeroParts.get(reducePart).contains(mapId)
+        }.forall(x => x)
+      }
+
+      val splitsByAddress = new HashMap[BlockManagerId, ArrayBuffer[(BlockId, Long)]]
+      for ((status, mapId) <- filteredStatuses) {
+        if (status == null) {
+          val errorMessage = s"Missing an output location for shuffle $shuffleId map $mapId"
+          logError(errorMessage)
+          throw new MetadataFetchFailedException(shuffleId, startPartition, errorMessage)
+        } else {
+          for (part <- startPartition until endPartition) {
+            splitsByAddress.getOrElseUpdate(status.location, ArrayBuffer()) +=
+              ((ShuffleBlockId(shuffleId, mapId, part), status.getSizeForBlock(part)))
+          }
+        }
+      }
+
+      return splitsByAddress.toSeq
     }
   }
 

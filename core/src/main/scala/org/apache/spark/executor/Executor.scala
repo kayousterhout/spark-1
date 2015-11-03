@@ -189,7 +189,7 @@ private[spark] class Executor(
     logDebug("Task " + taskId + "'s epoch is " + task.epoch)
     // Don't update epoch for drizzle as we don't use it
     // TODO(shivaram): Check if this is the right thing to do
-    if (!SparkEnv.get.conf.getBoolean("spark.scheduler.drizzle", true)) { 
+    if (!SparkEnv.get.conf.getBoolean("spark.scheduler.drizzle", true)) {
       env.mapOutputTracker.updateEpoch(task.epoch)
     }
 
@@ -339,10 +339,14 @@ private[spark] class Executor(
           if (!shuffleDep.isEmpty) {
             val baseShuffleHandle = shuffleDep.get.shuffleHandle.asInstanceOf[BaseShuffleHandle[_, _, _]]
             logDebug(s"DRIZ: Future task $taskId shuffleDep is not empty. Queuing for ${baseShuffleHandle.numMaps} maps")
-            env.futureTaskWaiter.submitFutureTask(FutureTaskInfo(baseShuffleHandle.shuffleId, baseShuffleHandle.numMaps,
-              futureTask.partitionId, taskId, (a: Unit) => launchFutureTask(execBackend, taskId,
-                attemptNumber, taskName, futureTask, deserializeStopTime - deserializeStartTime,
-                deserializeStopTime)))
+            env.futureTaskWaiter.submitFutureTask(FutureTaskInfo(
+              baseShuffleHandle.shuffleId,
+              baseShuffleHandle.numMaps,
+              futureTask.partitionId,
+              taskId,
+              baseShuffleHandle.dependency.nonEmptyPartitions.map(_.get(futureTask.partitionId)),
+              (a: Unit) => launchFutureTask(execBackend, taskId, attemptNumber, taskName, futureTask,
+                deserializeStopTime - deserializeStartTime, deserializeStopTime)))
             // TODO(shivaram): Should we send some status update here ?
             return
           }

@@ -91,7 +91,8 @@ private[spark] class ShuffleMapTask(
       writer.write(rdd.iterator(partition, context).asInstanceOf[Iterator[_ <: Product2[Any, Any]]])
       val status = writer.stop(success = true).get
       FutureTaskNotifier.taskCompleted(status, partitionId, dep.shuffleId,
-        dep.partitioner.numPartitions, nextStageLocs, metrics.get.shuffleWriteMetrics)
+        dep.partitioner.numPartitions, nextStageLocs, metrics.get.shuffleWriteMetrics,
+        dep.nonEmptyPartitions.isDefined)
       status
     } catch {
       case e: Exception =>
