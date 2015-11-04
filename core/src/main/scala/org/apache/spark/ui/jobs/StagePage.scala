@@ -208,6 +208,13 @@ private[ui] class StagePage(parent: StagesTab) extends WebUIPage("stage") {
                   <span class="additional-metric-title">Future Task Queue Time</span>
                 </span>
               </li>
+              <li>
+                <span data-toggle="tooltip"
+                      title={ToolTips.EXECUTOR_QUEUE_DELAY} data-placement="right">
+                  <input type="checkbox" name={TaskDetailsClassNames.EXECUTOR_QUEUE_DELAY}/>
+                  <span class="additional-metric-title">Executor Queue Delay</span>
+                </span>
+              </li>
               {if (stageData.hasShuffleRead) {
               <li>
                 <span data-toggle="tooltip"
@@ -370,6 +377,17 @@ private[ui] class StagePage(parent: StagesTab) extends WebUIPage("stage") {
                 Future Task Queue Times
               </span>
             </td> +: getFormattedTimeQuantiles(futureTaskQueueTimes)
+
+          val executorQueueTimes = validTasks.map { case TaskUIData(_, metrics, _) =>
+            metrics.get.executorThreadPoolDelay.toDouble
+          }
+          val executorQueueQuantiles =
+            <td>
+              <span data-toggle="tooltip" title={ToolTips.EXECUTOR_QUEUE_DELAY}
+                    data-placement="right">
+                Executor Queue Delay
+              </span>
+            </td> +: getFormattedTimeQuantiles(executorQueueTimes)
 
           val serviceTimes = validTasks.map { case TaskUIData(_, metrics, _) =>
             metrics.get.executorRunTime.toDouble
@@ -551,6 +569,9 @@ private[ui] class StagePage(parent: StagesTab) extends WebUIPage("stage") {
             </tr>,
             <tr class={TaskDetailsClassNames.FUTURE_TASK_QUEUE_TIME}>
               {futureTaskQueueQuantiles}
+            </tr>,
+            <tr class={TaskDetailsClassNames.EXECUTOR_QUEUE_DELAY}>
+              {executorQueueQuantiles}
             </tr>,
             <tr>{gcQuantiles}</tr>,
             <tr class={TaskDetailsClassNames.RESULT_SERIALIZATION_TIME}>

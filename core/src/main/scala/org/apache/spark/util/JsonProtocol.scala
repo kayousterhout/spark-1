@@ -311,6 +311,7 @@ private[spark] object JsonProtocol {
     ("Disk Bytes Spilled" -> taskMetrics.diskBytesSpilled) ~
     ("Broadcast Blocked Nanos" -> taskMetrics.broadcastBlockedNanos) ~
     ("Future Task Queue Time" -> taskMetrics.futureTaskQueueTime) ~
+    ("Executor Queue Delay" -> taskMetrics.executorThreadPoolDelay) ~
     ("Shuffle Read Metrics" -> shuffleReadMetrics) ~
     ("Shuffle Write Metrics" -> shuffleWriteMetrics) ~
     ("Input Metrics" -> inputMetrics) ~
@@ -718,6 +719,7 @@ private[spark] object JsonProtocol {
     metrics.incDiskBytesSpilled((json \ "Disk Bytes Spilled").extract[Long])
     metrics.broadcastBlockedNanos = (json \ "Broadcast Blocked Nanos").extract[Long]
     metrics.setFutureTaskQueueTime((json \ "Future Task Queue Time").extract[Long])
+    metrics.setExecutorThreadPoolDelay((json \ "Executor Queue Delay").extract[Long])
     metrics.setShuffleReadMetrics(
       Utils.jsonOption(json \ "Shuffle Read Metrics").map(shuffleReadMetricsFromJson))
     metrics.shuffleWriteMetrics =

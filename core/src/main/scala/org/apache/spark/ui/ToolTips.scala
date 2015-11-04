@@ -35,6 +35,9 @@ private[spark] object ToolTips {
   val FUTURE_TASK_QUEUE_TIME =
     """Time spent by future tasks waiting for their input blocks to arrive."""
 
+  val EXECUTOR_QUEUE_DELAY =
+    """Time spent by a task waiting for cores to become available at the executor."""
+
   val MAP_OUTPUT_LOCATIONS_FETCH_TIME =
     """Time spent fetching the locations of all of the map outputs, so that the Spark task knows
        where to read the shuffle data from."""
