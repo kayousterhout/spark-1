@@ -227,7 +227,7 @@ class Job:
 
     plot_file.close()
 
-  def write_waterfall(self, prefix, pdf_relative_path=False):
+  def write_waterfall(self, prefix, pdf_relative_path=False, title=""):
     """ Outputs a gnuplot file that visually shows all task runtimes. """
     all_tasks = []
     cumulative_tasks = 0
@@ -242,6 +242,10 @@ class Job:
     for line in base_file:
       plot_file.write(line)
     base_file.close()
+
+    if title != "":
+      plot_file.write("set title \"%s\"\n" % title)
+    
 
     LINE_TEMPLATE = "set arrow from %s,%s to %s,%s ls %s nohead\n"
 

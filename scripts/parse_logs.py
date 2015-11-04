@@ -19,6 +19,7 @@ class Analyzer:
     self.jobs = collections.defaultdict(Job)
     # For each stage, jobs that rely on the stage.
     self.jobs_for_stage = {}
+    self.app_name = ""
 
     f = open(filename, "r")
     for line in f:
@@ -42,6 +43,8 @@ class Analyzer:
         # Add the event to all of the jobs that depend on the stage.
         for job_id in self.jobs_for_stage[stage_id]:
           self.jobs[job_id].add_event(json_data)
+      elif event_type == "SparkListenerEnvironmentUpdate":
+        self.app_name = json_data["Spark Properties"]["spark.app.name"]
 
     print "Finished reading input data:"
     for job_id, job in self.jobs.iteritems():
@@ -51,7 +54,7 @@ class Analyzer:
   def output_all_waterfalls(self):
     for job_id, job in self.jobs.iteritems():
       filename = "%s_%s" % (self.filename, job_id)
-      job.write_waterfall(filename, self.pdf_relative_path)
+      job.write_waterfall(filename, self.pdf_relative_path, self.app_name)
 
   def output_all_job_info(self):
     for job_id, job in self.jobs.iteritems():
@@ -62,7 +65,7 @@ class Analyzer:
     #job.print_stage_info()
     job.print_heading("Job")
 
-    job.write_waterfall(filename, self.pdf_relative_path)
+    job.write_waterfall(filename, self.pdf_relative_path, self.app_name)
 
     no_scheduler_delay_speedup = job.no_scheduler_delay_speedup()[0]
     no_map_output_fetch_speedup = job.no_map_output_fetch_speedup()[0]
