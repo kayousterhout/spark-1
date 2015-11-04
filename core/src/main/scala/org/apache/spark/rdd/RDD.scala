@@ -1105,26 +1105,32 @@ abstract class RDD[T: ClassTag](
       while (numPartitions > scale + math.ceil(numPartitions.toDouble / scale)) {
         numPartitions /= scale
         val curNumPartitions = numPartitions
-        val partitionMapFunc: Int => Int = { partId =>
-          partId % curNumPartitions
+        if (conf.getBoolean("spark.scheduler.drizzle.treeReduceOpt", false)) {
+          val partitionMapFunc: Int => Int = { partId =>
+            partId % curNumPartitions
+          }
+
+          val mappedRDD = partiallyAggregated.mapPartitionsWithIndex {
+            (i, iter) => iter.map((partitionMapFunc(i), _))
+          }
+
+          val aggregator = new Aggregator[Int, U, U](
+            context.clean(createCombinerFunc),
+            cleanCombOp,
+            cleanCombOp)
+          val partitioner = new HashPartitioner(curNumPartitions)
+
+          val treeRDD = new TreeShuffledRDD[Int, U, U](mappedRDD, partitioner, partitionMapFunc)
+            .setSerializer(null)
+            .setAggregator(aggregator)
+            .setMapSideCombine(true)
+
+          partiallyAggregated = treeRDD.values
+        } else {
+          partiallyAggregated = partiallyAggregated.mapPartitionsWithIndex {
+            (i, iter) => iter.map((i % curNumPartitions, _))
+          }.reduceByKey(new HashPartitioner(curNumPartitions), cleanCombOp).values
         }
-
-        val mappedRDD = partiallyAggregated.mapPartitionsWithIndex {
-          (i, iter) => iter.map((partitionMapFunc(i), _))
-        }
-
-        val aggregator = new Aggregator[Int, U, U](
-          context.clean(createCombinerFunc),
-          cleanCombOp,
-          cleanCombOp)
-        val partitioner = new HashPartitioner(curNumPartitions)
-
-        val treeRDD = new TreeShuffledRDD[Int, U, U](mappedRDD, partitioner, partitionMapFunc)
-          .setSerializer(null)
-          .setAggregator(aggregator)
-          .setMapSideCombine(true)
-
-        partiallyAggregated = treeRDD.values
       }
       partiallyAggregated.reduce(cleanCombOp)
     }
