@@ -157,7 +157,11 @@ private[spark] abstract class MapOutputTracker(conf: SparkConf) extends Logging 
 
   def getAvailableMapOutputs(shuffleId: Int): Set[Int] = synchronized {
     val statuses = mapStatuses.get(shuffleId)
-    statuses.zipWithIndex.filter(x => x._1 != null).map(_._2).toSet
+    if (statuses.isDefined) {
+      statuses.get.zipWithIndex.filter(x => x._1 != null).map(_._2).toSet
+    } else {
+      Set.empty
+    }
   }
 
   /**
