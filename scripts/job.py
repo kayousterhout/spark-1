@@ -268,7 +268,7 @@ class Job:
       local_read_end = hdfs_read_end
       fetch_wait_end = hdfs_read_end
       if task.has_fetch:
-        local_read_end = future_task_queue_end + task.local_read_time
+        local_read_end = executor_queue_delay_end + task.local_read_time
         fetch_wait_end = local_read_end + task.fetch_wait + task.map_output_fetch_wait 
       # Here, assume GC happens as part of compute (although we know that sometimes
       # GC happens during fetch wait.
