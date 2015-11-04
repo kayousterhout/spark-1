@@ -57,15 +57,20 @@ private[spark] class FutureTaskWaiter(
         (0 until info.numMaps).toArray.toSet
       }
 
+      val blocksToWaitForSeq = blocksToWaitFor.toSeq
+
       // Check if all the blocks already exist. If so just trigger taskCb
       val availableBlocks = if (pushDrizzle) {
         // Count the number of blocks that are already in the BlockManager.
-        blocksToWaitFor.filter { mapId =>
-          blockManager.getStatus(ShuffleBlockId(info.shuffleId, mapId, info.reduceId)).isDefined
-        }
+        val blockStatuses = blockManager.getStatuses(blocksToWaitForSeq.map(mapId => 
+          ShuffleBlockId(info.shuffleId, mapId, info.reduceId)))
+        blocksToWaitForSeq.zip(blockStatuses).filter { x =>
+          x._2.isDefined
+        }.map(_._1).toSet
       } else {
-        // Count how many outputs have been registered with the MapOutputTracker.
-        mapOutputTracker.getAvailableMapOutputs(info.shuffleId)
+        // Count how many outputs have been registered with the MapOutputTracker for this shuffle
+        // and intersect with blocksToWaitFor to only get how many for this reduce are available
+        mapOutputTracker.getAvailableMapOutputs(info.shuffleId).intersect(blocksToWaitFor)
       }
 
       val mapsToWait = Math.ceil(blocksToWaitFor.size * fractionBlocksToWaitFor).toInt
@@ -81,15 +86,15 @@ private[spark] class FutureTaskWaiter(
         // Calculate the number of blocks to wait for before starting future task
         val waitForBlocks = blocksToWaitFor.diff(availableBlocks)
         futureTasksBlockWait.put((info.shuffleId, info.reduceId), new HashSet[Int]() ++ waitForBlocks)
-        logInfo(s"DRIZ: For ${info.taskId} with ${info.numMaps} outputs going to wait for $waitForBlocks blocks")
+        logDebug(s"DRIZ: For ${info.taskId} with ${info.numMaps} outputs going to wait for $waitForBlocks blocks. Already available $availableBlocks")
       }
     }
   }
 
   def shuffleBlockReady(shuffleBlockId: ShuffleBlockId): Unit = {
     val key = (shuffleBlockId.shuffleId, shuffleBlockId.reduceId)
-    if (futureTaskInfo.contains(key)) {
-      futureTasksBlockWait.synchronized {
+    futureTasksBlockWait.synchronized {
+      if (futureTaskInfo.contains(key)) {
         logDebug(s"Found FT for shuffle ${shuffleBlockId.shuffleId} and reduce ${shuffleBlockId.reduceId}")
         if (futureTasksBlockWait.contains(key)) {
           futureTasksBlockWait(key) -= shuffleBlockId.mapId

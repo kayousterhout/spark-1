@@ -339,6 +339,19 @@ private[spark] class BlockManager(
     }
   }
 
+  def getStatuses(blockIds: Seq[BlockId]): Seq[Option[BlockStatus]] = {
+    blockInfo.synchronized {
+      blockIds.map { blockId =>
+        blockInfo.get(blockId).map { info =>
+          val memSize = if (memoryStore.contains(blockId)) memoryStore.getSize(blockId) else 0L
+          val diskSize = if (diskStore.contains(blockId)) diskStore.getSize(blockId) else 0L
+          // Assume that block is not in external block store
+          BlockStatus(info.level, memSize, diskSize, 0L)
+        }
+      }
+    }
+  }
+
   /**
    * Get the ids of existing blocks that match the given filter. Note that this will
    * query the blocks stored in the disk block manager (that the block manager
@@ -746,7 +759,9 @@ private[spark] class BlockManager(
     val putBlockInfo = {
       val tinfo = new BlockInfo(level, tellMaster)
       // Do atomically !
-      val oldBlockOpt = blockInfo.putIfAbsent(blockId, tinfo)
+      val oldBlockOpt = blockInfo.synchronized {
+        blockInfo.putIfAbsent(blockId, tinfo)
+      }
       if (oldBlockOpt.isDefined) {
         if (oldBlockOpt.get.waitForReady()) {
           logWarning(s"Block $blockId already exists on this machine; not re-adding it")
