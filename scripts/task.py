@@ -25,6 +25,7 @@ class Task:
     self.result_serialization_time = task_metrics["Result Serialization Time"]
     self.broadcast_block_time = task_metrics["Broadcast Blocked Nanos"] / 1.0e6
     self.future_task_queue_time = task_metrics["Future Task Queue Time"]
+    self.executor_queue_delay = task_metrics["Executor Queue Delay"]
     self.gc_time = task_metrics["JVM GC Time"]
 
     self.shuffle_write_time = 0

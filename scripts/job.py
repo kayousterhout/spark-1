@@ -255,10 +255,12 @@ class Job:
       deserialize_end = scheduler_delay_end + task.executor_deserialize_time
       # Show future task queue time next
       future_task_queue_end = deserialize_end + task.future_task_queue_time
+      # Show time spent in the executor threadpool queue next
+      executor_queue_delay_end = future_task_queue_end + task.executor_queue_delay
       # TODO: input_read_time should only be included when the task reads input data from
       # HDFS, but with the current logging it's also recorded when data is read from memory,
       # so should be included here to make the task end time line up properly.
-      hdfs_read_end = future_task_queue_end + task.input_read_time
+      hdfs_read_end = executor_queue_delay_end + task.input_read_time
       local_read_end = hdfs_read_end
       fetch_wait_end = hdfs_read_end
       if task.has_fetch:
@@ -283,12 +285,13 @@ class Job:
       plot_file.write(LINE_TEMPLATE % (start, i, scheduler_delay_end, i, 6))
       plot_file.write(LINE_TEMPLATE % (scheduler_delay_end, i, deserialize_end, i, 8))
       plot_file.write(LINE_TEMPLATE % (deserialize_end, i, future_task_queue_end, i, 10))
+      plot_file.write(LINE_TEMPLATE % (future_task_queue_end, i, executor_queue_delay_end, i, -1))
       if task.has_fetch:
-        plot_file.write(LINE_TEMPLATE % (future_task_queue_end, i, local_read_end, i, 1))
+        plot_file.write(LINE_TEMPLATE % (executor_queue_delay_end, i, local_read_end, i, 1))
         plot_file.write(LINE_TEMPLATE % (local_read_end, i, fetch_wait_end, i, 2))
         plot_file.write(LINE_TEMPLATE % (fetch_wait_end, i, serialize_end, i, 9))
       else:
-        plot_file.write(LINE_TEMPLATE % (future_task_queue_end, i, hdfs_read_end, i, 7))
+        plot_file.write(LINE_TEMPLATE % (executor_queue_delay_end, i, hdfs_read_end, i, 7))
         plot_file.write(LINE_TEMPLATE % (hdfs_read_end, i, serialize_end, i, 9))
       plot_file.write(LINE_TEMPLATE % (serialize_end, i, compute_end, i, 3))
       plot_file.write(LINE_TEMPLATE % (compute_end, i, gc_end, i, 4))
@@ -309,6 +312,7 @@ class Job:
     plot_file.write("plot -1 ls 6 title 'Scheduler delay',\\\n")
     plot_file.write(" -1 ls 8 title 'Task deserialization', \\\n")
     plot_file.write(" -1 ls 10 title 'Future Task Queue', \\\n")
+    plot_file.write(" -1 ls -1 title 'Executor Queue Delay', \\\n")
     plot_file.write("-1 ls 2 title 'Network wait', -1 ls 3 title 'Compute', \\\n")
     plot_file.write("-1 ls 4 title 'GC', \\\n")
     plot_file.write("-1 ls 5 title 'Output write wait'\\\n")

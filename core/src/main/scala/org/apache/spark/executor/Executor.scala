@@ -91,7 +91,7 @@ private[spark] class Executor(
     0
   }
 
-  private case class PendingTask (priority: Int, task: TaskRunner)
+  private case class PendingTask (priority: Int, task: TaskRunner, scheduleTime: Long)
   private object PendingTaskOrdering extends Ordering[PendingTask] {
     def compare(a: PendingTask, b: PendingTask) = a.priority compare b.priority
   }
@@ -138,7 +138,7 @@ private[spark] class Executor(
               priority: Int,
               tr: TaskRunner) : Unit = {
     taskSchedule.synchronized {
-      taskSchedule.add(PendingTask(priority, tr))
+      taskSchedule.add(PendingTask(priority, tr, System.currentTimeMillis()))
       logInfo(s"DRIZ: Adding task ${tr.taskId} with priority ${priority} current occupancy is ${currentActiveTasks}")
     }
     scheduleTasks()
@@ -152,10 +152,13 @@ private[spark] class Executor(
   // stages) but is definitely not the solution.
   private def scheduleTasks() : Unit = {
     taskSchedule.synchronized {
+      val currentTime = System.currentTimeMillis()
       logInfo(s"DRIZ: Scheduling tasks ${currentActiveTasks} ${taskSchedule.isEmpty()}")
       while ((maxActiveTasks == 0 || currentActiveTasks < maxActiveTasks) && !taskSchedule.isEmpty()) {
         val t = taskSchedule.poll();
         currentActiveTasks += 1
+        // Update time taken in metrics
+        t.task.poolQueueTime = currentTime - t.scheduleTime
         threadPool.execute(t.task)
       }
     }
@@ -230,6 +233,7 @@ private[spark] class Executor(
       taskId: Long,
       deserializeTime: Long,
       taskQueueTime: Long,
+      poolQueueTime: Long,
       ser: SerializerInstance): Unit = {
     val taskMemoryManager = new TaskMemoryManager(env.executorMemoryManager)
     execBackend.statusUpdate(taskId, TaskState.RUNNING, EMPTY_BYTE_BUFFER)
@@ -289,6 +293,7 @@ private[spark] class Executor(
       // TODO: Add gc time during task serialization here
       m.setJvmGCTime(computeTotalGcTime() - startGCTime)
       m.setResultSerializationTime(afterSerialization - beforeSerialization)
+      m.setExecutorThreadPoolDelay(poolQueueTime)
       m.updateAccumulators()
     }
 
@@ -338,6 +343,8 @@ private[spark] class Executor(
      * from the driver. Once it is set, it will never be changed.
      */
     @volatile var task: Task[Any] = _
+
+    @volatile var poolQueueTime: Long = _
 
     def kill(interruptThread: Boolean): Unit = {
       logInfo(s"Executor is trying to kill $taskName (TID $taskId)")
@@ -404,7 +411,7 @@ private[spark] class Executor(
         }
 
         runDeserializedTask(execBackend, task, taskName, attemptNumber, taskId,
-          deserializeStopTime-deserializeStartTime, 0L, ser)
+          deserializeStopTime-deserializeStartTime, 0L, poolQueueTime, ser)
       } catch {
         case ffe: FetchFailedException =>
           val reason = ffe.toTaskEndReason
@@ -489,7 +496,7 @@ private[spark] class Executor(
         }
 
         runDeserializedTask(execBackend, futureTask.task, taskName, attemptNumber, taskId,
-          deserializeTime, taskQueueTime, ser)
+          deserializeTime, taskQueueTime, poolQueueTime, ser)
       } catch {
         case ffe: FetchFailedException =>
           val reason = ffe.toTaskEndReason

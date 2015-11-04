@@ -29,6 +29,7 @@ private[spark] object TaskDetailsClassNames {
   val TASK_DESERIALIZATION_TIME = "deserialization_time"
   val BROADCAST_BLOCKED_TIME = "broadcast_blocked_time"
   val FUTURE_TASK_QUEUE_TIME = "future_task_queue_time"
+  val EXECUTOR_QUEUE_DELAY = "executor_queue_delay"
   val MAP_OUTPUT_LOCATIONS_FETCH_TIME = "map_output_locations_fetch_time"
   val SHUFFLE_READ_BLOCKED_TIME = "fetch_wait_time"
   val SHUFFLE_READ_REMOTE_SIZE = "shuffle_read_remote"

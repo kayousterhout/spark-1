@@ -49,6 +49,13 @@ class TaskMetrics extends Serializable {
   private[spark] def setHostname(value: String) = _hostname = value
 
   /**
+   * Time taken by this task queued up for a thread on the executor
+   */
+  private var _executorThreadPoolDelay: Long = _
+  def executorThreadPoolDelay: Long = _executorThreadPoolDelay
+  private[spark] def setExecutorThreadPoolDelay(value: Long) = _executorThreadPoolDelay = value
+
+  /**
    * Time taken on the executor to deserialize this task
    */
   private var _executorDeserializeTime: Long = _
