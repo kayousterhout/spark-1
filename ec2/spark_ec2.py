@@ -94,7 +94,7 @@ DEFAULT_SPARK_VERSION = "master"
 DEFAULT_SPARK_GITHUB_REPO = "git@github.com:amplab/drizzle.git"
 
 # Default location to get the spark-ec2 scripts (and ami-list) from
-DEFAULT_SPARK_EC2_GITHUB_REPO = "https://github.com/amplab/spark-ec2"
+DEFAULT_SPARK_EC2_GITHUB_REPO = "git@github.com:apanda/spark-ec2.git"
 DEFAULT_SPARK_EC2_BRANCH = "branch-1.5"
 
 
@@ -441,32 +441,6 @@ amis = {
 
 def get_tachyon_version(spark_version):
     return SPARK_TACHYON_MAP.get(spark_version, "")
-
-
-# Attempt to resolve an appropriate AMI given the architecture and region of the request.
-def get_spark_ami(opts):
-    if opts.instance_type in EC2_INSTANCE_TYPES:
-        instance_type = EC2_INSTANCE_TYPES[opts.instance_type]
-    else:
-        instance_type = "pvm"
-        print("Don't recognize %s, assuming type is pvm" % opts.instance_type, file=stderr)
-
-    # URL prefix from which to fetch AMI information
-    ami_prefix = "{r}/{b}/ami-list".format(
-        r=opts.spark_ec2_git_repo.replace("https://github.com", "https://raw.github.com", 1),
-        b=opts.spark_ec2_git_branch)
-
-    ami_path = "%s/%s/%s" % (ami_prefix, opts.region, instance_type)
-    reader = codecs.getreader("ascii")
-    try:
-        ami = reader(urlopen(ami_path)).read().strip()
-    except:
-        print("Could not resolve AMI at: " + ami_path, file=stderr)
-        sys.exit(1)
-
-    print("Spark AMI: " + ami)
-    return ami
-
 
 # Launch a cluster of the given name, by setting up its security groups,
 # and then starting new instances in them.
@@ -1304,13 +1278,13 @@ def real_main():
 
     # Prevent breaking ami_prefix (/, .git and startswith checks)
     # Prevent forks with non spark-ec2 names for now.
-    if opts.spark_ec2_git_repo.endswith("/") or \
-            opts.spark_ec2_git_repo.endswith(".git") or \
-            not opts.spark_ec2_git_repo.startswith("https://github.com") or \
-            not opts.spark_ec2_git_repo.endswith("spark-ec2"):
-        print("spark-ec2-git-repo must be a github repo and it must not have a trailing / or .git. "
-              "Furthermore, we currently only support forks named spark-ec2.", file=stderr)
-        sys.exit(1)
+    # if opts.spark_ec2_git_repo.endswith("/") or \
+            # opts.spark_ec2_git_repo.endswith(".git") or \
+            # not opts.spark_ec2_git_repo.startswith("https://github.com") or \
+            # not opts.spark_ec2_git_repo.endswith("spark-ec2"):
+        # print("spark-ec2-git-repo must be a github repo and it must not have a trailing / or .git. "
+              # "Furthermore, we currently only support forks named spark-ec2.", file=stderr)
+        # sys.exit(1)
 
     if not (opts.deploy_root_dir is None or
             (os.path.isabs(opts.deploy_root_dir) and
