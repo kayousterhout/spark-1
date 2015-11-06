@@ -76,6 +76,8 @@ private[spark] class ComputeScheduler(
         "ComputeScheduler has not been started yet; initialize() must be called to start the " +
         "ComputeScheduler before any tasks are launched.")
     }
+    logInfo(s"KVZ putting monotask ${monotask.taskId} for macrotask " +
+      s"${monotask.context.taskAttemptId} in queue")
     monotaskQueue.put(monotask)
     this.notify()
   }
@@ -88,8 +90,11 @@ private[spark] class ComputeScheduler(
     var monotaskToRun: Option[ComputeMonotask] = pollForMonotask()
     while (monotaskToRun.isEmpty) {
       this.wait()
+      logInfo(s"KVZ Polling for monotask")
       monotaskToRun = pollForMonotask()
     }
+    logInfo(s"KVZ Polling returned monotask ${monotaskToRun.get.taskId} for macrotask " +
+      s"${monotaskToRun.get.context.taskAttemptId}")
     monotaskToRun.get
   }
 
@@ -109,6 +114,7 @@ private[spark] class ComputeScheduler(
         Option(monotaskQueue.poll())
       }
     } else {
+      logInfo(s"KVZ No free memory is available!")
       // No free memory is available, so only run monotasks that won't generate new in-memory
       // data. For now, we assume that ShuffleMapMonotasks will generate new in-memory data,
       // and that all other types of monotasks do not.
@@ -138,6 +144,7 @@ private[spark] class ComputeScheduler(
   private class ConsumerThread extends Runnable {
     def run(): Unit = {
       while (true) {
+        logInfo(s"KVZ thread ${Thread.currentThread().getId} is getting a monotask")
         val monotask = takeMonotask()
         numRunningTasks.incrementAndGet()
         monotask.context.taskMetrics.incComputeWaitNanos(monotask.getQueueTime())
