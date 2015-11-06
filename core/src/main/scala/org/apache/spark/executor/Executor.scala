@@ -292,6 +292,7 @@ private[spark] class Executor(
       // TODO(shivaram): Get rid of this ?
       m.broadcastBlockedNanos = Broadcast.blockedNanos.get()
       m.setExecutorRunTime((taskFinish - taskStart))
+      m.setExecutorFinishTimeMillis(taskFinish)
       m.setFutureTaskQueueTime(taskQueueTime)
       // TODO: Add gc time during task serialization here
       m.setJvmGCTime(computeTotalGcTime() - startGCTime)
@@ -436,7 +437,9 @@ private[spark] class Executor(
 
           val metrics: Option[TaskMetrics] = Option(task).flatMap { task =>
             task.metrics.map { m =>
-              m.setExecutorRunTime(System.currentTimeMillis() - taskStart)
+              val taskFinish = System.currentTimeMillis()
+              m.setExecutorRunTime(taskFinish - taskStart)
+              m.setExecutorFinishTimeMillis(taskFinish)
               m.setJvmGCTime(computeTotalGcTime() - startGCTime)
               m.updateAccumulators()
               m
@@ -522,7 +525,9 @@ private[spark] class Executor(
 
           val metrics: Option[TaskMetrics] = Option(task).flatMap { task =>
             task.metrics.map { m =>
-              m.setExecutorRunTime(System.currentTimeMillis() - taskStart)
+              val taskFinish = System.currentTimeMillis()
+              m.setExecutorRunTime(taskFinish - taskStart)
+              m.setExecutorFinishTimeMillis(taskFinish)
               m.setJvmGCTime(computeTotalGcTime() - startGCTime)
               m.updateAccumulators()
               m

@@ -77,6 +77,16 @@ class TaskMetrics extends Serializable {
   private[spark] def setExecutorRunTime(value: Long) = _executorRunTime = value
 
   /**
+   * Time that the executor finished running the task. Used to estimate how much of the
+   * scheduler delay occurred before the task started, and how much occurred after the task
+   * finished.
+   */
+  private var _executorFinishTimeMillis: Long = _
+  def executorFinishTimeMillis: Long = _executorFinishTimeMillis
+  private[spark] def setExecutorFinishTimeMillis(value: Long) = _executorFinishTimeMillis = value
+
+
+  /**
    * Nanoseconds spent blocked waiting on broadcast variables.
    */
   var broadcastBlockedNanos: Long = _
