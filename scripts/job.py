@@ -227,7 +227,7 @@ class Job:
 
     plot_file.close()
 
-  def write_waterfall(self, prefix, pdf_relative_path=False):
+  def write_waterfall(self, prefix, pdf_relative_path=False, title=""):
     """ Outputs a gnuplot file that visually shows all task runtimes. """
     all_tasks = []
     cumulative_tasks = 0
@@ -242,6 +242,10 @@ class Job:
     for line in base_file:
       plot_file.write(line)
     base_file.close()
+
+    if title != "":
+      plot_file.write("set title \"%s\"\n" % title)
+    
 
     LINE_TEMPLATE = "set arrow from %s,%s to %s,%s ls %s nohead\n"
 
@@ -264,7 +268,7 @@ class Job:
       local_read_end = hdfs_read_end
       fetch_wait_end = hdfs_read_end
       if task.has_fetch:
-        local_read_end = future_task_queue_end + task.local_read_time
+        local_read_end = executor_queue_delay_end + task.local_read_time
         fetch_wait_end = local_read_end + task.fetch_wait + task.map_output_fetch_wait 
       # Here, assume GC happens as part of compute (although we know that sometimes
       # GC happens during fetch wait.

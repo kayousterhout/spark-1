@@ -479,7 +479,8 @@ private[spark] class Executor(
       Thread.currentThread.setContextClassLoader(replClassLoader)
       val ser = env.closureSerializer.newInstance()
 
-      val taskQueueTime = System.currentTimeMillis() - taskQueueStart
+      // We need to delete poolQueueTime here since otherwise it is double counted.
+      val taskQueueTime = System.currentTimeMillis() - taskQueueStart - poolQueueTime
       logInfo(s"Running FutureTask $taskName (TID $taskId) queue time ${taskQueueTime}")
       var taskStart: Long = 0
       startGCTime = computeTotalGcTime()

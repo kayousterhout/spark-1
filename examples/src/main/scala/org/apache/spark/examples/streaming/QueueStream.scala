@@ -20,17 +20,33 @@ package org.apache.spark.examples.streaming
 import scala.collection.mutable.SynchronizedQueue
 
 import org.apache.spark.SparkConf
+import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-import org.apache.spark.streaming.{Seconds, StreamingContext}
+import org.apache.spark.streaming.{Seconds, StreamingContext, Milliseconds}
 
 object QueueStream {
 
   def main(args: Array[String]) {
 
+    val numPartitions = if (args.length > 0) args(0).toInt else 128
+    val numIters = if (args.length > 1) args(1).toInt else 10
+    val batchMs = if (args.length > 2) args(2).toInt else 1000
+    val depth = if (args.length > 3) args(3).toInt else 7
+
     StreamingExamples.setStreamingLogLevels()
     val sparkConf = new SparkConf().setAppName("QueueStream")
+
+    val sc = new SparkContext(sparkConf)
     // Create the context
-    val ssc = new StreamingContext(sparkConf, Seconds(1))
+    // Let all the executors join
+    Thread.sleep(5000)
+
+    sc.parallelize(0 until sc.getExecutorMemoryStatus.size, 
+      sc.getExecutorMemoryStatus.size).foreach { 
+      x => Thread.sleep(10) 
+    }
+
+    val ssc = new StreamingContext(sc, Milliseconds(batchMs))
 
     // Create the queue through which RDDs can be pushed to
     // a QueueInputDStream
@@ -38,16 +54,25 @@ object QueueStream {
 
     // Create the QueueInputDStream and use it do some processing
     val inputStream = ssc.queueStream(rddQueue)
-    val mappedStream = inputStream.map(x => (x % 10, 1))
-    val reducedStream = mappedStream.reduceByKey(_ + _)
-    reducedStream.print()
+    val mappedStream = inputStream.map(x => (x*2).toLong)
+    mappedStream.foreachRDD { x =>
+      println("TREE SUM is " + x.treeReduce(_ + _, depth))
+    }
+    // val reducedStream = mappedStream.reduceByKey((x: Int, y: Int) => x + y, 4)
+
+    val start = System.nanoTime()
     ssc.start()
 
     // Create and push some RDDs into
-    for (i <- 1 to 30) {
-      rddQueue += ssc.sparkContext.makeRDD(1 to 1000, 10)
-      Thread.sleep(1000)
+    for (i <- 1 to numIters) {
+      rddQueue += ssc.sparkContext.makeRDD(1 to 1000000, numPartitions)
+      Thread.sleep(batchMs)
     }
-    ssc.stop()
+
+    ssc.stop(true, true)
+
+    val end = System.nanoTime()
+
+    println("DRIZ: TIME FOR " + numIters + " batches with batchMs " + batchMs + " " + (end-start)/1e3 + " microsecs")
   }
 }
