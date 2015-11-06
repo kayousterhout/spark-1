@@ -68,17 +68,45 @@ class Analyzer:
     job.write_waterfall(filename, self.pdf_relative_path, self.app_name)
     job.write_waterfall_by_executor(filename, self.pdf_relative_path, self.app_name)
 
+    # Output time breakdowns for each stage, and overall
+    total_compute_time = 0
+    total_deserialization_time = 0
+    total_fetch_wait_time = 0
+    total_map_output_fetch_time = 0
+    total_scheduler_delay = 0
+    summary_file = open("%s_summary" % filename, "w")
+    for stage_id, stage in job.stages.iteritems():
+      compute_time = sum([t.compute_time() for t in stage.tasks])
+      deserialization_time = sum([t.executor_deserialize_time for t in stage.tasks])
+      fetch_wait_time = sum([t.fetch_wait for t in stage.tasks if t.has_fetch])
+      map_output_fetch_wait = sum([t.map_output_fetch_wait for t in stage.tasks if t.has_fetch])
+      scheduler_delay = sum([t.scheduler_delay for t in stage.tasks])
+      summary_file.write(("Stage %s (%s tasks): Compute: %s, deserialize: %s, fetch wait: %s, map output wait: %s, " +
+        "scheduler delay: %s\n") %
+        (stage_id, len(stage.tasks), compute_time, deserialization_time, fetch_wait_time, map_output_fetch_wait, scheduler_delay))
+
+      total_compute_time += compute_time
+      total_deserialization_time += deserialization_time
+      total_fetch_wait_time += fetch_wait_time
+      total_map_output_fetch_time += map_output_fetch_wait
+      total_scheduler_delay += scheduler_delay
+    summary_file.write(("TOTAL Compute: %s, deserialize: %s, fetch wait: %s, map output wait: %s, " +
+      "scheduler delay: %s\n") %
+      (total_compute_time, total_deserialization_time, total_fetch_wait_time, total_map_output_fetch_time,
+        total_scheduler_delay))
+
     no_scheduler_delay_speedup = job.no_scheduler_delay_speedup()[0]
     no_map_output_fetch_speedup = job.no_map_output_fetch_speedup()[0]
     no_broadcast_speedup = job.no_broadcast_speedup()[0]
     no_overhead_speedup = job.no_overhead_speedup()[0]
+    no_gc_speedup = job.no_gc_speedup()[0]
+
     print "\n  Drizzle potential speedups:"
     print "     Eliminate scheduler delay:", no_scheduler_delay_speedup
     print "     Eliminate broadcast time:", no_broadcast_speedup
     print "     Eliminate time to fetch map output locations:", no_map_output_fetch_speedup
     print "     Eliminate all 3 overheads:", no_overhead_speedup
-
-    print "\nSpeedup from eliminating all GC:", job.no_gc_speedup()[0]
+    print "\nSpeedup from eliminating all GC:", no_gc_speedup
     
 def main(argv):
   parser = OptionParser(usage="parse_logs.py [options] <log filename>")
