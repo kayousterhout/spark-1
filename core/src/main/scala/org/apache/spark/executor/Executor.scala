@@ -137,8 +137,9 @@ private[spark] class Executor(
   private def scheduleTask(
               priority: Int,
               tr: TaskRunner) : Unit = {
+    val entryTime = System.currentTimeMillis()
     taskSchedule.synchronized {
-      taskSchedule.add(PendingTask(priority, tr, System.currentTimeMillis()))
+      taskSchedule.add(PendingTask(priority, tr, entryTime))
       logInfo(s"DRIZ: Adding task ${tr.taskId} with priority ${priority} current occupancy is ${currentActiveTasks}")
     }
     scheduleTasks()
@@ -158,7 +159,7 @@ private[spark] class Executor(
         val t = taskSchedule.poll();
         currentActiveTasks += 1
         // Update time taken in metrics
-        t.task.poolQueueTime = currentTime - t.scheduleTime
+        t.task.poolQueueTime += (currentTime - t.scheduleTime)
         threadPool.execute(t.task)
       }
     }
@@ -193,9 +194,11 @@ private[spark] class Executor(
       taskName: String,
       futureTask: FutureTask[_],
       deserializeTime: Long,
-      taskQueueStart: Long): Unit = {
+      taskQueueStart: Long,
+      oldPoolQueueTime: Long): Unit = {
     val tr = new FutureTaskRunner(context, taskId = taskId, attemptNumber = attemptNumber, taskName,
       futureTask, deserializeTime, taskQueueStart)
+    tr.poolQueueTime = oldPoolQueueTime
     // TODO: Send an update here to the driver that we are executing this task ?
     runningTasks.put(taskId, tr)
     logInfo(s"DRIZ: Calling schedule task")
@@ -344,7 +347,7 @@ private[spark] class Executor(
      */
     @volatile var task: Task[Any] = _
 
-    @volatile var poolQueueTime: Long = _
+    @volatile var poolQueueTime: Long = 0L
 
     def kill(interruptThread: Boolean): Unit = {
       logInfo(s"Executor is trying to kill $taskName (TID $taskId)")
@@ -402,7 +405,7 @@ private[spark] class Executor(
               taskId,
               baseShuffleHandle.dependency.nonEmptyPartitions.map(_.get(futureTask.partitionId)),
               (a: Unit) => launchFutureTask(execBackend, taskId, attemptNumber, taskName, futureTask,
-                deserializeStopTime - deserializeStartTime, deserializeStopTime)))
+                deserializeStopTime - deserializeStartTime, deserializeStopTime, poolQueueTime)))
             // TODO(shivaram): Should we send some status update here ?
             return
           }
