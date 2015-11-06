@@ -21,7 +21,7 @@ import org.apache.spark.storage.StorageLevel
 import org.apache.spark.streaming.{Seconds, StreamingContext}
 import org.apache.spark.streaming.receiver.Receiver
 
-class RandoReceiver(range: Int)
+class RandoReceiver(n_records: Int)
   extends Receiver[Int](StorageLevel.MEMORY_ONLY) {
   def onStart() {
     new Thread("RandoReceiver") {
@@ -35,21 +35,25 @@ class RandoReceiver(range: Int)
 
   private def receive() {
     val rand = new Random()
-    while (!isStopped) {
-      store(rand.nextInt(range))
+
+    for (x <- 1 to n_records) {
+      if (isStopped) {
+        return
+      }
+      store(rand.nextInt(10))
     }
   }
 }
 
 object DrizzleStreamingBaseline {
   def main(args: Array[String]) {
-    var batchSize = if (args.length > 0) args(0).toInt else 10
-    var range = if (args.length > 1) args(1).toInt else 16
+    var batchSize = if (args.length > 0) args(0).toInt else 5
+    var n_records = if (args.length > 1) args(1).toInt else 1000000000
 
     val sparkConf = new SparkConf().setAppName("DrizzleStreamBaseline")
     val ssc = new StreamingContext(sparkConf, Seconds(batchSize))
 
-    val nums = ssc.receiverStream(new RandoReceiver(16))
+    val nums = ssc.receiverStream(new RandoReceiver(n_records))
 
     val numFreq = nums.map(x => (x, 1)).reduceByKey(_ + _)
 
