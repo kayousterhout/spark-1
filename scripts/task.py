@@ -21,6 +21,7 @@ class Task:
     self.finish_time = task_info["Finish Time"]
     self.executor = task_info["Host"]
     self.executor_run_time = task_metrics["Executor Run Time"]
+    self.executor_finish_time_millis = task_metrics["Executor Finish Time Millis"]
     self.executor_deserialize_time = task_metrics["Executor Deserialize Time"]
     self.result_serialization_time = task_metrics["Result Serialization Time"]
     self.broadcast_block_time = task_metrics["Broadcast Blocked Nanos"] / 1.0e6

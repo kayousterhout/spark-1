@@ -276,10 +276,21 @@ class Job:
     first_start = all_tasks[0].start_time
     for i, task in enumerate(all_tasks):
       start = task.start_time - first_start
-      # Show the scheduler delay at the beginning -- but it could be at the beginning or end or
-      # split.
-      scheduler_delay_end = start + task.scheduler_delay
-      deserialize_end = scheduler_delay_end + task.executor_deserialize_time
+      
+      # Break the scheduler delay into two parts: the part that happened before the
+      # task started, and the part that happened after the task finished.
+      second_scheduler_delay_time = task.finish_time - task.executor_finish_time_millis
+      print "Second scheduler delay time: ", second_scheduler_delay_time
+      if second_scheduler_delay_time < 0:
+        print "Second scheduler delay was", second_scheduler_delay_time, " signalling clock skew"
+        second_scheduler_delay_time = 0
+      first_scheduler_delay_time = task.scheduler_delay - second_scheduler_delay_time
+
+      first_scheduler_delay_end = start + first_scheduler_delay_time
+      broadcast_end = first_scheduler_delay_end + task.broadcast_block_time
+      # broadcast_blocked_time will be a subset of executor_deserialize_time, as long as the
+      # task didn't use any broadcast variables.
+      deserialize_end = first_scheduler_delay_end + task.executor_deserialize_time
       # Show future task queue time next
       future_task_queue_end = deserialize_end + task.future_task_queue_time
       # Show time spent in the executor threadpool queue next
@@ -301,16 +312,18 @@ class Job:
         task.executor_deserialize_time)
       gc_end = compute_end + task.gc_time
       task_end = gc_end + task.shuffle_write_time + task.output_write_time
-      if math.fabs((first_start + task_end) - task.finish_time) >= 0.1:
+      second_scheduler_delay_end = task_end + second_scheduler_delay_time
+      if math.fabs((first_start + second_scheduler_delay_end) - task.finish_time) >= 0.1:
         print "Mismatch at index %s" % i
-        print "%.1f" % (first_start + task_end)
+        print "%.1f" % (first_start + second_scheduler_delay_end)
         print task.finish_time
         print task
         assert False
 
       # Write data to plot file.
-      plot_file.write(LINE_TEMPLATE % (start, i, scheduler_delay_end, i, 6))
-      plot_file.write(LINE_TEMPLATE % (scheduler_delay_end, i, deserialize_end, i, 8))
+      plot_file.write(LINE_TEMPLATE % (start, i, first_scheduler_delay_end, i, 6))
+      plot_file.write(LINE_TEMPLATE % (first_scheduler_delay_end, i, broadcast_end, i, 11))
+      plot_file.write(LINE_TEMPLATE % (broadcast_end, i, deserialize_end, i, 8))
       plot_file.write(LINE_TEMPLATE % (deserialize_end, i, future_task_queue_end, i, 10))
       plot_file.write(LINE_TEMPLATE % (future_task_queue_end, i, executor_queue_delay_end, i, -1))
       if task.has_fetch:
@@ -323,6 +336,7 @@ class Job:
       plot_file.write(LINE_TEMPLATE % (serialize_end, i, compute_end, i, 3))
       plot_file.write(LINE_TEMPLATE % (compute_end, i, gc_end, i, 4))
       plot_file.write(LINE_TEMPLATE % (gc_end, i, task_end, i, 5))
+      plot_file.write(LINE_TEMPLATE % (task_end, i, second_scheduler_delay_end, i, 6))
 
     last_end = max([t.finish_time for t in all_tasks])
     ytics_str = ",".join(str(tic) for tic in ytics)
@@ -342,6 +356,7 @@ class Job:
     plot_file.write(" -1 ls -1 title 'Executor Queue Delay', \\\n")
     plot_file.write("-1 ls 2 title 'Network wait', -1 ls 3 title 'Compute', \\\n")
     plot_file.write("-1 ls 4 title 'GC', \\\n")
-    plot_file.write("-1 ls 5 title 'Output write wait'\\\n")
+    plot_file.write("-1 ls 5 title 'Output write wait',\\\n")
+    plot_file.write("-1 ls 11 title 'Broadcast wait'\\\n")
     plot_file.close()
 
