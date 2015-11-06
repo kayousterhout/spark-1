@@ -7,18 +7,33 @@ import org.apache.spark._
 
 object DrizzleBaseline {
   def main(args: Array[String]) {
-    val NUM_TRIALS = 5
+    val NUM_TRIALS = 12
     val slices = if (args.length > 0) args(0).toInt else 2
     val depth = if (args.length > 1) args(1).toInt else 3
     val wait = if (args.length > 2) args(2).toDouble else 1.0
     val n = math.min(1000000L * slices, Long.MaxValue).toInt // avoid overflow
 
     val conf = new SparkConf()
-    if (conf.getBoolean("spark.scheduler.drizzle", true)) {
-      conf.setAppName("Drizzle")
+    var title = if (conf.getBoolean("spark.scheduler.drizzle", true)) {
+      "Drizzle"
     } else {
-      conf.setAppName("Baseline")
+      "Baseline"
     }
+    
+    if (conf.getBoolean("spark.scheduler.drizzle", true)) {
+      if (conf.getBoolean("spark.scheduler.drizzle.push", true)) {
+        title += " Push"
+      } else {
+        title += " Pull"
+      }
+      if (conf.getBoolean("spark.scheduler.drizzle.treeReduceOpt", false)) {
+        title += " TreeMessages"
+      } else {
+        title += " AllMessages"
+      }
+    }
+    conf.setAppName(title)
+
     println("Setting wait to " + wait.toString())
     conf.set("spark.scheduler.drizzle.wait", wait.toString())
     val sc = new SparkContext(conf)
@@ -39,7 +54,7 @@ object DrizzleBaseline {
       val begin = System.nanoTime
       val sum = rdd.treeReduce(_ + _, depth)
       val end = System.nanoTime
-      println("Sum of " + n + " elements took " + (end - begin)/1e3 + " microseconds")
+      println("DRIZ " + i + " Sum of " + n + " elements took " + (end - begin)/1e3 + " microseconds")
     }
     sc.stop()
   }
