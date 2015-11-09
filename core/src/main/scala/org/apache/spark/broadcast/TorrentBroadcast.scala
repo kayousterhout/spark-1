@@ -163,7 +163,8 @@ private[spark] class TorrentBroadcast[T: ClassTag](obj: T, id: Long)
   }
 
   private def readBroadcastBlock(): T = Utils.tryOrIOException {
-    TorrentBroadcast.synchronized {
+    val startTimeNanos = System.nanoTime()
+    val broadcastVariable = TorrentBroadcast.synchronized {
       setConf(SparkEnv.get.conf)
       SparkEnv.get.blockManager.getLocal(broadcastId).map(_.data.next()) match {
         case Some(x) =>
@@ -172,11 +173,8 @@ private[spark] class TorrentBroadcast[T: ClassTag](obj: T, id: Long)
         case None =>
           logInfo("Started reading broadcast variable " + id)
           val startTimeMs = System.currentTimeMillis()
-          val startTimeNanos = System.nanoTime()
           val blocks = readBlocks()
           logInfo("Reading broadcast variable " + id + " took" + Utils.getUsedTimeMs(startTimeMs))
-          val elapsedNanos = System.nanoTime() - startTimeNanos
-          Broadcast.blockedNanos.set(Broadcast.blockedNanos.get() + elapsedNanos)
 
           val obj = TorrentBroadcast.unBlockifyObject[T](
             blocks, SparkEnv.get.serializer, compressionCodec)
@@ -187,8 +185,10 @@ private[spark] class TorrentBroadcast[T: ClassTag](obj: T, id: Long)
           obj
       }
     }
+    val elapsedNanos = System.nanoTime() - startTimeNanos
+    Broadcast.blockedNanos.set(Broadcast.blockedNanos.get() + elapsedNanos)
+    broadcastVariable
   }
-
 }
 
 

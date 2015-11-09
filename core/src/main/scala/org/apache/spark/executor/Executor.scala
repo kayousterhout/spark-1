@@ -194,10 +194,11 @@ private[spark] class Executor(
       taskName: String,
       futureTask: FutureTask[_],
       deserializeTime: Long,
+      broadcastTimeNanos: Long,
       taskQueueStart: Long,
       oldPoolQueueTime: Long): Unit = {
     val tr = new FutureTaskRunner(context, taskId = taskId, attemptNumber = attemptNumber, taskName,
-      futureTask, deserializeTime, taskQueueStart)
+      futureTask, deserializeTime, broadcastTimeNanos, taskQueueStart)
     tr.poolQueueTime = oldPoolQueueTime
     // TODO: Send an update here to the driver that we are executing this task ?
     runningTasks.put(taskId, tr)
@@ -235,6 +236,7 @@ private[spark] class Executor(
       attemptNumber: Int,
       taskId: Long,
       deserializeTime: Long,
+      broadcastBlockedNanos: Long,
       taskQueueTime: Long,
       poolQueueTime: Long,
       ser: SerializerInstance): Unit = {
@@ -289,8 +291,7 @@ private[spark] class Executor(
       // includes the Partition. Second, Task.run() deserializes the RDD and function to be run.
       // We count both of them.
       m.setExecutorDeserializeTime(deserializeTime)
-      // TODO(shivaram): Get rid of this ?
-      m.broadcastBlockedNanos = Broadcast.blockedNanos.get()
+      m.broadcastBlockedNanos = broadcastBlockedNanos
       m.setExecutorRunTime((taskFinish - taskStart))
       m.setExecutorFinishTimeMillis(taskFinish)
       m.setFutureTaskQueueTime(taskQueueTime)
@@ -398,6 +399,7 @@ private[spark] class Executor(
           val shuffleDep = futureTask.getFirstShuffleDep
           if (!shuffleDep.isEmpty) {
             val baseShuffleHandle = shuffleDep.get.shuffleHandle.asInstanceOf[BaseShuffleHandle[_, _, _]]
+            val broadcastNanos = Broadcast.blockedNanos.get()
             logDebug(s"DRIZ: Future task $taskId shuffleDep is not empty. Queuing for ${baseShuffleHandle.numMaps} maps")
             env.futureTaskWaiter.submitFutureTask(FutureTaskInfo(
               baseShuffleHandle.shuffleId,
@@ -406,7 +408,8 @@ private[spark] class Executor(
               taskId,
               baseShuffleHandle.dependency.nonEmptyPartitions.map(_.get(futureTask.partitionId)),
               (a: Unit) => launchFutureTask(execBackend, taskId, attemptNumber, taskName, futureTask,
-                deserializeStopTime - deserializeStartTime, deserializeStopTime, poolQueueTime)))
+                deserializeStopTime - deserializeStartTime, broadcastNanos, deserializeStopTime,
+                poolQueueTime)))
             // TODO(shivaram): Should we send some status update here ?
             return
           }
@@ -415,7 +418,8 @@ private[spark] class Executor(
         }
 
         runDeserializedTask(execBackend, task, taskName, attemptNumber, taskId,
-          deserializeStopTime-deserializeStartTime, 0L, poolQueueTime, ser)
+          deserializeStopTime - deserializeStartTime, Broadcast.blockedNanos.get(), 0L,
+          poolQueueTime, ser)
       } catch {
         case ffe: FetchFailedException =>
           val reason = ffe.toTaskEndReason
@@ -475,6 +479,7 @@ private[spark] class Executor(
       taskName: String,
       futureTask: FutureTask[_],
       deserializeTime: Long,
+      broadcastTimeNanos: Long,
       taskQueueStart: Long)
     extends TaskRunner(execBackend, taskId, attemptNumber, taskName, None)  {
 
@@ -488,9 +493,6 @@ private[spark] class Executor(
       var taskStart: Long = 0
       startGCTime = computeTotalGcTime()
 
-      // Reset broadcast time before doing any task deserialization.
-      Broadcast.blockedNanos.set(0L)
-
       try {
         // If this task has been killed before we deserialized it, let's quit now. Otherwise,
         // continue executing the task.
@@ -503,7 +505,7 @@ private[spark] class Executor(
         }
 
         runDeserializedTask(execBackend, futureTask.task, taskName, attemptNumber, taskId,
-          deserializeTime, taskQueueTime, poolQueueTime, ser)
+          deserializeTime, broadcastTimeNanos, taskQueueTime, poolQueueTime, ser)
       } catch {
         case ffe: FetchFailedException =>
           val reason = ffe.toTaskEndReason

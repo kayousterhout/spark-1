@@ -80,12 +80,14 @@ private[spark] class HttpBroadcast[T: ClassTag](
   /** Used by the JVM when deserializing this object. */
   private def readObject(in: ObjectInputStream): Unit = Utils.tryOrIOException {
     in.defaultReadObject()
+    // Track the broadcast blocked time, even if this task is just blocked on someone else reading
+    // a broadcast variable, because in either case it's blocked waiting on the broadcast.
+    val start = System.nanoTime()
     HttpBroadcast.synchronized {
       SparkEnv.get.blockManager.getSingle(blockId) match {
         case Some(x) => value_ = x.asInstanceOf[T]
         case None => {
           logInfo("Started reading broadcast variable " + id)
-          val start = System.nanoTime
           value_ = HttpBroadcast.read[T](id)
           /*
            * We cache broadcast data in the BlockManager so that subsequent tasks using it
@@ -94,14 +96,14 @@ private[spark] class HttpBroadcast[T: ClassTag](
            */
           SparkEnv.get.blockManager.putSingle(
             blockId, value_, StorageLevel.MEMORY_AND_DISK, tellMaster = false)
-          val elapsedNanos = System.nanoTime - start
-          // Assumes deserialization is single threaded.
-          Broadcast.blockedNanos.set(Broadcast.blockedNanos.get() + elapsedNanos)
-          val time = elapsedNanos / 1e9
-          logInfo("Reading broadcast variable " + id + " took " + time + " s")
+          val elapsedSeconds = (System.nanoTime - start) / 1e9
+          logInfo("Reading broadcast variable " + id + " took " + elapsedSeconds + " s")
         }
       }
     }
+    val elapsedNanos = System.nanoTime - start
+    // This account assumes deserialization is single threaded.
+    Broadcast.blockedNanos.set(Broadcast.blockedNanos.get() + elapsedNanos)
   }
 }
 
