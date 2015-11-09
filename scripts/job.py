@@ -231,12 +231,35 @@ class Job:
     """ Outputs a gnuplot file that visually shows all task runtimes. """
     all_tasks = []
     cumulative_tasks = 0
-    stage_cumulative_tasks = []
+    ytics = []
     for stage in sorted(self.stages.values(), key = lambda x: x.start_time):
       all_tasks.extend(sorted(stage.tasks, key = lambda x: x.start_time))
       cumulative_tasks = cumulative_tasks + len(stage.tasks)
-      stage_cumulative_tasks.append(str(cumulative_tasks))
+      ytics.append(str(cumulative_tasks))
+    self.write_waterfall_helper(all_tasks, ytics, prefix, pdf_relative_path, title)
 
+  def write_waterfall_by_executor(self, prefix, pdf_relative_path, title):
+    """ Outputs a gnuplot file that visually shows all task runtimes, sorted by executor.
+
+    The y-tics will differentiate tasks that ran on different executors. Within executors, tasks
+    will be sorted by start time.
+    """
+    all_tasks = [task for stage in self.stages.values() for task in stage.tasks]
+    sorted_by_start_time = sorted(all_tasks, key = lambda x: x.start_time)
+    sorted_by_executor = sorted(sorted_by_start_time, key = lambda x: x.executor)
+    ytics = []
+    current_executor = ""
+    current_cumulative_count = 0
+    for task in sorted_by_executor:
+      if task.executor != current_executor:
+        ytics.append(current_cumulative_count)
+        current_executor = task.executor
+      current_cumulative_count += 1
+
+    print "WRITING HELPER!!!!"
+    self.write_waterfall_helper(sorted_by_executor, ytics, "%s_by_executor" % prefix, pdf_relative_path, title)
+
+  def write_waterfall_helper(self, all_tasks, ytics, prefix, pdf_relative_path, title):
     base_file = open("waterfall_base.gp", "r")
     plot_file = open("%s_waterfall.gp" % prefix, "w")
     for line in base_file:
@@ -302,7 +325,7 @@ class Job:
       plot_file.write(LINE_TEMPLATE % (gc_end, i, task_end, i, 5))
 
     last_end = max([t.finish_time for t in all_tasks])
-    ytics_str = ",".join(stage_cumulative_tasks)
+    ytics_str = ",".join(str(tic) for tic in ytics)
     plot_file.write("set ytics (%s)\n" % ytics_str)
     plot_file.write("set xrange [0:%s]\n" % (last_end - first_start))
     plot_file.write("set yrange [0:%s]\n" % len(all_tasks))

@@ -66,6 +66,7 @@ class Analyzer:
     job.print_heading("Job")
 
     job.write_waterfall(filename, self.pdf_relative_path, self.app_name)
+    job.write_waterfall_by_executor(filename, self.pdf_relative_path, self.app_name)
 
     no_scheduler_delay_speedup = job.no_scheduler_delay_speedup()[0]
     no_map_output_fetch_speedup = job.no_map_output_fetch_speedup()[0]
