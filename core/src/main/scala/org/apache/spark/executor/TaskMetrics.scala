@@ -70,6 +70,15 @@ class TaskMetrics extends Serializable {
   private[spark] def setFutureTaskQueueTime(value: Long) = _futureTaskQueueTime = value
 
   /**
+   * Total time when the task was on the executor (includes various overheads). In theory, this
+   * should be the same as executorRunTime plus all of the overheads like futureTaskQueueTime,
+   * but having this variable explicitly helps us debug issues with missing metrics.
+   */
+  private var _totalTimeOnExecutor: Long = _
+  def totalTimeOnExecutor: Long = _totalTimeOnExecutor
+  private[spark] def incTotalTimeOnExecutor(value: Long) = _totalTimeOnExecutor += value
+
+  /**
    * Time the executor spends actually running the task (including fetching shuffle data)
    */
   private var _executorRunTime: Long = _

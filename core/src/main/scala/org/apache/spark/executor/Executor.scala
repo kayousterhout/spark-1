@@ -179,8 +179,12 @@ private[spark] class Executor(
       attemptNumber: Int,
       taskName: String,
       serializedTask: ByteBuffer): Unit = {
+    val taskMetrics = TaskMetrics.empty
+    // The current time should be added to totalTimeOnExecutor when this task finishes, so the
+    // resulting value is correct.
+    taskMetrics.incTotalTimeOnExecutor(-System.currentTimeMillis())
     val tr = new TaskRunner(context, taskId = taskId, attemptNumber = attemptNumber, taskName,
-      Some(serializedTask), TaskMetrics.empty)
+      Some(serializedTask), taskMetrics)
     runningTasks.put(taskId, tr)
     logInfo(s"DRIZ: Calling schedule task")
 
@@ -401,6 +405,8 @@ private[spark] class Executor(
         m.setJvmGCTime(computeTotalGcTime() - startGCTime)
         m.setResultSerializationTime(afterSerialization - beforeSerialization)
         m.updateAccumulators()
+        // This is offset by -System.currentTimeMillis, which was added when the task launched.
+        m.incTotalTimeOnExecutor(System.currentTimeMillis())
       }
 
       val directResult = new DirectTaskResult(valueBytes, accumUpdates, task.metrics.orNull)
@@ -465,6 +471,7 @@ private[spark] class Executor(
               m.setExecutorFinishTimeMillis(taskFinish)
               m.setJvmGCTime(computeTotalGcTime() - startGCTime)
               m.updateAccumulators()
+              m.incTotalTimeOnExecutor(System.currentTimeMillis())
               m
             }
           }
