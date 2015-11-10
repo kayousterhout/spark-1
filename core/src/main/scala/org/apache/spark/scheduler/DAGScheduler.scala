@@ -1127,13 +1127,13 @@ class DAGScheduler(
     logDebug(s"Binary serialize & broadcast $stage")
 
     val tasks: Seq[Task[_]] = try {
-      val rawTasks = stage match {
+      stage match {
         case stage: ShuffleMapStage =>
           partitionsToCompute.map { id =>
             val locs = taskIdToLocations(id)
             val part = stage.rdd.partitions(id)
             new ShuffleMapTask(stage.id, stage.latestInfo.attemptId,
-              taskBinary, part, locs, stage.internalAccumulators, locations)
+              taskBinary, part, locs, stage.internalAccumulators, scheduleAsFutureTasks, locations)
           }
 
         case stage: ResultStage =>
@@ -1143,14 +1143,8 @@ class DAGScheduler(
             val part = stage.rdd.partitions(p)
             val locs = taskIdToLocations(id)
             new ResultTask(stage.id, stage.latestInfo.attemptId,
-              taskBinary, part, locs, id, stage.internalAccumulators)
+              taskBinary, part, locs, id, stage.internalAccumulators, scheduleAsFutureTasks)
           }
-      }
-
-      if (scheduleAsFutureTasks) {
-        rawTasks.map(new FutureTask(_))
-      } else {
-        rawTasks
       }
     } catch {
       case NonFatal(e) =>
@@ -1227,10 +1221,7 @@ class DAGScheduler(
    * modify the scheduler's internal state. Use taskEnded() to post a task end event from outside.
    */
   private[scheduler] def handleTaskCompletion(event: CompletionEvent) {
-    val task = event.task match {
-      case f: FutureTask[_] => f.task
-      case _ => event.task
-    }
+    val task = event.task
     val stageId = task.stageId
     val taskType = Utils.getFormattedClassName(task)
 

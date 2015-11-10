@@ -31,7 +31,7 @@ import scala.util.control.NonFatal
 import org.apache.spark._
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.deploy.SparkHadoopUtil
-import org.apache.spark.scheduler.{DirectTaskResult, IndirectTaskResult, Task, FutureTask, FutureTaskInfo}
+import org.apache.spark.scheduler.{DirectTaskResult, IndirectTaskResult, Task, FutureTaskInfo}
 import org.apache.spark.serializer.SerializerInstance
 import org.apache.spark.shuffle.{FetchFailedException, BaseShuffleHandle}
 import org.apache.spark.storage.{StorageLevel, TaskResultBlockId}
@@ -192,7 +192,7 @@ private[spark] class Executor(
     // TODO: Send an update here to the driver that we are executing this task ?
     runningTasks.put(futureTaskRunner.taskId, futureTaskRunner)
     logInfo(s"DRIZ: Calling schedule task")
-    scheduleTask(futureTaskRunner.futureTask.stageId, futureTaskRunner)
+    scheduleTask(futureTaskRunner.task.stageId, futureTaskRunner)
   }
 
   def killTask(taskId: Long, interruptThread: Boolean): Unit = {
@@ -281,26 +281,22 @@ private[spark] class Executor(
 
         // If this is a future task, check if there is a shuffle dependency
         // behind it
-        if (task.isInstanceOf[FutureTask[_]]) {
+        if (task.isFutureTask) {
           logDebug(s"DRIZ: Got future task with id $taskId and name $taskName")
-          // Check if there is a shuffle dependency here and if so ask the
-          // block manager to schedule this task once it gets the inputs
-          val futureTask = task.asInstanceOf[FutureTask[_]]
 
-          val shuffleDep = futureTask.getFirstShuffleDep
+          val shuffleDep = task.getFirstShuffleDep
           if (!shuffleDep.isEmpty) {
             val baseShuffleHandle = shuffleDep.get.shuffleHandle.asInstanceOf[BaseShuffleHandle[_, _, _]]
             logDebug(s"DRIZ: Future task $taskId shuffleDep is not empty. Queuing for " +
               s"${baseShuffleHandle.numMaps} maps")
             val futureTaskRunner = new FutureTaskRunner(
-              execBackend, taskId = taskId, attemptNumber = attemptNumber, taskName, futureTask,
-              taskMetrics)
+              execBackend, taskId = taskId, attemptNumber = attemptNumber, taskName, taskMetrics)
             env.futureTaskWaiter.submitFutureTask(FutureTaskInfo(
               baseShuffleHandle.shuffleId,
               baseShuffleHandle.numMaps,
-              futureTask.partitionId,
+              task.partitionId,
               taskId,
-              baseShuffleHandle.dependency.nonEmptyPartitions.map(_.get(futureTask.partitionId)),
+              baseShuffleHandle.dependency.nonEmptyPartitions.map(_.get(task.partitionId)),
               () => launchFutureTask(deserializeStopTime, futureTaskRunner)))
             // TODO(shivaram): Should we send some status update here ?
             return
@@ -309,11 +305,12 @@ private[spark] class Executor(
           logDebug(s"DRIZ: NOT a future task with id $taskId and name $taskName")
         }
 
-        runDeserializedTask(task)
+        runDeserializedTask()
       })
     }
 
-    protected def runDeserializedTask(task: Task[_]): Unit = {
+    /** Runs the deserialized Task stored in `task`. */
+    protected def runDeserializedTask(): Unit = {
       val taskMemoryManager = new TaskMemoryManager(env.executorMemoryManager)
       execBackend.statusUpdate(taskId, TaskState.RUNNING, EMPTY_BYTE_BUFFER)
       task.setTaskMemoryManager(taskMemoryManager)
@@ -463,7 +460,6 @@ private[spark] class Executor(
       taskId: Long,
       attemptNumber: Int,
       taskName: String,
-      val futureTask: FutureTask[_],
       taskMetrics: TaskMetrics)
     extends TaskRunner(execBackend, taskId, attemptNumber, taskName, None, taskMetrics)  {
 
@@ -484,7 +480,7 @@ private[spark] class Executor(
           throw new TaskKilledException
         }
 
-        runDeserializedTask(futureTask.task)
+        runDeserializedTask()
       })
     }
   }

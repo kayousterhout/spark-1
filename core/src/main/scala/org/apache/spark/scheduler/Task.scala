@@ -20,15 +20,15 @@ package org.apache.spark.scheduler
 import java.io.{ByteArrayOutputStream, DataInputStream, DataOutputStream}
 import java.nio.ByteBuffer
 
-import scala.collection.mutable.HashMap
+import scala.collection.mutable.{Stack, HashSet, HashMap}
 
 import org.apache.spark.metrics.MetricsSystem
-import org.apache.spark.{Accumulator, SparkEnv, TaskContextImpl, TaskContext}
+import org.apache.spark.{Accumulator, ShuffleDependency, SparkEnv, TaskContextImpl, TaskContext}
 import org.apache.spark.executor.TaskMetrics
+import org.apache.spark.rdd.RDD
 import org.apache.spark.serializer.SerializerInstance
 import org.apache.spark.unsafe.memory.TaskMemoryManager
-import org.apache.spark.util.ByteBufferInputStream
-import org.apache.spark.util.Utils
+import org.apache.spark.util.{ByteBufferInputStream, Utils}
 
 
 /**
@@ -43,12 +43,15 @@ import org.apache.spark.util.Utils
  *
  * @param stageId id of the stage this task belongs to
  * @param partitionId index of the number in the RDD
+ * @param isFutureTask Whether the task will be scheduled before its dependencies are available.
+ *                     Drizzle-specific.
  */
 private[spark] abstract class Task[T](
     val stageId: Int,
     val stageAttemptId: Int,
     val partitionId: Int,
-    val internalAccumulators: Seq[Accumulator[Long]]) extends Serializable {
+    val internalAccumulators: Seq[Accumulator[Long]],
+    val isFutureTask: Boolean) extends Serializable {
 
   /**
    * The key of the Map is the accumulator id and the value of the Map is the latest accumulator
@@ -152,6 +155,55 @@ private[spark] abstract class Task[T](
     if (interruptThread && taskThread != null) {
       taskThread.interrupt()
     }
+  }
+
+  /**
+   * Returns the earliest shuffle dependency encountered while walking up the DAG
+   * from the RDD being computed by the Task.  Used for future tasks.
+   *
+   * Returns None if no such dependency exists
+   * TODO(shivaram): This won't work if we have multiple shuffle dependencies
+   *
+   * NOTE(shivaram): prepTask should be called before this method
+   * Or should we just call prepTask inside this method ?
+   */
+  def getFirstShuffleDep: Option[ShuffleDependency[_, _, _]] = {
+    val rddToCompute = this match {
+      case smt: ShuffleMapTask => smt.rdd
+      case rt: ResultTask[_, _] => rt.rdd
+      case _ => return null
+    }
+
+    if (rddToCompute == null) {
+      return None
+    }
+
+    val visited = new HashSet[RDD[_]]
+    var shuffleDep: Option[ShuffleDependency[_, _, _]] = None
+
+    // We are manually maintaining a stack here to prevent StackOverflowError
+    // caused by recursively visiting
+    val waitingForVisit = new Stack[RDD[_]]
+    def visit(r: RDD[_]) {
+      if (!visited(r)) {
+        visited += r
+        for (dep <- r.dependencies) {
+          dep match {
+            case shufDep: ShuffleDependency[_, _, _] =>
+              shuffleDep = Some(shufDep)
+            case _ =>
+          }
+          waitingForVisit.push(dep.rdd)
+        }
+      }
+    }
+
+    waitingForVisit.push(rddToCompute)
+    // Wait only for the first shuffleDep
+    while (waitingForVisit.nonEmpty && shuffleDep.isEmpty) {
+      visit(waitingForVisit.pop())
+    }
+    shuffleDep
   }
 }
 
