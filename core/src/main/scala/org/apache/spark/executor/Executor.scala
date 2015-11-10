@@ -187,7 +187,7 @@ private[spark] class Executor(
     scheduleTask(-1, tr)
   }
 
-  def launchFutureTask(taskQueueStart: Long, futureTaskRunner: FutureTaskRunner): Unit = {
+  def launchFutureTask(taskQueueStart: Long, futureTaskRunner: TaskRunner): Unit = {
     futureTaskRunner.taskMetrics.setFutureTaskQueueTime(System.currentTimeMillis() - taskQueueStart)
     // TODO: Send an update here to the driver that we are executing this task ?
     runningTasks.put(futureTaskRunner.taskId, futureTaskRunner)
@@ -218,6 +218,13 @@ private[spark] class Executor(
     ManagementFactory.getGarbageCollectorMXBeans.asScala.map(_.getCollectionTime).sum
   }
 
+  /**
+   * Faciliates running a task.
+   *
+   * For future-tasks (which are drizzle-specific), the run() method will be called twice:
+   * once to deserialize the task when it arrives, and a second time to execute the task once all
+   * of its dependencies are ready.
+   */
   class TaskRunner(
       execBackend: ExecutorBackend,
       val taskId: Long,
@@ -250,62 +257,92 @@ private[spark] class Executor(
     }
 
     override def run(): Unit = {
-      val deserializeStartTime = System.currentTimeMillis()
       Thread.currentThread.setContextClassLoader(replClassLoader)
-      logInfo(s"Running $taskName (TID $taskId)")
+      // TODO: Record the GC time (in TaskMetrics) from deserializing the task, when it's a
+      //       future task.
       startGCTime = computeTotalGcTime()
+
+      runAndHandleExceptions(() => {
+        if (task == null) {
+          // The task hasn't been deserialized yet, so try to deserialize the task, and then
+          // queue it (if it's a future task) or run it otherwise.
+          logInfo(s"Running $taskName (TID $taskId)")
+
+          deserializeTask()
+
+          if (task.isFutureTask) {
+            queueFutureTask()
+          } else {
+            runDeserializedTask()
+          }
+        } else {
+          // The task was already deserialized, meaning that this TaskRunner is for a future task
+          // that can now be run.
+          logInfo(s"Running FutureTask $taskName (TID $taskId) that queued for " +
+            s"${taskMetrics.futureTaskQueueTime}ms")
+
+          if (killed) {
+            // Throw an exception rather than returning, because returning within a try{} block
+            // causes a NonLocalReturnControl exception to be thrown. The NonLocalReturnControl
+            // exception will be caught by the catch block, leading to an incorrect ExceptionFailure
+            // for the task.
+            throw new TaskKilledException
+          }
+
+          runDeserializedTask()
+        }
+      })
+    }
+
+    /** Deserializes the task and stores it in the `task` variable. */
+    private def deserializeTask(): Unit = {
+      val deserializeStartTime = System.currentTimeMillis()
 
       // Reset broadcast time before doing any task deserialization.
       Broadcast.blockedNanos.set(0L)
 
-      runAndHandleExceptions(() => {
-        val (taskFiles, taskJars, taskBytes) = Task.deserializeWithDependencies(serializedTask.get)
-        updateDependencies(taskFiles, taskJars)
-        task = ser.deserialize[Task[Any]](taskBytes, Thread.currentThread.getContextClassLoader)
-        // If this task has been killed before we deserialized it, let's quit now. Otherwise,
-        // continue executing the task.
-        if (killed) {
-          // Throw an exception rather than returning, because returning within a try{} block
-          // causes a NonLocalReturnControl exception to be thrown. The NonLocalReturnControl
-          // exception will be caught by the catch block, leading to an incorrect ExceptionFailure
-          // for the task.
-          throw new TaskKilledException
-        }
+      val (taskFiles, taskJars, taskBytes) = Task.deserializeWithDependencies(serializedTask.get)
+      updateDependencies(taskFiles, taskJars)
+      task = ser.deserialize[Task[Any]](taskBytes, Thread.currentThread.getContextClassLoader)
+      // If this task has been killed before we deserialized it, let's quit now. Otherwise,
+      // continue executing the task.
+      if (killed) {
+        // Throw an exception rather than returning, because returning within a try{} block
+        // causes a NonLocalReturnControl exception to be thrown. The NonLocalReturnControl
+        // exception will be caught by the catch block, leading to an incorrect ExceptionFailure
+        // for the task.
+        throw new TaskKilledException
+      }
 
-        task.prepTask()
+      task.prepTask()
 
-        val deserializeStopTime = System.currentTimeMillis()
+      val deserializeStopTime = System.currentTimeMillis()
 
-        taskMetrics.setExecutorDeserializeTime(deserializeStopTime - deserializeStartTime)
-        taskMetrics.broadcastBlockedNanos = Broadcast.blockedNanos.get()
+      taskMetrics.setExecutorDeserializeTime(deserializeStopTime - deserializeStartTime)
+      taskMetrics.broadcastBlockedNanos = Broadcast.blockedNanos.get()
+    }
 
-        if (task.isFutureTask) {
-          logDebug(s"DRIZ: Got future task with id $taskId and name $taskName")
+    private def queueFutureTask(): Unit = {
+      logDebug(s"DRIZ: Got future task with id $taskId and name $taskName")
 
-          task.getFirstShuffleDep match {
-            case Some(shuffleDep) =>
-              val baseShuffleHandle = shuffleDep.shuffleHandle.asInstanceOf[BaseShuffleHandle[_, _, _]]
-              logDebug(s"DRIZ: Future task $taskId shuffleDep is not empty. Queuing for " +
-                s"${baseShuffleHandle.numMaps} maps")
-              val futureTaskRunner = new FutureTaskRunner(
-                execBackend, taskId = taskId, attemptNumber = attemptNumber, taskName, taskMetrics)
-              futureTaskRunner.task = task
-              env.futureTaskWaiter.submitFutureTask(FutureTaskInfo(
-                baseShuffleHandle.shuffleId,
-                baseShuffleHandle.numMaps,
-                task.partitionId,
-                taskId,
-                baseShuffleHandle.dependency.nonEmptyPartitions.map(_.get(task.partitionId)),
-                () => launchFutureTask(deserializeStopTime, futureTaskRunner)))
-              // TODO(shivaram): Should we send some status update here ?
+      task.getFirstShuffleDep match {
+        case Some(shuffleDep) =>
+          val baseShuffleHandle = shuffleDep.shuffleHandle.asInstanceOf[BaseShuffleHandle[_, _, _]]
+          logDebug(s"DRIZ: Future task $taskId shuffleDep is not empty. Queuing for " +
+            s"${baseShuffleHandle.numMaps} maps")
+          val taskQueueStartTime = System.currentTimeMillis()
+          env.futureTaskWaiter.submitFutureTask(FutureTaskInfo(
+            baseShuffleHandle.shuffleId,
+            baseShuffleHandle.numMaps,
+            task.partitionId,
+            taskId,
+            baseShuffleHandle.dependency.nonEmptyPartitions.map(_.get(task.partitionId)),
+            () => launchFutureTask(taskQueueStartTime, this)))
+        // TODO(shivaram): Should we send some status update here ?
 
-            case None =>
-              throw new SparkException("Received FutureTask with no shuffle dependency!")
-          }
-        } else {
-          runDeserializedTask()
-        }
-      })
+        case None =>
+          throw new SparkException("Received FutureTask with no shuffle dependency!")
+      }
     }
 
     /** Runs the deserialized Task stored in `task`. */
@@ -453,37 +490,6 @@ private[spark] class Executor(
       }
     }
   }
-
-  class FutureTaskRunner(
-      execBackend: ExecutorBackend,
-      taskId: Long,
-      attemptNumber: Int,
-      taskName: String,
-      taskMetrics: TaskMetrics)
-    extends TaskRunner(execBackend, taskId, attemptNumber, taskName, None, taskMetrics)  {
-
-    override def run(): Unit = {
-      Thread.currentThread.setContextClassLoader(replClassLoader)
-      logInfo(s"Running FutureTask $taskName (TID $taskId) that queued for " +
-        s"${taskMetrics.futureTaskQueueTime}ms")
-      startGCTime = computeTotalGcTime()
-
-      runAndHandleExceptions(() => {
-        // If this task has been killed before we deserialized it, let's quit now. Otherwise,
-        // continue executing the task.
-        if (killed) {
-          // Throw an exception rather than returning, because returning within a try{} block
-          // causes a NonLocalReturnControl exception to be thrown. The NonLocalReturnControl
-          // exception will be caught by the catch block, leading to an incorrect ExceptionFailure
-          // for the task.
-          throw new TaskKilledException
-        }
-
-        runDeserializedTask()
-      })
-    }
-  }
-
 
   /**
    * Create a ClassLoader for use in tasks, adding any JARs specified by the user or any classes
