@@ -284,6 +284,10 @@ class Job:
       if second_scheduler_delay_time < 0:
         print "Second scheduler delay was", second_scheduler_delay_time, " signalling clock skew"
         second_scheduler_delay_time = 0
+      elif second_scheduler_delay_time > task.scheduler_delay:
+        difference = second_scheduler_delay_time - task.scheduler_delay
+        print "Second scheduler delay was larger than total scheduler delay by", difference, "signalling clock skew"
+        second_scheduler_delay_time = task.scheduler_delay
       first_scheduler_delay_time = task.scheduler_delay - second_scheduler_delay_time
 
       first_scheduler_delay_end = start + first_scheduler_delay_time
