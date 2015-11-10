@@ -4,9 +4,10 @@ class Task:
   def __init__(self, data):
     self.initialize_from_json(data)
 
-    self.scheduler_delay = (self.finish_time - self.executor_run_time -
-      self.future_task_queue_time - self.executor_queue_delay -
-      self.executor_deserialize_time - self.result_serialization_time - self.start_time)
+    self.scheduler_delay = (self.finish_time - self.total_time_on_executor - self.start_time)
+    self.mystery_executor_time = (self.total_time_on_executor - self.executor_run_time -
+        self.future_task_queue_time - self.executor_queue_delay -
+        self.executor_deserialize_time - self.result_serialization_time)
     # Should be set to true if this task is a straggler and we know the cause of the
     # straggler behavior.
     self.straggler_behavior_explained = False
@@ -20,6 +21,7 @@ class Task:
     self.start_time = task_info["Launch Time"]
     self.finish_time = task_info["Finish Time"]
     self.executor = task_info["Host"]
+    self.total_time_on_executor = task_metrics["Total Time On Executor"]
     self.executor_run_time = task_metrics["Executor Run Time"]
     self.executor_finish_time_millis = task_metrics["Executor Finish Time Millis"]
     self.executor_deserialize_time = task_metrics["Executor Deserialize Time"]
@@ -113,7 +115,7 @@ class Task:
      """
      compute_time = (self.runtime() - self.scheduler_delay - self.gc_time -
        self.future_task_queue_time - self.shuffle_write_time - self.executor_queue_delay - 
-       self.input_read_time - self.output_write_time)
+       self.input_read_time - self.output_write_time - self.mystery_executor_time)
      if self.has_fetch:
        # Subtract off of the time to read local data (which typically comes from disk) because
        # this read happens before any of the computation starts.

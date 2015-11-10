@@ -316,12 +316,24 @@ class Job:
         task.executor_deserialize_time)
       gc_end = compute_end + task.gc_time
       task_end = gc_end + task.shuffle_write_time + task.output_write_time
-      second_scheduler_delay_end = task_end + second_scheduler_delay_time
+      mystery_time_end = task_end + task.mystery_executor_time
+      second_scheduler_delay_end = mystery_time_end + second_scheduler_delay_time
       if math.fabs((first_start + second_scheduler_delay_end) - task.finish_time) >= 0.1:
         print "Mismatch at index %s" % i
+        print "First start", first_start
         print "%.1f" % (first_start + second_scheduler_delay_end)
         print task.finish_time
         print task
+        print "Mystery time: ", task.mystery_executor_time, "sched delay", task.scheduler_delay
+        print "Time on executor: ", task.total_time_on_executor, "exec run time ", task.executor_run_time
+        print "future task queue: ", task.future_task_queue_time, "exec queue", task.executor_queue_delay
+        print "deseri time", task.executor_deserialize_time, "ser time", task.result_serialization_time
+        print "*****"
+        print "First sched delay end", first_scheduler_delay_end, "deser end", deserialize_end
+        print "Future task Q end", future_task_queue_end, "Executor Queue end", executor_queue_delay_end
+        print "serialize end", serialize_end, "compute end", compute_end, "gc end", gc_end
+        print "task end", task_end, "myster end", mystery_time_end, "last sched end", second_scheduler_delay_end
+
         assert False
 
       # Write data to plot file.
@@ -340,7 +352,8 @@ class Job:
       plot_file.write(LINE_TEMPLATE % (serialize_end, i, compute_end, i, 3))
       plot_file.write(LINE_TEMPLATE % (compute_end, i, gc_end, i, 4))
       plot_file.write(LINE_TEMPLATE % (gc_end, i, task_end, i, 5))
-      plot_file.write(LINE_TEMPLATE % (task_end, i, second_scheduler_delay_end, i, 6))
+      plot_file.write(LINE_TEMPLATE % (task_end, i, mystery_time_end, i, 12))
+      plot_file.write(LINE_TEMPLATE % (mystery_time_end, i, second_scheduler_delay_end, i, 6))
 
     last_end = max([t.finish_time for t in all_tasks])
     ytics_str = ",".join(str(tic) for tic in ytics)
@@ -355,12 +368,14 @@ class Job:
 
     # Hacky way to force a key to be printed.
     plot_file.write("plot -1 ls 6 title 'Scheduler delay',\\\n")
-    plot_file.write(" -1 ls 8 title 'Task deserialization', \\\n")
-    plot_file.write(" -1 ls 10 title 'Future Task Queue', \\\n")
-    plot_file.write(" -1 ls -1 title 'Executor Queue Delay', \\\n")
+    plot_file.write(" -1 ls 8 title 'Task deser.', \\\n")
+    plot_file.write(" -1 ls 10 title 'Fut. Task Queue', \\\n")
+    plot_file.write(" -1 ls -1 title 'Exec. Queue', \\\n")
+    plot_file.write(" -1 ls 9 title 'Result seria.', \\\n")
     plot_file.write("-1 ls 2 title 'Network wait', -1 ls 3 title 'Compute', \\\n")
     plot_file.write("-1 ls 4 title 'GC', \\\n")
     plot_file.write("-1 ls 5 title 'Output write wait',\\\n")
-    plot_file.write("-1 ls 11 title 'Broadcast wait'\\\n")
+    plot_file.write("-1 ls 11 title 'Broadcast wait',\\\n")
+    plot_file.write("-1 ls 12 title 'Unacc. on exec.'\\\n")
     plot_file.close()
 
