@@ -53,7 +53,7 @@ class TaskMetrics extends Serializable {
    */
   private var _executorThreadPoolDelay: Long = _
   def executorThreadPoolDelay: Long = _executorThreadPoolDelay
-  private[spark] def setExecutorThreadPoolDelay(value: Long) = _executorThreadPoolDelay = value
+  private[spark] def incExecutorThreadPoolDelay(value: Long) = _executorThreadPoolDelay += value
 
   /**
    * Time taken on the executor to deserialize this task

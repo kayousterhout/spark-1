@@ -159,7 +159,7 @@ private[spark] class Executor(
         val t = taskSchedule.poll();
         currentActiveTasks += 1
         // Update time taken in metrics
-        t.task.poolQueueTime += (currentTime - t.scheduleTime)
+        t.task.taskMetrics.incExecutorThreadPoolDelay(currentTime - t.scheduleTime)
         threadPool.execute(t.task)
       }
     }
@@ -180,7 +180,7 @@ private[spark] class Executor(
       taskName: String,
       serializedTask: ByteBuffer): Unit = {
     val tr = new TaskRunner(context, taskId = taskId, attemptNumber = attemptNumber, taskName,
-      Some(serializedTask))
+      Some(serializedTask), TaskMetrics.empty)
     runningTasks.put(taskId, tr)
     logInfo(s"DRIZ: Calling schedule task")
 
@@ -193,13 +193,11 @@ private[spark] class Executor(
       attemptNumber: Int,
       taskName: String,
       futureTask: FutureTask[_],
-      deserializeTime: Long,
-      broadcastTimeNanos: Long,
       taskQueueStart: Long,
-      oldPoolQueueTime: Long): Unit = {
+      taskMetrics: TaskMetrics): Unit = {
+    taskMetrics.setFutureTaskQueueTime(System.currentTimeMillis() - taskQueueStart)
     val tr = new FutureTaskRunner(context, taskId = taskId, attemptNumber = attemptNumber, taskName,
-      futureTask, deserializeTime, broadcastTimeNanos, taskQueueStart)
-    tr.poolQueueTime = oldPoolQueueTime
+      futureTask, taskMetrics)
     // TODO: Send an update here to the driver that we are executing this task ?
     runningTasks.put(taskId, tr)
     logInfo(s"DRIZ: Calling schedule task")
@@ -234,7 +232,8 @@ private[spark] class Executor(
       val taskId: Long,
       val attemptNumber: Int,
       taskName: String,
-      serializedTask: Option[ByteBuffer])
+      serializedTask: Option[ByteBuffer],
+      @volatile var taskMetrics: TaskMetrics)
     extends Runnable {
 
     /** Whether this task has been killed. */
@@ -248,8 +247,6 @@ private[spark] class Executor(
      * from the driver. Once it is set, it will never be changed.
      */
     @volatile var task: Task[Any] = _
-
-    @volatile var poolQueueTime: Long = 0L
 
     private val ser = env.closureSerializer.newInstance()
 
@@ -288,6 +285,9 @@ private[spark] class Executor(
 
         val deserializeStopTime = System.currentTimeMillis()
 
+        taskMetrics.setExecutorDeserializeTime(deserializeStopTime - deserializeStartTime)
+        taskMetrics.broadcastBlockedNanos = Broadcast.blockedNanos.get()
+
         // If this is a future task, check if there is a shuffle dependency
         // behind it
         if (task.isInstanceOf[FutureTask[_]]) {
@@ -299,7 +299,6 @@ private[spark] class Executor(
           val shuffleDep = futureTask.getFirstShuffleDep
           if (!shuffleDep.isEmpty) {
             val baseShuffleHandle = shuffleDep.get.shuffleHandle.asInstanceOf[BaseShuffleHandle[_, _, _]]
-            val broadcastNanos = Broadcast.blockedNanos.get()
             logDebug(s"DRIZ: Future task $taskId shuffleDep is not empty. Queuing for ${baseShuffleHandle.numMaps} maps")
             env.futureTaskWaiter.submitFutureTask(FutureTaskInfo(
               baseShuffleHandle.shuffleId,
@@ -307,9 +306,8 @@ private[spark] class Executor(
               futureTask.partitionId,
               taskId,
               baseShuffleHandle.dependency.nonEmptyPartitions.map(_.get(futureTask.partitionId)),
-              (a: Unit) => launchFutureTask(execBackend, taskId, attemptNumber, taskName, futureTask,
-                deserializeStopTime - deserializeStartTime, broadcastNanos, deserializeStopTime,
-                poolQueueTime)))
+              (a: Unit) => launchFutureTask(execBackend, taskId, attemptNumber, taskName,
+                futureTask, deserializeStopTime, taskMetrics)))
             // TODO(shivaram): Should we send some status update here ?
             return
           }
@@ -317,18 +315,11 @@ private[spark] class Executor(
           logDebug(s"DRIZ: NOT a future task with id $taskId and name $taskName")
         }
 
-        runDeserializedTask(
-          task, deserializeStopTime - deserializeStartTime, Broadcast.blockedNanos.get(), 0L,
-          poolQueueTime)
+        runDeserializedTask(task)
       })
     }
 
-    protected def runDeserializedTask(
-        task: Task[_],
-        deserializeTime: Long,
-        broadcastBlockedNanos: Long,
-        taskQueueTime: Long,
-        poolQueueTime: Long): Unit = {
+    protected def runDeserializedTask(task: Task[_]): Unit = {
       val taskMemoryManager = new TaskMemoryManager(env.executorMemoryManager)
       execBackend.statusUpdate(taskId, TaskState.RUNNING, EMPTY_BYTE_BUFFER)
       task.setTaskMemoryManager(taskMemoryManager)
@@ -349,7 +340,8 @@ private[spark] class Executor(
         val res = task.run(
           taskAttemptId = taskId,
           attemptNumber = attemptNumber,
-          metricsSystem = env.metricsSystem)
+          metricsSystem = env.metricsSystem,
+          taskMetrics = taskMetrics)
         threwException = false
         res
       } finally {
@@ -376,18 +368,11 @@ private[spark] class Executor(
       val afterSerialization = System.currentTimeMillis()
 
       for (m <- task.metrics) {
-        // Deserialization happens in two parts: first, we deserialize a Task object, which
-        // includes the Partition. Second, Task.run() deserializes the RDD and function to be run.
-        // We count both of them.
-        m.setExecutorDeserializeTime(deserializeTime)
-        m.broadcastBlockedNanos = broadcastBlockedNanos
         m.setExecutorRunTime((taskFinish - taskStart))
         m.setExecutorFinishTimeMillis(taskFinish)
-        m.setFutureTaskQueueTime(taskQueueTime)
         // TODO: Add gc time during task serialization here
         m.setJvmGCTime(computeTotalGcTime() - startGCTime)
         m.setResultSerializationTime(afterSerialization - beforeSerialization)
-        m.setExecutorThreadPoolDelay(poolQueueTime)
         m.updateAccumulators()
       }
 
@@ -485,18 +470,13 @@ private[spark] class Executor(
       attemptNumber: Int,
       taskName: String,
       futureTask: FutureTask[_],
-      deserializeTime: Long,
-      broadcastTimeNanos: Long,
-      taskQueueStart: Long)
-    extends TaskRunner(execBackend, taskId, attemptNumber, taskName, None)  {
+      taskMetrics: TaskMetrics)
+    extends TaskRunner(execBackend, taskId, attemptNumber, taskName, None, taskMetrics)  {
 
     override def run(): Unit = {
       Thread.currentThread.setContextClassLoader(replClassLoader)
-      val ser = env.closureSerializer.newInstance()
-
-      // We need to delete poolQueueTime here since otherwise it is double counted.
-      val taskQueueTime = System.currentTimeMillis() - taskQueueStart - poolQueueTime
-      logInfo(s"Running FutureTask $taskName (TID $taskId) queue time ${taskQueueTime}")
+      logInfo(s"Running FutureTask $taskName (TID $taskId) that queued for " +
+        s"${taskMetrics.futureTaskQueueTime}ms")
       startGCTime = computeTotalGcTime()
 
       runAndHandleExceptions(() => {
@@ -510,7 +490,7 @@ private[spark] class Executor(
           throw new TaskKilledException
         }
 
-        runDeserializedTask(futureTask.task, deserializeTime, broadcastTimeNanos, taskQueueTime, poolQueueTime)
+        runDeserializedTask(futureTask.task)
       })
     }
   }
