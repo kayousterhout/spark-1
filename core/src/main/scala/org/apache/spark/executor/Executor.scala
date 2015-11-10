@@ -279,33 +279,31 @@ private[spark] class Executor(
         taskMetrics.setExecutorDeserializeTime(deserializeStopTime - deserializeStartTime)
         taskMetrics.broadcastBlockedNanos = Broadcast.blockedNanos.get()
 
-        // If this is a future task, check if there is a shuffle dependency
-        // behind it
         if (task.isFutureTask) {
           logDebug(s"DRIZ: Got future task with id $taskId and name $taskName")
 
-          val shuffleDep = task.getFirstShuffleDep
-          if (!shuffleDep.isEmpty) {
-            val baseShuffleHandle = shuffleDep.get.shuffleHandle.asInstanceOf[BaseShuffleHandle[_, _, _]]
-            logDebug(s"DRIZ: Future task $taskId shuffleDep is not empty. Queuing for " +
-              s"${baseShuffleHandle.numMaps} maps")
-            val futureTaskRunner = new FutureTaskRunner(
-              execBackend, taskId = taskId, attemptNumber = attemptNumber, taskName, taskMetrics)
-            env.futureTaskWaiter.submitFutureTask(FutureTaskInfo(
-              baseShuffleHandle.shuffleId,
-              baseShuffleHandle.numMaps,
-              task.partitionId,
-              taskId,
-              baseShuffleHandle.dependency.nonEmptyPartitions.map(_.get(task.partitionId)),
-              () => launchFutureTask(deserializeStopTime, futureTaskRunner)))
-            // TODO(shivaram): Should we send some status update here ?
-            return
+          task.getFirstShuffleDep match {
+            case Some(shuffleDep) =>
+              val baseShuffleHandle = shuffleDep.shuffleHandle.asInstanceOf[BaseShuffleHandle[_, _, _]]
+              logDebug(s"DRIZ: Future task $taskId shuffleDep is not empty. Queuing for " +
+                s"${baseShuffleHandle.numMaps} maps")
+              val futureTaskRunner = new FutureTaskRunner(
+                execBackend, taskId = taskId, attemptNumber = attemptNumber, taskName, taskMetrics)
+              env.futureTaskWaiter.submitFutureTask(FutureTaskInfo(
+                baseShuffleHandle.shuffleId,
+                baseShuffleHandle.numMaps,
+                task.partitionId,
+                taskId,
+                baseShuffleHandle.dependency.nonEmptyPartitions.map(_.get(task.partitionId)),
+                () => launchFutureTask(deserializeStopTime, futureTaskRunner)))
+              // TODO(shivaram): Should we send some status update here ?
+
+            case None =>
+              throw new SparkException("Received FutureTask with no shuffle dependency!")
           }
         } else {
-          logDebug(s"DRIZ: NOT a future task with id $taskId and name $taskName")
+          runDeserializedTask()
         }
-
-        runDeserializedTask()
       })
     }
 
