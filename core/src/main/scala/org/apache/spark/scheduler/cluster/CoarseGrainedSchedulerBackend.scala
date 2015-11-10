@@ -17,9 +17,10 @@
 
 package org.apache.spark.scheduler.cluster
 
-import java.util.concurrent.TimeUnit
+import java.util.concurrent.{LinkedBlockingQueue, TimeUnit}
 import java.util.concurrent.atomic.AtomicInteger
 
+import scala.collection.JavaConversions._
 import scala.collection.mutable.{ArrayBuffer, HashMap, HashSet}
 
 import org.apache.spark.rpc._
@@ -27,6 +28,7 @@ import org.apache.spark.{ExecutorAllocationClient, Logging, SparkEnv, SparkExcep
 import org.apache.spark.scheduler._
 import org.apache.spark.scheduler.cluster.CoarseGrainedClusterMessages._
 import org.apache.spark.scheduler.cluster.CoarseGrainedSchedulerBackend.ENDPOINT_NAME
+import org.apache.spark.serializer.SerializerInstance
 import org.apache.spark.util.{ThreadUtils, SerializableBuffer, AkkaUtils, Utils}
 
 /**
@@ -76,13 +78,14 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
   // Executors that have been lost, but for which we don't yet know the real exit reason.
   protected val executorsPendingLossReason = new HashSet[String]
 
+  // Tasks that are queued to be launched. Used so that task launch can be done asynchronously,
+  // outside of the main scheduler loop.
+  val tasksToLaunch = new LinkedBlockingQueue[Seq[(ExecutorData, TaskDescription)]]
+
+  private val launchTasksAsynchronously = conf.getBoolean("spark.scheduler.asyncTaskLaunch", false)
+
   class DriverEndpoint(override val rpcEnv: RpcEnv, sparkProperties: Seq[(String, String)])
     extends ThreadSafeRpcEndpoint with Logging {
-
-    // If this DriverEndpoint is changed to support multiple threads,
-    // then this may need to be changed so that we don't share the serializer
-    // instance across threads
-    private val ser = SparkEnv.get.closureSerializer.newInstance()
 
     override protected def log = CoarseGrainedSchedulerBackend.this.log
 
@@ -222,36 +225,37 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
         !executorsPendingLossReason.contains(executorId)
     }
 
-    // Launch tasks returned by a set of resource offers
+    // Launch tasks returned by a set of resource offers (possibly asynchronously).
     private def launchTasks(tasks: Seq[Seq[TaskDescription]]) {
-      for (task <- tasks.flatten) {
-        val serializedTask = ser.serialize(task)
-        if (serializedTask.limit >= akkaFrameSize - AkkaUtils.reservedSizeBytes) {
-          scheduler.taskIdToTaskSetManager.get(task.taskId).foreach { taskSetMgr =>
-            try {
-              var msg = "Serialized task %s:%d was %d bytes, which exceeds max allowed: " +
-                "spark.akka.frameSize (%d bytes) - reserved (%d bytes). Consider increasing " +
-                "spark.akka.frameSize or using broadcast variables for large values."
-              msg = msg.format(task.taskId, task.index, serializedTask.limit, akkaFrameSize,
-                AkkaUtils.reservedSizeBytes)
-              taskSetMgr.abort(msg)
-            } catch {
-              case e: Exception => logError("Exception in error callback", e)
-            }
-          }
+      val flattenedTasksWithExecutor = tasks.flatten.map(t => (executorDataMap(t.executorId), t))
+      if (!flattenedTasksWithExecutor.isEmpty) {
+        // Queue all of the tasks to be launched. Do this as a bulk-put because putting into a
+        // the linked list can take about 1/3ms, which adds up quickly.
+        if (launchTasksAsynchronously) {
+          tasksToLaunch.put(flattenedTasksWithExecutor)
+          logInfo(s"DRIZ: All ${flattenedTasksWithExecutor.length} tasks queued")
         } else {
-          val executorData = executorDataMap(task.executorId)
-          if (!task.isFutureTask) {
-            logInfo(s"Task ${task.toString} is not future task, so doing freeCores accounting")
-            // TODO: Also update freeCores once the FutureTask actually starts running!
-            executorData.freeCores -= scheduler.CPUS_PER_TASK
-          } else {
-            futureTasksRunning += task.taskId
-            // Since the future task will not use any cores revive offers here
-            reviveOffers()
-          }
-          executorData.executorEndpoint.send(LaunchTask(new SerializableBuffer(serializedTask)))
+          blockingLaunchTasks(flattenedTasksWithExecutor)
+          logInfo(s"DRIZ: All ${flattenedTasksWithExecutor.length} tasks launched")
         }
+
+        // Do some accounting.
+        flattenedTasksWithExecutor.foreach {
+          case (executorData, task) =>
+            val executorData = executorDataMap(task.executorId)
+
+            // Do some accounting.
+            if (!task.isFutureTask) {
+              logInfo(s"Task ${task.toString} is not future task, so doing freeCores accounting")
+              // TODO: Also update freeCores once the FutureTask actually starts running!
+              executorData.freeCores -= scheduler.CPUS_PER_TASK
+            } else {
+              futureTasksRunning += task.taskId
+              // Since the future task will not use any cores revive offers here
+              reviveOffers()
+            }
+        }
+        logInfo(s"DRIZ: Done accounting at ${System.currentTimeMillis()}")
       }
     }
 
@@ -307,7 +311,10 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
 
   var driverEndpoint: RpcEndpointRef = null
   val taskIdsOnSlave = new HashMap[String, HashSet[String]]
-  val futureTasksRunning = new HashSet[Long] 
+  val futureTasksRunning = new HashSet[Long]
+
+  // TODO: Be careful about this being used by multiple threads, because it isn't thread safe.
+  val ser = SparkEnv.get.closureSerializer.newInstance()
 
   override def start() {
     val properties = new ArrayBuffer[(String, String)]
@@ -319,6 +326,47 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
 
     // TODO (prashant) send conf instead of properties
     driverEndpoint = rpcEnv.setupEndpoint(ENDPOINT_NAME, createDriverEndpoint(properties))
+
+    // Start a thread to launch tasks.
+    new Thread("CoarseGrainedSchedulerBackend task launch") {
+      setDaemon(true)
+
+      override def run() {
+        val taskBuffer = new ArrayBuffer[Seq[(ExecutorData, TaskDescription)]]()
+        while (true) {
+          try {
+            taskBuffer.clear()
+            while (tasksToLaunch.isEmpty) { Thread.sleep(1) }
+            tasksToLaunch.drainTo(taskBuffer)
+            blockingLaunchTasks(taskBuffer.flatten)
+          } catch {
+            case interruptedException: InterruptedException =>
+              logError(s"Interrupted while waiting for task to launch: $interruptedException")
+            case e: Exception =>
+              logError(e.getMessage())
+          }
+        }
+      }
+    }.start()
+  }
+
+  private def blockingLaunchTasks(taskBuffer: Seq[(ExecutorData, TaskDescription)]): Unit = {
+    val executorToTasks = new HashMap[ExecutorData, ArrayBuffer[SerializableBuffer]]
+    taskBuffer.foreach {
+      case (executorData, task) =>
+        val serializedBuffer = new SerializableBuffer(ser.serialize(task))
+        executorToTasks.getOrElseUpdate(
+          executorData,
+          new ArrayBuffer[SerializableBuffer]()) += serializedBuffer
+    }
+    logInfo(s"DRIZ: done serializing tasks at ${System.currentTimeMillis()}")
+
+    executorToTasks.foreach {
+      case (executorData, buffers) =>
+        logInfo(s"DRIZ: sending ${buffers.size} tasks to endpoint to launch")
+        executorData.executorEndpoint.send(LaunchTasks(buffers))
+    }
+    logInfo(s"DRIZ: done launching tasks at ${System.currentTimeMillis()}")
   }
 
   protected def createDriverEndpoint(properties: Seq[(String, String)]): DriverEndpoint = {

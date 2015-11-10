@@ -86,16 +86,12 @@ private[spark] class CoarseGrainedExecutorBackend(
       logError("Slave registration failed: " + message)
       System.exit(1)
 
-    case LaunchTask(data) =>
-      if (executor == null) {
-        logError("Received LaunchTask command but executor was null")
-        System.exit(1)
-      } else {
-        val taskDesc = ser.deserialize[TaskDescription](data.value)
-        logInfo("Got assigned task " + taskDesc.taskId)
-        executor.launchTask(this, taskId = taskDesc.taskId, attemptNumber = taskDesc.attemptNumber,
-          taskDesc.name, taskDesc.serializedTask)
-      }
+    case LaunchTask(task) =>
+      launchTask(task.value)
+
+    case LaunchTasks(allTasksData) =>
+      logInfo(s"DRIZ: Received a request to launch ${allTasksData.size} tasks")
+      allTasksData.foreach(taskBuffer => launchTask(taskBuffer.value))
 
     case KillTask(taskId, _, interruptThread) =>
       if (executor == null) {
@@ -115,6 +111,19 @@ private[spark] class CoarseGrainedExecutorBackend(
       executor.stop()
       stop()
       rpcEnv.shutdown()
+
+  }
+
+  private def launchTask(taskBuffer: ByteBuffer): Unit = {
+    if (executor == null) {
+      logError("Received KillTask command but executor was null")
+      System.exit(1)
+    } else {
+      val taskDesc = ser.deserialize[TaskDescription](taskBuffer)
+      logInfo("Got assigned task " + taskDesc.taskId)
+      executor.launchTask(this, taskId = taskDesc.taskId, attemptNumber = taskDesc.attemptNumber,
+        taskDesc.name, taskDesc.serializedTask)
+    }
   }
 
   override def onDisconnected(remoteAddress: RpcAddress): Unit = {
