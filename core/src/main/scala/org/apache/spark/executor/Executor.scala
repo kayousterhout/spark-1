@@ -187,21 +187,12 @@ private[spark] class Executor(
     scheduleTask(-1, tr)
   }
 
-  def launchFutureTask(
-      context: ExecutorBackend,
-      taskId: Long,
-      attemptNumber: Int,
-      taskName: String,
-      futureTask: FutureTask[_],
-      taskQueueStart: Long,
-      taskMetrics: TaskMetrics): Unit = {
-    taskMetrics.setFutureTaskQueueTime(System.currentTimeMillis() - taskQueueStart)
-    val tr = new FutureTaskRunner(context, taskId = taskId, attemptNumber = attemptNumber, taskName,
-      futureTask, taskMetrics)
+  def launchFutureTask(taskQueueStart: Long, futureTaskRunner: FutureTaskRunner): Unit = {
+    futureTaskRunner.taskMetrics.setFutureTaskQueueTime(System.currentTimeMillis() - taskQueueStart)
     // TODO: Send an update here to the driver that we are executing this task ?
-    runningTasks.put(taskId, tr)
+    runningTasks.put(futureTaskRunner.taskId, futureTaskRunner)
     logInfo(s"DRIZ: Calling schedule task")
-    scheduleTask(futureTask.stageId, tr)
+    scheduleTask(futureTaskRunner.futureTask.stageId, futureTaskRunner)
   }
 
   def killTask(taskId: Long, interruptThread: Boolean): Unit = {
@@ -299,15 +290,18 @@ private[spark] class Executor(
           val shuffleDep = futureTask.getFirstShuffleDep
           if (!shuffleDep.isEmpty) {
             val baseShuffleHandle = shuffleDep.get.shuffleHandle.asInstanceOf[BaseShuffleHandle[_, _, _]]
-            logDebug(s"DRIZ: Future task $taskId shuffleDep is not empty. Queuing for ${baseShuffleHandle.numMaps} maps")
+            logDebug(s"DRIZ: Future task $taskId shuffleDep is not empty. Queuing for " +
+              s"${baseShuffleHandle.numMaps} maps")
+            val futureTaskRunner = new FutureTaskRunner(
+              execBackend, taskId = taskId, attemptNumber = attemptNumber, taskName, futureTask,
+              taskMetrics)
             env.futureTaskWaiter.submitFutureTask(FutureTaskInfo(
               baseShuffleHandle.shuffleId,
               baseShuffleHandle.numMaps,
               futureTask.partitionId,
               taskId,
               baseShuffleHandle.dependency.nonEmptyPartitions.map(_.get(futureTask.partitionId)),
-              (a: Unit) => launchFutureTask(execBackend, taskId, attemptNumber, taskName,
-                futureTask, deserializeStopTime, taskMetrics)))
+              () => launchFutureTask(deserializeStopTime, futureTaskRunner)))
             // TODO(shivaram): Should we send some status update here ?
             return
           }
@@ -469,7 +463,7 @@ private[spark] class Executor(
       taskId: Long,
       attemptNumber: Int,
       taskName: String,
-      futureTask: FutureTask[_],
+      val futureTask: FutureTask[_],
       taskMetrics: TaskMetrics)
     extends TaskRunner(execBackend, taskId, attemptNumber, taskName, None, taskMetrics)  {
 

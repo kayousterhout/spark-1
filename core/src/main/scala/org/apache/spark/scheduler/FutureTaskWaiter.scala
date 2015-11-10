@@ -27,7 +27,7 @@ import org.apache.spark.storage.BlockManager
 import org.apache.spark.util.TimeStampedHashMap
 
 private[spark] case class FutureTaskInfo(shuffleId: Int, numMaps: Int, reduceId: Int, taskId: Long,
-  nonZeroPartitions: Option[Array[Int]], taskCb: Unit => Unit)
+  nonZeroPartitions: Option[Array[Int]], taskCb: () => Unit)
 
 private[spark] class FutureTaskWaiter(
     conf: SparkConf,
