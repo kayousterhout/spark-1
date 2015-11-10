@@ -400,7 +400,7 @@ private[spark] class Executor(
 
       for (m <- task.metrics) {
         m.setExecutorRunTime((taskFinish - taskStart))
-        m.setExecutorFinishTimeMillis(taskFinish)
+        m.setExecutorFinishTimeMillis(afterSerialization)
         // TODO: Add gc time during task serialization here
         m.setJvmGCTime(computeTotalGcTime() - startGCTime)
         m.setResultSerializationTime(afterSerialization - beforeSerialization)
