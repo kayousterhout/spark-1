@@ -69,6 +69,7 @@ private[spark] abstract class Task[T](
     metricsSystem: MetricsSystem,
     taskMetrics: TaskMetrics)
   : (T, AccumulatorUpdates) = {
+    metrics = Some(taskMetrics)
     context = new TaskContextImpl(
       stageId,
       partitionId,

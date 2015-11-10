@@ -72,7 +72,6 @@ private[spark] class ResultTask[T, U](
     if (func == null || rdd == null) {
       prepTask()
     }
-    metrics = Some(context.taskMetrics)
     func(context, rdd.iterator(partition, context))
   }
 

@@ -81,7 +81,6 @@ private[spark] class ShuffleMapTask(
       prepTask()
     }
 
-    metrics = Some(context.taskMetrics)
     var writer: ShuffleWriter[Any, Any] = null
     try {
       val manager = SparkEnv.get.shuffleManager
