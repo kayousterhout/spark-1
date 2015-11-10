@@ -289,6 +289,7 @@ private[spark] class Executor(
                 s"${baseShuffleHandle.numMaps} maps")
               val futureTaskRunner = new FutureTaskRunner(
                 execBackend, taskId = taskId, attemptNumber = attemptNumber, taskName, taskMetrics)
+              futureTaskRunner.task = task
               env.futureTaskWaiter.submitFutureTask(FutureTaskInfo(
                 baseShuffleHandle.shuffleId,
                 baseShuffleHandle.numMaps,
