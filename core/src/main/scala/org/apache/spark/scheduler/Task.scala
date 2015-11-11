@@ -27,7 +27,7 @@ import org.apache.spark.{Accumulator, ShuffleDependency, SparkEnv, TaskContextIm
 import org.apache.spark.executor.TaskMetrics
 import org.apache.spark.rdd.RDD
 import org.apache.spark.serializer.SerializerInstance
-import org.apache.spark.unsafe.memory.TaskMemoryManager
+import org.apache.spark.memory.TaskMemoryManager
 import org.apache.spark.util.{ByteBufferInputStream, Utils}
 
 
@@ -95,10 +95,6 @@ private[spark] abstract class Task[T](
     } finally {
       context.markTaskCompleted()
       try {
-        Utils.tryLogNonFatalError {
-          // Release memory used by this thread for shuffles
-          SparkEnv.get.shuffleMemoryManager.releaseMemoryForThisTask()
-        }
         Utils.tryLogNonFatalError {
           // Release memory used by this thread for unrolling blocks
           SparkEnv.get.blockManager.memoryStore.releaseUnrollMemoryForThisTask()
