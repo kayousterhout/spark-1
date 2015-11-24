@@ -42,6 +42,11 @@ object MemorySortJob {
     val itemsPerValue = if (args.length > 3) args(3).toInt else 6
     val numShuffles = if (args.length > 4) args(4).toInt else 10
     val numWarmups = if (args.length > 5) args(5).toInt else 1
+    // Number of machines that are expected to be in the cluster. Used to determine how many tasks
+    // to run when performing a garbage collection between stages (ideally we want to just do one
+    // GC on each machine; running more tasks than the number of machines will lead to unnecessary
+    // GCs).
+    val numMachines = if (args.length > 6) args(6).toInt else 15
 
     try {
       (1 to numWarmups).foreach { _ =>
@@ -56,6 +61,10 @@ object MemorySortJob {
       unsortedRdd.count()
 
       (0 until numShuffles).foreach { i =>
+        // Force a GC to happen, in order to try to avoid a GC in the middle of the job.
+        spark.parallelize(1 to numMachines, numMachines).foreach { i =>
+          System.gc()
+        }
         sortRdd(unsortedRdd, numReduceTasks)
       }
     } finally {
