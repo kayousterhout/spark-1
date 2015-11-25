@@ -115,8 +115,22 @@ private[spark] class LocalDagScheduler(blockFileManager: BlockFileManager)
     computeScheduler.numRunningTasks.get()
   }
 
+  /**
+   * Returns the total number of macrotasks that have monotasks running on this executor. This
+   * includes macrotasks that are running remotely, but have monotasks running on this executor
+   * to fetch data.
+   */
   def getNumRunningMacrotasks(): Int = {
     runningMacrotaskAttemptIds.size
+  }
+
+  /**
+   * Returns the number of macrotasks that are running on this executor. This does not include
+   * macrotasks that are primarily running on a remote executor, but have monotask(s) running on
+   * this executor to fetch data.
+   */
+  def getNumLocalRunningMacrotasks(): Int = {
+    runningMacrotaskAttemptIds.size - remoteMacrotaskAttemptIdToRemainingMonotasks.size
   }
 
   def getDiskNameToNumRunningAndQueuedDiskMonotasks(): HashMap[String, Int] = {
