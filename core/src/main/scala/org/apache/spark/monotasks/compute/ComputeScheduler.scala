@@ -112,6 +112,7 @@ private[spark] class ComputeScheduler(
       // No free memory is available, so only run monotasks that won't generate new in-memory
       // data. For now, we assume that ShuffleMapMonotasks will generate new in-memory data,
       // and that all other types of monotasks do not.
+      logWarning(s"No memory left; will not run any ShuffleMapMonotasks until free memory is > 0")
       var monotaskToRun: Option[ComputeMonotask] = None
       while (monotaskToRun.isEmpty && !monotaskQueue.isEmpty) {
         monotaskQueue.poll() match {
