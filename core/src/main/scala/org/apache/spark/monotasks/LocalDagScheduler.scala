@@ -210,27 +210,35 @@ private[spark] class LocalDagScheduler(blockFileManager: BlockFileManager)
   }
 
   private[monotasks] def updateMetricsForStartedMonotask(startedMonotask: Monotask): Unit = {
-    val mapToUpdate = getMapToUpdateNumRunningMonotasks(startedMonotask)
-    val macrotaskId = startedMonotask.context.taskAttemptId
-    val currentlyRunning = mapToUpdate.getOrElse(macrotaskId, 0)
-    mapToUpdate(macrotaskId) = currentlyRunning + 1
+    // Don't include tasks that are running remotely, since information about those is captured
+    // in the number of running macrotasks, and it makes it harder to reason about what's going
+    // on with the local macrotasks.
+    if (!startedMonotask.context.taskIsRunningRemotely) {
+      val mapToUpdate = getMapToUpdateNumRunningMonotasks(startedMonotask)
+      val macrotaskId = startedMonotask.context.taskAttemptId
+      val currentlyRunning = mapToUpdate.getOrElse(macrotaskId, 0)
+      mapToUpdate(macrotaskId) = currentlyRunning + 1
+    }
     startedMonotask.setQueueStartTime()
   }
 
   private[monotasks] def updateMetricsForFinishedMonotask(completedMonotask: Monotask) {
-    val mapToUpdate = getMapToUpdateNumRunningMonotasks(completedMonotask)
-    val macrotaskId = completedMonotask.context.taskAttemptId
-    mapToUpdate.get(macrotaskId) match {
-      case Some(numCurrentlyRunningMonotasks) =>
-        if (numCurrentlyRunningMonotasks == 1) {
-          mapToUpdate.remove(macrotaskId)
-        } else {
-          mapToUpdate(macrotaskId) = numCurrentlyRunningMonotasks - 1
-        }
+    // Don't include tasks that are running remotely, as described above.
+    if (!completedMonotask.context.taskIsRunningRemotely) {
+      val mapToUpdate = getMapToUpdateNumRunningMonotasks(completedMonotask)
+      val macrotaskId = completedMonotask.context.taskAttemptId
+      mapToUpdate.get(macrotaskId) match {
+        case Some(numCurrentlyRunningMonotasks) =>
+          if (numCurrentlyRunningMonotasks == 1) {
+            mapToUpdate.remove(macrotaskId)
+          } else {
+            mapToUpdate(macrotaskId) = numCurrentlyRunningMonotasks - 1
+          }
 
-      case None =>
-        logWarning(s"Not updating metrics for macrotask $macrotaskId because no record of it " +
-          "could be found")
+        case None =>
+          logWarning(s"Not updating metrics for macrotask $macrotaskId because no record of it " +
+            "could be found")
+      }
     }
   }
 
