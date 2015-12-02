@@ -19,6 +19,9 @@ package org.apache.spark.monotasks.network
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.atomic.AtomicLong
 
+import scala.collection.mutable.ArrayBuffer
+import scala.collection.JavaConversions._
+
 import org.apache.spark.Logging
 import org.apache.spark.util.Utils
 
@@ -28,6 +31,10 @@ private[spark] class NetworkScheduler() extends Logging {
 
   /** Number of bytes that have been sent to Netty but haven't yet been sent out on the network. */
   private var currentOutstandingBytesToSend = new AtomicLong(0)
+
+  private val responseQueueTimes = new LinkedBlockingQueue[Long]()
+  private val tempBuffer = new ArrayBuffer[Long]()
+  private val totalBytesSent = new AtomicLong(0)
 
   /**
    * Queue of monotasks waiting to be executed. submitMonotask() puts monotasks in this queue,
@@ -62,6 +69,21 @@ private[spark] class NetworkScheduler() extends Logging {
 
   def getOutstandingBytes: Long = currentOutstandingBytes.get()
 
-  def addOutstandingBytesToSend(bytes: Long) = currentOutstandingBytesToSend.addAndGet(bytes)
+  def addOutstandingBytesToSend(bytes: Long) = {
+    currentOutstandingBytesToSend.addAndGet(bytes)
+    totalBytesSent.addAndGet(bytes)
+  }
   def getOutstandingBytesToSend: Long = currentOutstandingBytesToSend.get()
+  def getTotalBytesSent: Long = totalBytesSent.get()
+
+  def addResponseQueueTime(time: Long) = responseQueueTimes.put(time)
+  def getAverageResponseQueueTime: Long = {
+    tempBuffer.clear()
+    responseQueueTimes.drainTo(tempBuffer)
+    if (tempBuffer.size > 0) {
+      tempBuffer.sum / tempBuffer.size
+    } else {
+      0L
+    }
+  }
 }

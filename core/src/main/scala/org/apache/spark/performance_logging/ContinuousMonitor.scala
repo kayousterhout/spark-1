@@ -36,6 +36,8 @@ private[spark] class ContinuousMonitor(
     sparkConf: SparkConf,
     getOutstandingNetworkBytes: () => Long,
     getOutstandingNetworkBytesToSend: () => Long,
+    getTotalBytesSent: () => Long,
+    getAverageResponseQueueTime: () => Long,
     getNumRunningComputeMonotasks: () => Int,
     getDiskNameToNumRunningAndQueuedDiskMonotasks: () => HashMap[String, Int],
     getNumRunningMacrotasks: () => Int,
@@ -86,6 +88,8 @@ private[spark] class ContinuousMonitor(
     ("Network Utilization" -> JsonProtocol.networkUtilizationToJson(networkUtilization)) ~
     ("Outstanding Network Bytes" -> getOutstandingNetworkBytes()) ~
     ("Outstanding Network Bytes To Send" -> getOutstandingNetworkBytesToSend()) ~
+    ("Total Bytes Sent" -> getTotalBytesSent()) ~
+    ("Average Response Queue Time" -> getAverageResponseQueueTime()) ~
     ("Running Compute Monotasks" -> getNumRunningComputeMonotasks()) ~
     ("Running Disk Monotasks" ->
       getDiskNameToCountsJson(getDiskNameToNumRunningAndQueuedDiskMonotasks())) ~
