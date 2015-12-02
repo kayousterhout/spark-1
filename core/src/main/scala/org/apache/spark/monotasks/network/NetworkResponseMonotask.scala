@@ -54,6 +54,9 @@ private[spark] class NetworkResponseMonotask(
    */
   private var failureMessage: Option[String] = None
 
+  private var scheduler: NetworkScheduler = null
+  private var size: Long = 0
+
   /**
    * Marks this monotask to respond to the remote executor with a BlockFetchFailure, using the
    * given message as the error string.
@@ -65,6 +68,7 @@ private[spark] class NetworkResponseMonotask(
   }
 
   override def execute(scheduler: NetworkScheduler): Unit = {
+    this.scheduler = scheduler
     // If failureMessage has been set, respond with a failure; otherwise, try to fetch the block
     // from in-memory and respond with that.
     failureMessage match {
@@ -74,6 +78,7 @@ private[spark] class NetworkResponseMonotask(
       case None =>
         try {
           val buffer = SparkEnv.get.blockManager.getBlockData(blockId)
+          size = buffer.size()
           respond(new BlockFetchSuccess(
             blockId.toString(),
             buffer,
@@ -92,8 +97,10 @@ private[spark] class NetworkResponseMonotask(
    */
   private def respond(result: Encodable): Unit = {
     val remoteAddress = channel.remoteAddress.toString
+    scheduler.addOutstandingBytesToSend(size)
     channel.writeAndFlush(result).addListener(new ChannelFutureListener {
       def operationComplete(future: ChannelFuture) {
+        scheduler.addOutstandingBytesToSend(-size)
         if (future.isSuccess) {
           logInfo(s"Sent result $result to client $remoteAddress")
           // Regardless of whether we responded with BlockFetchSuccess or BlockFetchFailure,

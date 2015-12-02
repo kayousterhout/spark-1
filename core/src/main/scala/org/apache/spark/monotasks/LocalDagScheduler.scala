@@ -154,6 +154,8 @@ private[spark] class LocalDagScheduler(blockFileManager: BlockFileManager)
 
   def getOutstandingNetworkBytes(): Long = networkScheduler.getOutstandingBytes
 
+  def getOutstandingNetworkBytesToSend(): Long = networkScheduler.getOutstandingBytesToSend
+
   /**
    * This method processes events submitted to the LocalDagScheduler from external classes. It is
    * not thread safe, and will be called from a single-threaded event loop.
