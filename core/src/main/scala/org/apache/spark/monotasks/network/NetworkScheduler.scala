@@ -26,6 +26,9 @@ private[spark] class NetworkScheduler() extends Logging {
   /** Number of bytes that this executor is currently waiting to receive over the network. */
   private var currentOutstandingBytes = new AtomicLong(0)
 
+  /** Number of bytes that have been sent to Netty but haven't yet been sent out on the network. */
+  private var currentOutstandingBytesToSend = new AtomicLong(0)
+
   /**
    * Queue of monotasks waiting to be executed. submitMonotask() puts monotasks in this queue,
    * and a separate thread executes them, so that launching network monotasks doesn't happen
@@ -58,4 +61,7 @@ private[spark] class NetworkScheduler() extends Logging {
   def addOutstandingBytes(bytes: Long) = currentOutstandingBytes.addAndGet(bytes)
 
   def getOutstandingBytes: Long = currentOutstandingBytes.get()
+
+  def addOutstandingBytesToSend(bytes: Long) = currentOutstandingBytesToSend.addAndGet(bytes)
+  def getOutstandingBytesToSend: Long = currentOutstandingBytesToSend.get()
 }
