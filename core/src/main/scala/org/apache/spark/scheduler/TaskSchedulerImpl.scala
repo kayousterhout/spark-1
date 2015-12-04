@@ -237,7 +237,8 @@ private[spark] class TaskSchedulerImpl(
       // can run fewer monotasks concrrently).
       val usableSlots = {
         val unusableDiskSlots = if (taskSet.taskSet.usesDisk) 0 else shuffledOffers(i).totalDisks
-        val unusableNetworkSlots = if (taskSet.taskSet.usesNetwork) 0 else 1
+        // HACK! ADD extra slots for shuffle to see how this affects problem.
+        val unusableNetworkSlots = if (taskSet.taskSet.usesNetwork) -2 else 1
         availableSlots(i) - unusableDiskSlots - unusableNetworkSlots
       }
 
@@ -250,7 +251,7 @@ private[spark] class TaskSchedulerImpl(
             taskIdToExecutorId(tid) = execId
             executorsByHost(host) += execId
             availableSlots(i) -= CPUS_PER_TASK
-            assert(availableSlots(i) >= 0)
+            // assert(availableSlots(i) >= 0)
             launchedTask = true
           }
         } catch {
