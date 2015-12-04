@@ -76,7 +76,16 @@ private[spark] class ComputeScheduler(
         "ComputeScheduler has not been started yet; initialize() must be called to start the " +
         "ComputeScheduler before any tasks are launched.")
     }
-    monotaskQueue.put(monotask)
+    // This is a huge hack! Monotasks get tried from the quarantine queue before from the regular
+    // queue, so always put prepare monotasks there. This seems ok-ish since if we're out of
+    // memory, definitely better not to start any new macrotasks!
+    // TODO: maybe rename to highPriorityMonotasks?
+    monotask match {
+      case prepareMonotask: PrepareMonotask =>
+        quarantineQueue.put(prepareMonotask)
+      case _ =>
+        monotaskQueue.put(monotask)
+    }
     this.notify()
   }
 
@@ -104,6 +113,7 @@ private[spark] class ComputeScheduler(
       // are waiting until there's available memory to run.
       val monotaskFromQuarantine = quarantineQueue.poll()
       if (monotaskFromQuarantine != null) {
+        logInfo(s"KAY: running task from quarantine! $monotaskFromQuarantine")
         Some(monotaskFromQuarantine)
       } else {
         Option(monotaskQueue.poll())
