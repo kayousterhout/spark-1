@@ -35,9 +35,13 @@ package org.apache.spark.executor
 
 import java.nio.ByteBuffer
 
+import scala.collection.JavaConversions._
 import scala.util.control.NonFatal
 
 import akka.actor.Props
+import com.sun.management.GarbageCollectionNotificationInfo
+import javax.management.{Notification, NotificationEmitter, NotificationListener}
+import javax.management.openmbean.CompositeData
 
 import org.apache.spark._
 import org.apache.spark.monotasks.SubmitMonotask
@@ -111,6 +115,8 @@ private[spark] class Executor(
 
   startDriverHeartbeater()
 
+  installGCMonitoring()
+
   def launchTask(
       taskAttemptId: Long,
       attemptNumber: Int,
@@ -171,5 +177,44 @@ private[spark] class Executor(
     env.actorSystem.stop(executorActor)
     continuousMonitor.stop()
     isStopped = true
+  }
+
+  private def installGCMonitoring(): Unit = {
+    // Get all the GarbageCollectorMXBeans - there's one for each heap generation
+    val gcbeans = java.lang.management.ManagementFactory.getGarbageCollectorMXBeans()
+    logInfo(s"Number of GC beans: ${gcbeans.size()}; gcbeans: ${gcbeans.mkString(", ")}")
+
+    // Install a notifcation handler for each bean
+    gcbeans.foreach { gcbean =>
+      val listener = new NotificationListener() {
+        override def handleNotification(notification: Notification, handback: Any): Unit = {
+          if (notification.getType().equals(
+              GarbageCollectionNotificationInfo.GARBAGE_COLLECTION_NOTIFICATION)) {
+            val info = GarbageCollectionNotificationInfo.from(
+              notification.getUserData().asInstanceOf[CompositeData])
+            val duration = info.getGcInfo().getDuration()
+            val gcType = info.getGcAction()
+            logInfo(s"$gcType: - ${info.getGcInfo.getId} ${info.getGcName()} (from " +
+              s"${info.getGcCause()}) $duration microseconds; start-end times " +
+              s"${info.getGcInfo().getStartTime()}-${info.getGcInfo().getEndTime()}")
+            logInfo("GcInfo CompositeType: " + info.getGcInfo().getCompositeType())
+            logInfo("GcInfo MemoryUsageAfterGc: " + info.getGcInfo().getMemoryUsageAfterGc())
+            logInfo("GcInfo MemoryUsageBeforeGc: " + info.getGcInfo().getMemoryUsageBeforeGc())
+
+            //Get the information about each memory space, and pretty print it
+            val memoryBefore = info.getGcInfo().getMemoryUsageBeforeGc()
+            val memoryAfter = info.getGcInfo().getMemoryUsageAfterGc()
+            memoryBefore.foreach {
+              case (name, memoryBeforeDetails) =>
+                logInfo(s"Memory before for $name: ${memoryBeforeDetails.toString}")
+                logInfo(s"Memory after for $name: ${memoryAfter.get(name).toString}")
+            }
+          }
+        }
+      }
+
+      // Add the listener
+      gcbean.asInstanceOf[NotificationEmitter].addNotificationListener(listener, null, null)
+    }
   }
 }
