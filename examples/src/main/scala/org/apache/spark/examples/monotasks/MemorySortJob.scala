@@ -53,7 +53,10 @@ object MemorySortJob {
 
       // Force the data to be materialized in-memory.
       unsortedRdd.cache()
-      unsortedRdd.count()
+      unsortedRdd.mapPartitions { partition =>
+        Thread.sleep(2000)
+        partition
+      }.count()
 
       val numExecutors = spark.getExecutorStorageStatus.size
       (0 until numShuffles).foreach { i =>
