@@ -72,6 +72,9 @@ private[spark] class TaskSchedulerImpl(
   //       runs one task per CPU.
   val CPUS_PER_TASK = conf.getInt("spark.task.cpus", 1)
 
+  // HACK
+  val EXTRA_NETWORK_SLOTS = conf.getInt("spark.monotasks.extraNetworkSlots", 2)
+
   // TaskSetManagers are not thread safe, so any access to one should be synchronized
   // on this class.
   val activeTaskSets = new HashMap[String, TaskSetManager]
@@ -238,7 +241,7 @@ private[spark] class TaskSchedulerImpl(
       val usableSlots = {
         val unusableDiskSlots = if (taskSet.taskSet.usesDisk) 0 else shuffledOffers(i).totalDisks
         // HACK! ADD extra slots for shuffle to see how this affects problem.
-        val unusableNetworkSlots = if (taskSet.taskSet.usesNetwork) -2 else 1
+        val unusableNetworkSlots = if (taskSet.taskSet.usesNetwork) -EXTRA_NETWORK_SLOTS else 1
         availableSlots(i) - unusableDiskSlots - unusableNetworkSlots
       }
 
