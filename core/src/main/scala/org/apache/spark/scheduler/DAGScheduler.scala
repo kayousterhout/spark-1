@@ -950,6 +950,7 @@ class DAGScheduler(
    * @return A two-item tuple of Booleans, where the first Boolean describes whether computing the
    *         RDD requires disk, and the second Boolean describes whether computing the RDD requires
    *         network.
+   *         TODO
    */
   private def getResourceNeeds(stage: Stage): (Boolean, Boolean) = {
     val rdd = stage.rdd
