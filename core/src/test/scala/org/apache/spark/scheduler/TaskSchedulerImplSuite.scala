@@ -144,20 +144,18 @@ class TaskSchedulerImplSuite extends FunSuite with LocalSparkContext with Loggin
     assert(taskDescriptions.map(_.executorId) === Seq("executor0"))
   }
 
-  test("Scheduler assigns correct number of tasks based on task set's resource requirements") {
-    sc = new SparkContext("local", "TaskSchedulerImplSuite")
+  test("Scheduler assigns correct number of tasks based on task set's resource requirements " +
+      "when using slot-based monotasks scheduler") {
+    val conf = new SparkConf(false)
+    conf.set("spark.monotasks.scheduler", "slot")
+    sc = new SparkContext("local", "TaskSchedulerImplSuite", conf)
     val taskScheduler = new TaskSchedulerImpl(sc)
     taskScheduler.initialize(new FakeSchedulerBackend)
     taskScheduler.setDAGScheduler(mock(classOf[DAGScheduler]))
 
-    // Offer one worker that has 5 free slots and 3 total disks to task sets with
+    // Offer one worker that has 1 free (CPU) slot and 3 total disks to task sets with
     // different resource requirements.
-    val workerOffers = Seq(new WorkerOffer("executor0", "host0", freeSlots = 5, totalDisks = 3))
-
-    def createTaskSet(numTasks: Int, usesDisk: Boolean, usesNetwork: Boolean): TaskSet = {
-      val tasks = Array.tabulate[Macrotask[_]](numTasks)(new FakeTask(_, Nil))
-      new TaskSet(tasks, 0, 0, 0, null, usesDisk, usesNetwork)
-    }
+    val workerOffers = Seq(new WorkerOffer("executor0", "host0", freeSlots = 1, totalDisks = 3))
 
     def verifyNumberOfOffersAccepted(
         numTasksInTaskSet: Int,
@@ -172,9 +170,15 @@ class TaskSchedulerImplSuite extends FunSuite with LocalSparkContext with Loggin
       // Keep offering resources until all of the TaskSet's tasks have been assigned. We do this so
       // that there aren't any tasks from the given TaskSet left in the scheduling queue when we
       // submit the next task set.
-      while (taskScheduler.resourceOffers(workerOffers).flatten.length > 0) {
+      // TODO: not necessary anymore.
+      //while (taskScheduler.resourceOffers(workerOffers).flatten.length > 0) {
         // Do nothing.
-      }
+      //}
+
+      // Remove the task set from the scheduler, since Monotasks currently throws an error if more
+      // than one task set is currently outstanding.
+      val rootPool = taskScheduler.rootPool
+      rootPool.getSortedTaskSetQueue.foreach(rootPool.removeSchedulable(_))
     }
 
     // For a task set that only uses the CPU, only 1 task should be assigned (because the disk and
@@ -206,5 +210,33 @@ class TaskSchedulerImplSuite extends FunSuite with LocalSparkContext with Loggin
       usesDisk = true,
       usesNetwork = true,
       numExpectedAcceptedOffers = 5)
+  }
+
+  test("Scheduler assigns correct number of tasks when using balanced monotasks scheduler") {
+    val conf = new SparkConf(false)
+    conf.set("spark.monotasks.scheduler", "balanced")
+    sc = new SparkContext("local", "TaskSchedulerImplSuite", conf)
+    val taskScheduler = new TaskSchedulerImpl(sc)
+    taskScheduler.initialize(new FakeSchedulerBackend)
+    taskScheduler.setDAGScheduler(mock(classOf[DAGScheduler]))
+
+    // Offer one worker that has 2 free slots and 3 total disks to task sets with
+    // different numbers of tasks.
+    val workerOffers = Seq(new WorkerOffer("executor0", "host0", freeSlots = 2, totalDisks = 3),
+      new WorkerOffer("executor1", "host1", freeSlots = 2, totalDisks = 3))
+
+    val numTasksInTaskSet = 21
+    val tasks = Array.tabulate[Macrotask[_]](numTasksInTaskSet)(new FakeTask(_, Nil))
+    taskScheduler.submitTasks(
+      new TaskSet(tasks, 0, 0, 0, null, usesDisk = false, usesNetwork = false))
+    val tasksScheduled = taskScheduler.resourceOffers(workerOffers)
+    assert(2 === tasksScheduled.length, "Expect tasks to have been assigned to both executors")
+    assert(numTasksInTaskSet === tasksScheduled.flatten.length,
+      "Expect all 21 tasks to have been assigned to a worker")
+    tasksScheduled.foreach { tasksOnOneMachine =>
+      // 10 or 11 tasks should have been assigned to each worker.
+      assert(tasksOnOneMachine.length >= 10)
+      assert(tasksOnOneMachine.length <= 11)
+    }
   }
 }
