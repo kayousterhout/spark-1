@@ -16,11 +16,13 @@
 
 package org.apache.spark.monotasks.network
 
+import java.net.SocketAddress
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.atomic.AtomicLong
 
-import org.apache.spark.Logging
-import org.apache.spark.util.Utils
+import scala.collection.mutable.HashMap
+
+import org.apache.spark.{Logging, SparkEnv, SparkException}
 
 private[spark] class NetworkScheduler() extends Logging {
   /** Number of bytes that this executor is currently waiting to receive over the network. */
@@ -34,6 +36,11 @@ private[spark] class NetworkScheduler() extends Logging {
    */
   private val monotaskQueue = new LinkedBlockingQueue[NetworkMonotask]()
 
+  /** These queues include monotasks that have started. Invariant: first thing in queue will
+    * always be running. */
+  private val executorIdToMonotaskQueue =
+    new HashMap[SocketAddress, LinkedBlockingQueue[NetworkResponseMonotask]]
+
   // Start a thread responsible for executing the network monotasks in monotaskQueue.
   private val monotaskLaunchThread = new Thread(new Runnable() {
     override def run(): Unit = {
@@ -46,8 +53,70 @@ private[spark] class NetworkScheduler() extends Logging {
   monotaskLaunchThread.setName("Network monotask launch thread")
   monotaskLaunchThread.start()
 
+  /** Whether to fairly schedule across remote executors. */
+  private var fairSchedule = false
+
   def submitTask(monotask: NetworkMonotask): Unit = {
-    monotaskQueue.put(monotask)
+    fairSchedule = SparkEnv.get.conf.getBoolean("spark.monotasks.network.fairSchedule", false)
+    monotask match {
+      case networkResponseMonotask: NetworkResponseMonotask =>
+        logInfo(s"KNET Monotask ${monotask.taskId} block ${networkResponseMonotask.blockId} to " +
+          s"${networkResponseMonotask.channel.remoteAddress()} READY ${System.currentTimeMillis}")
+        if (fairSchedule) {
+          val address = networkResponseMonotask.channel.remoteAddress()
+          if (!executorIdToMonotaskQueue.contains(address)) {
+            logInfo(s"$address was not already in executorIdToMonotaskQueue so adding it")
+            executorIdToMonotaskQueue.put(
+              address, new LinkedBlockingQueue[NetworkResponseMonotask]())
+          }
+          logInfo(s"Total of ${executorIdToMonotaskQueue.size} things in queue")
+
+          // Add the monotask to the queue of monotasks for the executor it's sending data to.
+          val monotasksForExecutor = executorIdToMonotaskQueue(address)
+          monotasksForExecutor.synchronized {
+            if (monotasksForExecutor.isEmpty) {
+              logInfo(s"No monotasks queued for executor $address, so launching a monotask!")
+              // Start the monotask! Nothing is running on the executor.
+              monotaskQueue.put(monotask)
+            }
+            logInfo(s"Adding monotask $monotask to queue for $address")
+            // In either case, put the monotask in the queue for the executor.
+            monotasksForExecutor.put(networkResponseMonotask)
+          }
+        } else {
+          // Immediately submit the monotask for scheduling.
+          monotaskQueue.put(monotask)
+        }
+
+      case _ =>
+        monotaskQueue.put(monotask)
+    }
+  }
+
+
+  def handleNetworkResponseSent(monotask: NetworkResponseMonotask): Unit = {
+    logInfo(s"KNET Monotask ${monotask.taskId} block ${monotask.blockId} to " +
+      s"${monotask.channel.remoteAddress()} SENT ${System.currentTimeMillis}")
+    if (fairSchedule) {
+      // Run the next thing on the queue, if there is anything.
+
+      val monotasksForExecutor = executorIdToMonotaskQueue(monotask.channel.remoteAddress())
+      monotasksForExecutor.synchronized {
+        // Remove the first monotask in the queue, which should be this one that's running.
+        val removedMonotask = monotasksForExecutor.remove()
+        if (removedMonotask != monotask) {
+          throw new SparkException(s"Monotask in queue $removedMonotask with id " +
+            s"${removedMonotask.taskId} is not the same as the one that was running " +
+            s"$monotask ${monotask.taskId}")
+        }
+        // Start the nw-first monotask in the queue, if there is one.
+        val newMonotask = monotasksForExecutor.peek()
+        if (newMonotask != null) {
+          logInfo(s"Network monotask ${monotask.taskId} finished, so launching ${newMonotask}")
+          monotaskQueue.put(newMonotask)
+        }
+      }
+    }
   }
 
   /**

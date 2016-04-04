@@ -37,8 +37,8 @@ import org.apache.spark.storage.BlockId
  * @param context TaskContextImpl for the monotask.
  */
 private[spark] class NetworkResponseMonotask(
-    blockId: BlockId,
-    channel: Channel,
+    val blockId: BlockId,
+    val channel: Channel,
     context: TaskContextImpl)
   extends NetworkMonotask(context) with Logging {
 
@@ -54,6 +54,8 @@ private[spark] class NetworkResponseMonotask(
    */
   private var failureMessage: Option[String] = None
 
+  private var scheduler: NetworkScheduler = null
+
   /**
    * Marks this monotask to respond to the remote executor with a BlockFetchFailure, using the
    * given message as the error string.
@@ -65,6 +67,7 @@ private[spark] class NetworkResponseMonotask(
   }
 
   override def execute(scheduler: NetworkScheduler): Unit = {
+    this.scheduler = scheduler
     // If failureMessage has been set, respond with a failure; otherwise, try to fetch the block
     // from in-memory and respond with that.
     failureMessage match {
@@ -100,12 +103,14 @@ private[spark] class NetworkResponseMonotask(
           // from the perspective of the LocalDagScheduler, this monotask has succeeded at its
           // job of responding to the remote executor.
           localDagScheduler.post(TaskSuccess(NetworkResponseMonotask.this, None))
+
         } else {
           logError(
             s"Error sending result $result to $remoteAddress; closing connection", future.cause)
           localDagScheduler.post(TaskFailure(NetworkResponseMonotask.this, None))
           channel.close
         }
+        scheduler.handleNetworkResponseSent(NetworkResponseMonotask.this)
       }
     })
   }
