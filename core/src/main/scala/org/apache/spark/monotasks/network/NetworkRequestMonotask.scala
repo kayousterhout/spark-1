@@ -117,6 +117,8 @@ private[spark] class NetworkRequestMonotask(
     val elapsedNanos = System.nanoTime() - requestIssueTimeNanos
     logInfo(s"Received block $blockId from BlockManagerId $remoteAddress (total elapsed nanos: " +
       s"$elapsedNanos; nanos on remote machine: $totalRemoteNanos; disk nanos: $diskReadNanos)")
+    logInfo(s"KNET Monotask $taskId block $blockId from ${remoteAddress.host} " +
+      s"RECEIVED ${System.currentTimeMillis} size ${buf.size()} task ${context.taskAttemptId}")
 
     // Increment the ref count because we need to pass this to a different thread.
     // This needs to be released after use.
