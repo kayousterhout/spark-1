@@ -41,6 +41,19 @@ private[spark] class NetworkScheduler() extends Logging {
   private val executorIdToMonotaskQueue =
     new HashMap[SocketAddress, LinkedBlockingQueue[NetworkResponseMonotask]]
 
+  /**
+   * Queue of NetworkRequestMonotasks that can't be sent until a task finishes. This is guaranteed
+   * to be grouped by task ID (SubmitMonotasks gets called to local dag with all monotasks for a
+   * given task, so they'll all be submitted in order, and no others will get inserted in between.
+   */
+  private val networkRequestMonotaskQueue = new LinkedBlockingQueue[NetworkRequestMonotask]();
+
+  // For each task with running network requests, the number of outstanding requests.
+  private val taskIdToNumOutstandingRequests = new HashMap[Long, Int]()
+
+  /** Maximum number of tasks that can concurrently have outstanding network requests. */
+  private var maxConcurrentTasks = 0
+
   // Start a thread responsible for executing the network monotasks in monotaskQueue.
   private val monotaskLaunchThread = new Thread(new Runnable() {
     override def run(): Unit = {
@@ -57,7 +70,10 @@ private[spark] class NetworkScheduler() extends Logging {
   private var fairSchedule = false
 
   def submitTask(monotask: NetworkMonotask): Unit = {
+    // TODO: Setting these here is a hack!!! just because don't have easy access to conf yet.
     fairSchedule = SparkEnv.get.conf.getBoolean("spark.monotasks.network.fairSchedule", false)
+    maxConcurrentTasks =
+      SparkEnv.get.conf.getInt("spark.monotasks.network.maxConcurrentTasks", 0)
     monotask match {
       case networkResponseMonotask: NetworkResponseMonotask =>
         logInfo(s"KNET Monotask ${monotask.taskId} block ${networkResponseMonotask.blockId} to " +
@@ -88,8 +104,33 @@ private[spark] class NetworkScheduler() extends Logging {
           monotaskQueue.put(monotask)
         }
 
+      case networkRequestMonotask: NetworkRequestMonotask =>
+        if (maxConcurrentTasks <= 0) {
+          logInfo(s"Max concurrent tasks is $maxConcurrentTasks, so launching monotask immediately")
+          monotaskQueue.put(monotask)
+        } else {
+          val taskId = networkRequestMonotask.context.taskAttemptId
+          taskIdToNumOutstandingRequests.synchronized {
+            if (taskIdToNumOutstandingRequests.contains(taskId) ||
+              taskIdToNumOutstandingRequests.size < maxConcurrentTasks) {
+              logInfo(s"Max concurrent tasks $maxConcurrentTasks; launching new thing for " +
+                s"$taskId")
+              // Start the monotask and update the counts.
+              monotaskQueue.put(monotask)
+              taskIdToNumOutstandingRequests.put(
+                taskId,
+                taskIdToNumOutstandingRequests.getOrElse(taskId, 0) + 1)
+            } else {
+              logInfo(s"$maxConcurrentTasks tasks are already running, so " +
+                s"queueing $networkRequestMonotask")
+              networkRequestMonotaskQueue.put(networkRequestMonotask)
+            }
+          }
+        }
+
       case _ =>
-        monotaskQueue.put(monotask)
+        logError("Unknown type of monotask! " + monotask)
+        throw new SparkException("Unknown type of monotask in network scheduler! " + monotask)
     }
   }
 
@@ -114,6 +155,45 @@ private[spark] class NetworkScheduler() extends Logging {
         if (newMonotask != null) {
           logInfo(s"Network monotask ${monotask.taskId} finished, so launching ${newMonotask}")
           monotaskQueue.put(newMonotask)
+        }
+      }
+    }
+  }
+
+  // Updates metadata about which tasks are currently using the network, possibly launching more.
+  def handleNetworkRequestSatisfied(monotask: NetworkRequestMonotask): Unit = {
+    if (maxConcurrentTasks <= 0) {
+      // There's no throttling of tasks, so just return.
+      return
+    }
+    val taskId = monotask.context.taskAttemptId
+    taskIdToNumOutstandingRequests.synchronized {
+      val numOutstandingRequestsForTask = taskIdToNumOutstandingRequests(taskId)
+      logInfo(s"Monotask $monotask completed so num outstanding requests is now " +
+        s"${numOutstandingRequestsForTask - 1}")
+      if (numOutstandingRequestsForTask > 1) {
+        // Decrement it and don't launch any more tasks.
+        taskIdToNumOutstandingRequests.put(taskId, numOutstandingRequestsForTask - 1)
+      } else {
+        // Remove the task from the outstanding requests and possibly start a new task.
+        taskIdToNumOutstandingRequests.remove(taskId)
+        // Thread safety isn't an issue here, because access synchronized on taskIdToNumOuts.Req.
+        if (networkRequestMonotaskQueue.size() > 0) {
+          logInfo(s"Size of queue is ${networkRequestMonotaskQueue.size()} and top is " +
+            s"${networkRequestMonotaskQueue.peek()}")
+          val firstTaskId = networkRequestMonotaskQueue.peek().context.taskAttemptId
+          var tasksStarted = 0
+          while (networkRequestMonotaskQueue.size() > 0 &&
+              networkRequestMonotaskQueue.peek().context.taskAttemptId == firstTaskId) {
+            val networkMonotask = networkRequestMonotaskQueue.remove()
+            // TODO: could just keep taskIdToNumOutstanding updated, and let the monotask-launch
+            // queue pull directly from the networkRequestMonotaskQueue.
+            logInfo(s"Launching network monotask $networkMonotask for task $firstTaskId")
+            monotaskQueue.put(networkMonotask)
+            tasksStarted += 1
+          }
+          logInfo(s"Launched a total of $tasksStarted monotasks for one macrotask")
+          taskIdToNumOutstandingRequests.put(firstTaskId, tasksStarted)
         }
       }
     }
