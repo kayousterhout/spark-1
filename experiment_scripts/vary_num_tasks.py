@@ -30,8 +30,9 @@ for num_tasks_multiplier in num_tasks_multipliers:
   stringified_parameters = ["%s" % p for p in parameters]
 
   # Clear the buffer cache, to sidestep issue with machines dying because they've run out of memory.
-  subprocess.check_call("/root/ephemeral-hdfs/sbin/slaves.sh /root/spark-ec2/clear-cache.sh",
-    shell=True)
+  slaves_file = utils.get_full_path("ephemeral-hdfs/sbin/slaves.sh")
+  clear_cache_file = utils.get_full_path("spark-ec2/clear-cache.sh")
+  subprocess.check_call("{} {}".format(slaves_file, clear_cache_file), shell=True)
 
   # Run the job.
   command = ("/root/spark/bin/run-example monotasks.MemorySortJob %s" %
