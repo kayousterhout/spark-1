@@ -122,11 +122,12 @@ class KryoSerializer(conf: SparkConf)
 }
 
 private[spark]
-class KryoSerializationStream(kryo: Kryo, outStream: OutputStream) extends SerializationStream {
+class KryoSerializationStream(kryo: Kryo, outStream: OutputStream)
+  extends SerializationStream with Logging {
   val output = new KryoOutput(outStream)
 
   override def writeObject[T: ClassTag](t: T): SerializationStream = {
-    System.out.println(s"CHRIS write thread is ${Thread.currentThread().getId} and class " +
+    logInfo(s"CHRIS write thread is ${Thread.currentThread().getId} and class " +
       s"loader is ${Thread.currentThread().getContextClassLoader()} for kryo $kryo")
     kryo.writeClassAndObject(output, t)
     this
