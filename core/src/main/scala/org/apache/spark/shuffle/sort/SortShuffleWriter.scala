@@ -51,6 +51,7 @@ private[spark] class SortShuffleWriter[K, V, C](
   override def write(records: Iterator[_ <: Product2[K, V]]): Unit = {
     if (dep.mapSideCombine) {
       require(dep.aggregator.isDefined, "Map-side combine without Aggregator specified!")
+      logInfo(s"CHRIS writing shuffle data with serializer ${dep.serializer}")
       sorter = new ExternalSorter[K, V, C](
         dep.aggregator, Some(dep.partitioner), dep.keyOrdering, dep.serializer)
       sorter.insertAll(records)

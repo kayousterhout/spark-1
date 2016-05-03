@@ -68,6 +68,7 @@ class KryoSerializer(conf: SparkConf)
     kryo.setRegistrationRequired(registrationRequired)
 
     val oldClassLoader = Thread.currentThread.getContextClassLoader
+    logInfo(s"CHRIS default class loader is $defaultClassLoader")
     val classLoader = defaultClassLoader.getOrElse(Thread.currentThread.getContextClassLoader)
 
     // Allow disabling Kryo reference tracking if user knows their object graphs don't have loops.
@@ -109,6 +110,7 @@ class KryoSerializer(conf: SparkConf)
     System.out.println(s"CHRIS current chill thread is ${Thread.currentThread().getId}")
     Thread.dumpStack()
     new AllScalaRegistrar().apply(kryo)
+    logInfo(s"CHRIS setting class loader to be $classLoader for kryo $kryo")
 
     kryo.setClassLoader(classLoader)
     kryo
@@ -124,7 +126,8 @@ class KryoSerializationStream(kryo: Kryo, outStream: OutputStream) extends Seria
   val output = new KryoOutput(outStream)
 
   override def writeObject[T: ClassTag](t: T): SerializationStream = {
-    System.out.println(s"CHRIS write thread is ${Thread.currentThread().getId}")
+    System.out.println(s"CHRIS write thread is ${Thread.currentThread().getId} and class " +
+      s"loader is ${Thread.currentThread().getContextClassLoader()} for kryo $kryo")
     kryo.writeClassAndObject(output, t)
     this
   }
