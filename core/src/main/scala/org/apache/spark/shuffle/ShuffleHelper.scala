@@ -105,6 +105,8 @@ class ShuffleHelper[K, V, C](
 
   def getDeserializedAggregatedSortedData(): Iterator[Product2[K, C]] = {
     val shuffleDataSerializer = Serializer.getSerializer(shuffleDependency.serializer)
+    logInfo(s"CHRIS shuffle serializer is ${shuffleDependency.serializer} and shuffle data ser " +
+      s"is $shuffleDataSerializer")
 
     val decompressedDeserializedIter = statusesByExecutorId.iterator.flatMap {
       case (blockManagerId, blockIdsAndSizes) =>
