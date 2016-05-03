@@ -105,6 +105,9 @@ class KryoSerializer(conf: SparkConf)
 
     // Register Chill's classes; we do this after our ranges and the user's own classes to let
     // our code override the generic serializers in Chill for things like Seq
+    logInfo(s"CHRIS Current thread where chill registered is ID: ${Thread.currentThread().getId}")
+    System.out.println(s"CHRIS current chill thread is ${Thread.currentThread().getId}")
+    Thread.dumpStack()
     new AllScalaRegistrar().apply(kryo)
 
     kryo.setClassLoader(classLoader)
@@ -121,6 +124,7 @@ class KryoSerializationStream(kryo: Kryo, outStream: OutputStream) extends Seria
   val output = new KryoOutput(outStream)
 
   override def writeObject[T: ClassTag](t: T): SerializationStream = {
+    System.out.println(s"CHRIS write thread is ${Thread.currentThread().getId}")
     kryo.writeClassAndObject(output, t)
     this
   }
