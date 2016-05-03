@@ -201,6 +201,8 @@ private[spark] class DiskBlockObjectWriter(
       open()
     }
 
+    logInfo(s"Writing object with type ${value.getClass} to DBOW")
+
     objOut.writeObject(value)
     numRecordsWritten += 1
     writeMetrics.incShuffleRecordsWritten(1)

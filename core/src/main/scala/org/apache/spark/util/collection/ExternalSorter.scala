@@ -191,6 +191,8 @@ private[spark] class ExternalSorter[K, V, C](
     // TODO: stop combining if we find that the reduction factor isn't high
     val shouldCombine = aggregator.isDefined
 
+    logInfo(s"External sorter: inserting everything in records with class ${records.getClass}")
+
     if (shouldCombine) {
       // Combine values in-memory first using our AppendOnlyMap
       val mergeValue = aggregator.get.mergeValue
@@ -372,6 +374,7 @@ private[spark] class ExternalSorter[K, V, C](
       val partitionId = elem._1._1
       val key = elem._1._2
       val value = elem._2
+      logInfo(s"Writing to partition values! writing specially GAH")
       partitionWriters(partitionId).write((key, value))
     }
   }
@@ -756,6 +759,7 @@ private[spark] class ExternalSorter[K, V, C](
           val writer = blockManager.getDiskWriter(
             blockId, outputFile, ser, fileBufferSize, context.taskMetrics.shuffleWriteMetrics.get)
           for (elem <- elements) {
+            logInfo(s"Writing elem of type $elem")
             writer.write(elem)
           }
           writer.commitAndClose()
