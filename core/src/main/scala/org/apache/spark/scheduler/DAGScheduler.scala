@@ -955,16 +955,23 @@ class DAGScheduler(
 
       // Immediately delete shuffle data. This is to skirt issues with disks filling up when
       // the context cleaner can't keep up.
-      stage.rdd.dependencies.foreach {
-        case shuffleDependency: ShuffleDependency[_, _, _] =>
-          val shuffleId = shuffleDependency.shuffleId
-          logInfo(s"Deleting shuffle data for shuffle $shuffleId because $stage finished.")
-          mapOutputTracker.unregisterShuffle(shuffleId)
-          blockManagerMaster.removeShuffle(shuffleId, blocking = true)
-          logInfo(s"Done deleting shuffle data")
+      val waitingForVisit = new Stack[RDD[_]]
+      waitingForVisit.push(stage.rdd)
+      while(!waitingForVisit.isEmpty) {
+        val currentRdd = waitingForVisit.pop()
+        logInfo(s"Visitnig shuffle things for $currentRdd")
+        currentRdd.dependencies.foreach {
+          case shuffleDependency: ShuffleDependency[_, _, _] =>
+            val shuffleId = shuffleDependency.shuffleId
+            logInfo(s"Deleting shuffle data for shuffle $shuffleId because $stage finished.")
+            mapOutputTracker.unregisterShuffle(shuffleId)
+            blockManagerMaster.removeShuffle(shuffleId, blocking = true)
+            logInfo(s"Done deleting shuffle data")
 
-        case _ =>
-          // Do nothing.
+          case dep: Dependency =>
+            logInfo(s"Pushing dependency $dep")
+            waitingForVisit.push(dep.rdd)
+        }
       }
     }
     event.reason match {
