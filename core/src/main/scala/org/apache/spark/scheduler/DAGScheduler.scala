@@ -141,6 +141,12 @@ class DAGScheduler(
 
   private[scheduler] val jobIdToStageIds = new HashMap[Int, HashSet[Int]]
   private[scheduler] val stageIdToStage = new HashMap[Int, Stage]
+  /**
+   * Mapping from shuffle dependency ID to the ShuffleMapStage that will generate the data for
+   * that dependency. Only includes stages that are part of currently running job (when the job(s)
+   * that require the shuffle stage complete, the mapping will be removed, and the only record of
+   * the shuffle data will be in the MapOutputTracker).
+   */
   private[scheduler] val shuffleIdToMapStage = new HashMap[Int, ShuffleMapStage]
   private[scheduler] val jobIdToActiveJob = new HashMap[Int, ActiveJob]
 
@@ -276,7 +282,9 @@ class DAGScheduler(
   }
 
   /**
-   * Get or create a shuffle map stage for the given shuffle dependency's map side.
+   * Get or create a shuffle map stage for the given shuffle dependency's map side.  If the
+   * shuffle map stage doesn't already exist, this method will create the shuffle map stage in
+   * addition to an necessary ancestor shuffle map stages.
    */
   private def getShuffleMapStage(
       shuffleDep: ShuffleDependency[_, _, _],
@@ -308,7 +316,7 @@ class DAGScheduler(
       callSite: CallSite): ResultStage = {
     val id = nextStageId.getAndIncrement()
     val stage = new ResultStage(
-      id, rdd, func, partitions, getParentStages(rdd, jobId), jobId, callSite)
+      id, rdd, func, partitions, getOrCreateParentStages(rdd, jobId), jobId, callSite)
     stageIdToStage(id) = stage
     updateJobIdStageIdMaps(jobId, stage)
     stage
@@ -330,7 +338,7 @@ class DAGScheduler(
     val numTasks = rdd.partitions.length
     val id = nextStageId.getAndIncrement()
     val stage = new ShuffleMapStage(
-      id, rdd, numTasks, getParentStages(rdd, firstJobId), firstJobId, rdd.creationSite, shuffleDep)
+      id, rdd, numTasks, getOrCreateParentStages(rdd, firstJobId), firstJobId, rdd.creationSite, shuffleDep)
 
     stageIdToStage(id) = stage
     updateJobIdStageIdMaps(firstJobId, stage)
@@ -359,7 +367,7 @@ class DAGScheduler(
    * Get or create the list of parent stages for a given RDD.  The new Stages will be created with
    * the provided firstJobId.
    */
-  private def getParentStages(rdd: RDD[_], firstJobId: Int): List[Stage] = {
+  private def getOrCreateParentStages(rdd: RDD[_], firstJobId: Int): List[Stage] = {
     val parents = new HashSet[Stage]
     val visited = new HashSet[RDD[_]]
     // We are manually maintaining a stack here to prevent StackOverflowError
@@ -368,8 +376,6 @@ class DAGScheduler(
     def visit(r: RDD[_]) {
       if (!visited(r)) {
         visited += r
-        // Kind of ugly: need to register RDDs with the cache here since
-        // we can't do it in its constructor because # of partitions is unknown
         for (dep <- r.dependencies) {
           dep match {
             case shufDep: ShuffleDependency[_, _, _] =>
@@ -460,8 +466,7 @@ class DAGScheduler(
         val s = stages.head
         s.jobIds += jobId
         jobIdToStageIds.getOrElseUpdate(jobId, new HashSet[Int]()) += s.id
-        val parents: List[Stage] = getParentStages(s.rdd, jobId)
-        val parentsWithoutThisJobId = parents.filter { ! _.jobIds.contains(jobId) }
+        val parentsWithoutThisJobId = s.parents.filter { ! _.jobIds.contains(jobId) }
         updateJobIdStageIdMapsList(parentsWithoutThisJobId ++ stages.tail)
       }
     }
@@ -944,7 +949,6 @@ class DAGScheduler(
         case s: ShuffleMapStage =>
           partitionsToCompute.map { id => (id, getPreferredLocs(stage.rdd, id))}.toMap
         case s: ResultStage =>
-          val job = s.activeJob.get
           partitionsToCompute.map { id =>
             val p = s.partitions(id)
             (id, getPreferredLocs(stage.rdd, p))
@@ -1006,7 +1010,6 @@ class DAGScheduler(
           }
 
         case stage: ResultStage =>
-          val job = stage.activeJob.get
           partitionsToCompute.map { id =>
             val p: Int = stage.partitions(id)
             val part = stage.rdd.partitions(p)
