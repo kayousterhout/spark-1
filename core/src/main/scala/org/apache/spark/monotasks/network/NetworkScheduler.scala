@@ -42,6 +42,8 @@ private[spark] class NetworkScheduler(conf: SparkConf) extends Logging {
   private val lowPriorityNetworkRequestMonotaskQueue =
     new LinkedBlockingQueue[NetworkRequestMonotask]()
 
+  private[monotasks] val numRunningLowPriorityMonotasks = new AtomicLong(0)
+
   /**
    * Queue of NetworkRequestMonotasks that can't be sent until a task finishes. This is guaranteed
    * to be grouped by task ID (a SubmitMonotasks event will be submitted to the LocalDagScheduler
@@ -69,7 +71,25 @@ private[spark] class NetworkScheduler(conf: SparkConf) extends Logging {
   private val monotaskLaunchThread = new Thread(new Runnable() {
     override def run(): Unit = {
       while (true) {
-        readyMonotaskQueue.take().execute(NetworkScheduler.this)
+        val monotask = readyMonotaskQueue.take()
+        logInfo(s"Runnuing monotask $monotask")
+        // Update metrics about the monotask starting.
+        val isLowPriority = monotask match {
+          case request: NetworkRequestMonotask =>
+            logInfo(s"Is low priority? ${request.isLowPriority()}")
+            request.isLowPriority()
+          case _ =>
+            false
+        }
+        if (isLowPriority) {
+          logInfo(s"Updating numRunningLowPriorityMonotasks!!")
+          numRunningLowPriorityMonotasks.incrementAndGet()
+        }
+
+        // Run the monotask.
+        logInfo(s"Running Monotask")
+        monotask.execute(NetworkScheduler.this)
+        logInfo(s"When done with monotask, queue length was ${readyMonotaskQueue.size()}")
       }
     }
   })
@@ -133,6 +153,10 @@ private[spark] class NetworkScheduler(conf: SparkConf) extends Logging {
       return
     }
     val taskId = monotask.context.taskAttemptId
+    if (monotask.isLowPriority()) {
+      val value = numRunningLowPriorityMonotasks.decrementAndGet()
+      logInfo(s"Num running, once decremented, is $value")
+    }
     taskIdToNumOutstandingRequests.synchronized {
       val numOutstandingRequestsForTask = taskIdToNumOutstandingRequests(taskId)
       if (numOutstandingRequestsForTask > 1) {
