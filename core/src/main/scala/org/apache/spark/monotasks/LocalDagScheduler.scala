@@ -125,6 +125,10 @@ private[spark] class LocalDagScheduler(
     computeScheduler.numRunningTasks.get()
   }
 
+  def getNumRunningLowPriorityNetworkMonotasks(): Int = {
+    networkScheduler.numRunningLowPriorityMonotasks.get().toInt
+  }
+
   def getNumRunningPrepareMonotasks(): Int = {
     runningPrepareMonotasks.size
   }
