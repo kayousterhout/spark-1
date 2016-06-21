@@ -34,6 +34,7 @@
 package org.apache.spark.executor
 
 import java.nio.ByteBuffer
+import java.util.concurrent.atomic.AtomicLong
 
 import scala.util.control.NonFatal
 
@@ -93,6 +94,8 @@ private[spark] class Executor(
   localDagScheduler.initialize(executorBackend, env.blockManager.memoryStore)
   env.monotasksScheduler.setExecutorBackend(executorBackend)
 
+  private val totalStartedMacrotasks = new AtomicLong(0)
+
   private val continuousMonitor = new ContinuousMonitor(
     conf,
     localDagScheduler.getOutstandingNetworkBytes,
@@ -105,6 +108,7 @@ private[spark] class Executor(
     localDagScheduler.getNumMacrotasksInCompute,
     localDagScheduler.getNumMacrotasksInDisk,
     localDagScheduler.getNumMacrotasksInNetwork,
+    () => totalStartedMacrotasks.get(),
     () => env.blockManager.memoryStore.freeHeapMemory,
     () => env.blockManager.memoryStore.freeOffHeapMemory)
   continuousMonitor.start(env)
@@ -120,6 +124,7 @@ private[spark] class Executor(
       taskAttemptId,
       attemptNumber)
     val prepareMonotask = new PrepareMonotask(context, serializedTask)
+    totalStartedMacrotasks.incrementAndGet()
     localDagScheduler.post(SubmitMonotask(prepareMonotask))
   }
 
