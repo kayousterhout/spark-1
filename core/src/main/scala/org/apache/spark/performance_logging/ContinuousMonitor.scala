@@ -44,6 +44,7 @@ private[spark] class ContinuousMonitor(
     getNumMacrotasksInCompute: () => Long,
     getNumMacrotasksInDisk: () => Long,
     getNumMacrotasksInNetwork: () => Long,
+    getTotalMacrotasks: () => Long,
     getFreeHeapMemoryBytes: () => Long,
     getFreeOffHeapMemory: () => Long) {
   private val logIntervalMillis = sparkConf.getInt("spark.continuousMonitor.logIntervalMillis", 10)
@@ -96,6 +97,7 @@ private[spark] class ContinuousMonitor(
     ("Macrotasks In Compute" -> getNumMacrotasksInCompute()) ~
     ("Macrotasks In Disk" -> getNumMacrotasksInDisk()) ~
     ("Macrotasks In Network" -> getNumMacrotasksInNetwork()) ~
+    ("Total Started Macrotasks" -> getTotalMacrotasks()) ~
     ("Free Heap Memory Bytes" -> getFreeHeapMemoryBytes()) ~
     ("Free Off-Heap Memory Bytes" -> getFreeOffHeapMemory())
   }
