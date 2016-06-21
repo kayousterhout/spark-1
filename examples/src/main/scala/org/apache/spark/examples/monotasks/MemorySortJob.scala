@@ -42,6 +42,12 @@ object MemorySortJob {
     val itemsPerValue = if (args.length > 3) args(3).toInt else 6
     val numShuffles = if (args.length > 4) args(4).toInt else 10
     val numWarmups = if (args.length > 5) args(5).toInt else 1
+    val addStraggler = args.length > 6
+    val stragglerLength = if (addStraggler) {
+      args(6).toInt
+    } else {
+      0
+    }
 
     try {
       (1 to numWarmups).foreach { _ =>
@@ -61,7 +67,20 @@ object MemorySortJob {
         spark.parallelize(1 to numExecutors, numExecutors).foreach { i =>
           System.gc()
         }
-        sortRdd(unsortedRdd, numReduceTasks)
+        val rddToSort = if (addStraggler) {
+          // Make one of the map tasks sleep for some amount of time, to generate a straggler.
+          // Note that this won't quite show up properly in the CPU time; it would be better to
+          // busy wait.
+          unsortedRdd.mapPartitionsWithIndex { (index, partition) =>
+            if (index == 0) {
+              Thread.sleep(stragglerLength)
+            }
+            partition
+          }
+        } else {
+          unsortedRdd
+        }
+        sortRdd(rddToSort, numReduceTasks)
       }
     } finally {
       // Be sure to always stop the SparkContext, even when an exception is thrown; otherwise, the
