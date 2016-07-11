@@ -69,7 +69,9 @@ private[spark] class NetworkScheduler(conf: SparkConf) extends Logging {
   private val monotaskLaunchThread = new Thread(new Runnable() {
     override def run(): Unit = {
       while (true) {
-        readyMonotaskQueue.take().execute(NetworkScheduler.this)
+        val monotask = readyMonotaskQueue.take()
+        monotask.setStartTime()
+        monotask.execute(NetworkScheduler.this)
       }
     }
   })
@@ -141,6 +143,7 @@ private[spark] class NetworkScheduler(conf: SparkConf) extends Logging {
       } else {
         // Remove the macrotask from the outstanding requests and possibly start a new macrotask's
         // network requests.
+        monotask.setFinishTime()
         taskIdToNumOutstandingRequests.remove(taskId)
         if (networkRequestMonotaskQueue.size() + lowPriorityNetworkRequestMonotaskQueue.size() >
             0) {
