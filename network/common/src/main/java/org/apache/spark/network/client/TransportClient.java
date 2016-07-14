@@ -127,16 +127,17 @@ public class TransportClient implements Closeable {
     final String serverAddr = NettyUtils.getRemoteAddress(channel);
     final String blockIdsAsStrings = Arrays.toString(blockIds);
     final long startTime = System.currentTimeMillis();
-    logger.debug("Sending request for blocks {} to {}", blockIdsAsStrings, serverAddr);
 
     BlockFetchRequest request = new BlockFetchRequest(blockIds, taskAttemptId, attemptNumber);
+    logger.info("Sending request for blocks {} to {} at {}",
+        blockIdsAsStrings, serverAddr, System.nanoTime());
     channel.writeAndFlush(request).addListener(
       new ChannelFutureListener() {
         @Override
         public void operationComplete(ChannelFuture future) throws Exception {
           if (future.isSuccess()) {
             long timeTaken = System.currentTimeMillis() - startTime;
-            logger.trace("Sending request for {} to {} took {} ms", blockIdsAsStrings, serverAddr,
+            logger.info("Sending request for {} to {} took {} ms", blockIdsAsStrings, serverAddr,
               timeTaken);
           } else {
             String errorMsg = String.format("Failed to send request for %s to %s: %s",

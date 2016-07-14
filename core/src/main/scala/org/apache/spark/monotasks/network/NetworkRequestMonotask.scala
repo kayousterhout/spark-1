@@ -81,11 +81,12 @@ private[spark] class NetworkRequestMonotask(
       val blockIds = filteredShuffleBlockIdsAndSizes.map(_._1)
       val blockIdsAsString = blockIds.mkString(", ")
       val totalSize = filteredShuffleBlockIdsAndSizes.map(_._2).sum
-      logInfo(s"Monotask $taskId: sending request for blocks $blockIdsAsString (total size " +
-        s"(${Utils.bytesToString(totalSize)}}) to $remoteAddress")
       networkScheduler = Some(scheduler)
       scheduler.addOutstandingBytes(totalSize)
       requestIssueTimeNanos = System.nanoTime()
+      logInfo(s"Monotask $taskId: sending request for blocks $blockIdsAsString (total size " +
+        s"(${Utils.bytesToString(totalSize)}}) to $remoteAddress (time since start: " +
+        s"${requestIssueTimeNanos - startTimeNanos}; start: $requestIssueTimeNanos")
 
       try {
         SparkEnv.get.blockTransferService.fetchBlocks(

@@ -69,7 +69,7 @@ private[spark] abstract class Monotask(val context: TaskContextImpl) extends Log
   /** Returns the elapsed time since the monotask began queuing. */
   def getQueueTime(): Long = System.nanoTime - queueStartTimeNanos
 
-  private var startTimeNanos: Long = 0
+  protected var startTimeNanos: Long = 0
   private var runtimeNanos: Long = -1
 
   def setStartTime(): Unit = startTimeNanos = System.nanoTime
