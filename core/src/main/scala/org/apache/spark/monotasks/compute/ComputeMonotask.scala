@@ -34,7 +34,6 @@ private[spark] abstract class ComputeMonotask(context: TaskContextImpl)
   protected def execute(): Option[ByteBuffer]
 
   private var accountingDone = false
-  private var startTimeNanos = 0L
 
   /** Runs the execute method and handles common exceptions thrown by ComputeMonotasks. */
   def executeAndHandleExceptions() {
@@ -45,7 +44,6 @@ private[spark] abstract class ComputeMonotask(context: TaskContextImpl)
     //       because the dependency manager is the same for all tasks in an executor).
     Thread.currentThread.setContextClassLoader(SparkEnv.get.dependencyManager.replClassLoader)
 
-    startTimeNanos = System.nanoTime()
     try {
       Accumulators.registeredAccumulables.set(context.accumulators)
       TaskContext.setTaskContext(context)
