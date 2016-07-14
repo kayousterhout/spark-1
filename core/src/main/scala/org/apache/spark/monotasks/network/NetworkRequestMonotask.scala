@@ -142,8 +142,9 @@ private[spark] class NetworkRequestMonotask(
     removeOutstandingBlock(blockId, "onSuccess")
 
     val elapsedNanos = System.nanoTime() - requestIssueTimeNanos
-    logInfo(s"Received block $blockId from BlockManagerId $remoteAddress (total elapsed nanos: " +
-      s"$elapsedNanos; nanos on remote machine: $totalRemoteNanos; disk nanos: $diskReadNanos)")
+    logInfo(s"Received block $blockId from BlockManagerId $remoteAddress (total elapsed millis: " +
+      s"${elapsedNanos / 1000000}; nanos on remote machine: $totalRemoteNanos; " +
+      s"disk nanos: $diskReadNanos)")
 
     // Increment the ref count because we need to pass this to a different thread.
     // This needs to be released after use.

@@ -132,6 +132,7 @@ public class TransportResponseHandler extends MessageHandler<ResponseMessage> {
   public synchronized void handle(ResponseMessage message) {
     String remoteAddress = NettyUtils.getRemoteAddress(channel);
     if (message instanceof BlockFetchSuccess) {
+      logger.info("Received BlockFetchSuccess at {}", System.currentTimeMillis());
       BlockFetchSuccess resp = (BlockFetchSuccess) message;
       BlockReceivedCallback listener = outstandingFetches.get(resp.blockId);
       if (listener == null) {
