@@ -87,6 +87,7 @@ public class TransportChannelHandler extends SimpleChannelInboundHandler<Message
 
   @Override
   public void channelRead0(ChannelHandlerContext ctx, Message request) {
+    logger.info("Received message {} at {}", request, System.currentTimeMillis());
     if (request instanceof RequestMessage) {
       requestHandler.handle((RequestMessage) request);
     } else {
