@@ -34,7 +34,9 @@ private[spark] class PrepareMonotask(context: TaskContextImpl, val serializedTas
     context.taskMetrics.setStartNetworkTransmitTotalIdleMillis(
       SparkEnv.get.localDagScheduler.getNetworkTransmitTotalIdleMillis())
 
+    val firstDeserStartTime = System.currentTimeMillis()
     val (taskFiles, taskJars, taskBytes) = Macrotask.deserializeWithDependencies(serializedTask)
+    logInfo(s"PQ: $this First deser took ${System.currentTimeMillis - firstDeserStartTime}")
 
     val dependencyManager = SparkEnv.get.dependencyManager
     // TODO: This call is a little bit evil because it's synchronized, so can block and waste CPU
@@ -51,14 +53,20 @@ private[spark] class PrepareMonotask(context: TaskContextImpl, val serializedTas
     context.initialize(macrotask.stageId, macrotask.partition.index)
 
     SparkEnv.get.mapOutputTracker.updateEpoch(macrotask.epoch)
+    logInfo(
+      s"PQ: $this After updateEpoch, elapsed: ${System.currentTimeMillis - firstDeserStartTime}")
 
     val monotasks = macrotask.getMonotasks(context)
 
     // Set this PrepareMonotask as a dependency, to facilitate correct tracking of which resource
     // the macrotask is using.
     monotasks.foreach(_.addDependency(this))
+    logInfo(
+      s"PQ: $this After add dependency, elapsed: ${System.currentTimeMillis - firstDeserStartTime}")
 
     SparkEnv.get.localDagScheduler.post(SubmitMonotasks(monotasks))
+    logInfo(
+      s"PQ: $this After post, elapsed: ${System.currentTimeMillis - firstDeserStartTime}")
     None
   }
 }
