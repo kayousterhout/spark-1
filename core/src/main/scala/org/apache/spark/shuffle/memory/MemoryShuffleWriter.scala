@@ -18,7 +18,7 @@ package org.apache.spark.shuffle.memory
 
 import java.nio.ByteBuffer
 
-import org.apache.spark.{ShuffleDependency, SparkEnv, TaskContext}
+import org.apache.spark.{Logging, ShuffleDependency, SparkEnv, TaskContext}
 import org.apache.spark.executor.ShuffleWriteMetrics
 import org.apache.spark.scheduler.MapStatus
 import org.apache.spark.serializer.{SerializationStream, Serializer}
@@ -46,7 +46,7 @@ private[spark] class MemoryShuffleWriter[K, V](
     private val mapId: Int,
     context: TaskContext,
     private val outputSingleBlock: Boolean,
-    separateCompression: Boolean) extends ShuffleWriter[K, V] {
+    separateCompression: Boolean) extends ShuffleWriter[K, V] with Logging {
 
   private val dep = handle.dependency
 
@@ -62,6 +62,7 @@ private[spark] class MemoryShuffleWriter[K, V](
   context.taskMetrics().shuffleWriteMetrics = Some(shuffleWriteMetrics)
 
   override def write(records: Iterator[_ <: Product2[K, V]]): Unit = {
+    val startTimeMillis = System.currentTimeMillis()
     val iter = if (dep.aggregator.isDefined) {
       if (dep.mapSideCombine) {
         dep.aggregator.get.combineValuesByKey(records, context)
@@ -78,6 +79,11 @@ private[spark] class MemoryShuffleWriter[K, V](
       val bucketId = dep.partitioner.getPartition(elem._1)
       shuffleData(bucketId).write(elem)
       shuffleWriteMetrics.incShuffleRecordsWritten(1)
+      val recordsWritten = shuffleWriteMetrics.shuffleRecordsWritten
+      if (recordsWritten % 10000 == 0) {
+        logInfo(s"Elapsed time after $recordsWritten is " +
+          s"${System.currentTimeMillis() - startTimeMillis}")
+      }
     }
   }
 
