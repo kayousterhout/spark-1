@@ -57,6 +57,8 @@ private[spark] class PrepareMonotask(context: TaskContextImpl, val serializedTas
       s"PQ: $this After updateEpoch, elapsed: ${System.currentTimeMillis - firstDeserStartTime}")
 
     val monotasks = macrotask.getMonotasks(context)
+    logInfo(
+      s"PQ: $this after getMonotasks, elapsed: ${System.currentTimeMillis - firstDeserStartTime}")
 
     // Set this PrepareMonotask as a dependency, to facilitate correct tracking of which resource
     // the macrotask is using.
