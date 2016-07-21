@@ -50,12 +50,16 @@ private[spark] class ResultMacrotask[T, U: ClassTag](
   override def toString = s"ResultTask($stageId, ${partition.index})"
 
   override def getMonotasks(context: TaskContextImpl): Seq[Monotask] = {
+    val startTime = System.currentTimeMillis()
     val ser = SparkEnv.get.closureSerializer.newInstance()
+    logInfo(s"GM: after closureSerializer ${System.currentTimeMillis - startTime}")
     val (rdd, func) = ser.deserialize[(RDD[T], (TaskContext, Iterator[T]) => U)](
       ByteBuffer.wrap(taskBinary.value), SparkEnv.get.dependencyManager.replClassLoader)
+    logInfo(s"GM: after deserialize ${System.currentTimeMillis - startTime}")
     val resultMonotask = new ResultMonotask(context, rdd, partition, func)
 
     val rddMonotasks = rdd.buildDag(partition, dependencyIdToPartitions, context, resultMonotask)
+    logInfo(s"GM: after buildDag ${System.currentTimeMillis - startTime}")
 
     val allMonotasks = rddMonotasks ++ Seq(resultMonotask)
     addResultSerializationMonotask(context, resultMonotask.getResultBlockId(), allMonotasks)
