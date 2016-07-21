@@ -409,7 +409,13 @@ abstract class RDD[T: ClassTag](
     val startTimeMillis = System.currentTimeMillis()
     val blockId = new RDDBlockId(this.id, partition.index)
     val storageLocations = blockManager.getAllStorageLocations(blockId)
-    if (blockManager.isStoredLocally(blockId)) {
+    logInfo(
+      s"buildDag: time to get stoage locations is ${System.currentTimeMillis - startTimeMillis}")
+    val isStoredLocally = blockManager.isStoredLocally(blockId)
+    logInfo(
+      s"buildDag: time to determine if stored locally is " +
+        s"${System.currentTimeMillis - startTimeMillis}")
+    if (isStoredLocally) {
       // This RDD is stored locally and needs to be loaded into the MemoryStore. Note that it is
       // possible that the RDD is already cached in the MemoryStore, in which case no new Monotasks
       // will be created.
