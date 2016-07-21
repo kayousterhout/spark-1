@@ -57,6 +57,7 @@ private[spark] class ResultMacrotask[T, U: ClassTag](
       ByteBuffer.wrap(taskBinary.value), SparkEnv.get.dependencyManager.replClassLoader)
     logInfo(s"GM: after deserialize ${System.currentTimeMillis - startTime}")
     val resultMonotask = new ResultMonotask(context, rdd, partition, func)
+    logInfo(s"GM: after ResultMonotask ${System.currentTimeMillis() - startTime}")
 
     val rddMonotasks = rdd.buildDag(partition, dependencyIdToPartitions, context, resultMonotask)
     logInfo(s"GM: after buildDag ${System.currentTimeMillis - startTime}")

@@ -76,7 +76,7 @@ abstract class Dependency[T] extends Serializable {
  * of partitions of the parent RDD. Narrow dependencies allow for pipelined execution.
  */
 @DeveloperApi
-abstract class NarrowDependency[T](_rdd: RDD[T]) extends Dependency[T] {
+abstract class NarrowDependency[T](_rdd: RDD[T]) extends Dependency[T] with Logging {
   /**
    * Get the parent partitions for a child partition.
    * @param partitionId a partition of the child RDD
@@ -92,15 +92,18 @@ abstract class NarrowDependency[T](_rdd: RDD[T]) extends Dependency[T] {
     context: TaskContextImpl,
     nextMonotask: Monotask)
     : Seq[Monotask] = {
+    val startTime = System.currentTimeMillis()
     // For each of the parent partitions, get the input monotasks to generate that partition.
     val partitions = dependencyIdToPartitions.get(this.id)
     if (partitions.isEmpty) {
       throw new SparkException("Missing parent partition information for partition " +
         s"${partition.index} of dependency $this (should have been set in DAGScheduler)")
     } else {
-      partitions.get.toArray.flatMap { parentPartition =>
+      val ret = partitions.get.toArray.flatMap { parentPartition =>
         rdd.buildDag(parentPartition, dependencyIdToPartitions, context, nextMonotask)
       }
+      logInfo(s"To get monotasks: ${System.currentTimeMillis() - startTime}")
+      ret
     }
   }
 }
@@ -128,7 +131,7 @@ class ShuffleDependency[K, V, C](
     val keyOrdering: Option[Ordering[K]] = None,
     val aggregator: Option[Aggregator[K, V, C]] = None,
     val mapSideCombine: Boolean = false)
-  extends Dependency[Product2[K, V]] {
+  extends Dependency[Product2[K, V]] with Logging {
 
   override def rdd = _rdd.asInstanceOf[RDD[Product2[K, V]]]
 
@@ -150,10 +153,15 @@ class ShuffleDependency[K, V, C](
     context: TaskContextImpl,
     nextMonotask: Monotask)
     : Seq[Monotask] = {
+    val startTimeMillis = System.currentTimeMillis()
     // TODO: should the shuffle helper code just be part of the dependency?
     shuffleHelper = Some(new ShuffleHelper(this, partition.index, context))
     val monotasks = shuffleHelper.get.getReadMonotasks()
+    logInfo(s"Time to get shuffle helper / get read monos: " +
+      s"${System.currentTimeMillis() - startTimeMillis}")
     monotasks.foreach(nextMonotask.addDependency(_))
+    logInfo(s"Time to add dependencies: " +
+      s"${System.currentTimeMillis() - startTimeMillis}")
     monotasks
   }
 

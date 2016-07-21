@@ -474,7 +474,8 @@ abstract class RDD[T: ClassTag](
       //   input monotask --'
       //   input monotask --'
       //         ...
-      logDebug(s"buildDag: Block $blockId needs to be computed but not written to disk.")
+      logInfo(s"buildDag: Block $blockId needs to be computed but not written to disk. " +
+        s"Elapsed ${System.currentTimeMillis - startTimeMillis}")
       getInputMonotasks(partition, dependencyIdToPartitions, context, nextMonotask)
     }
   }
