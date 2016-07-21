@@ -42,11 +42,13 @@ private[spark] class ShuffleMapMonotask[T](
     dependency.shuffleHandle, partition.index, context, outputSingleBlock)
 
   override def getResult(): MapStatus = {
+    val startTime = System.currentTimeMillis()
     val mapStatus = try {
       // First, need to cast the RDD iterator to an iterator of Product2s, because the RDD
       // that's deserialized from the task description doesn't have any type restrictions.
       val castedIterator =
         rdd.iterator(partition, context).asInstanceOf[Iterator[_ <: Product2[Any, Any]]]
+      logInfo(s"SMM: Elapsed time after iterator: ${System.currentTimeMillis - startTime}")
       // Before writing the iterator, make sure it's an iterator of Tuple2s. This is to maintain
       // consistency with Spark, which always copies the key and value out of shuffled pairs to a
       // new Tuple2 (one reason this is necessary is so that the serialization code path can
@@ -56,11 +58,14 @@ private[spark] class ShuffleMapMonotask[T](
       // https://github.com/NetSys/spark-monotasks/blob/spark_with_logging/
       //     core/src/main/scala/org/apache/spark/util/collection/ExternalSorter.scala#L375
       shuffleWriter.write(castedIterator.map(product2 => (product2._1, product2._2)))
+      logInfo(s"SMM: Elapsed time after shuffle write: ${System.currentTimeMillis() - startTime}")
       val blockSizes = shuffleWriter.stop(success = true)
+      logInfo(s"SMM: Elapsed time after stop: ${System.currentTimeMillis() - startTime}")
 
       if (SparkEnv.get.conf.getBoolean("spark.monotasks.earlyShuffle", false)) {
         notifyReduceTasksOfMapOutput(blockSizes)
       }
+      logInfo(s"SMM: Elapsed time after notify: ${System.currentTimeMillis() - startTime}")
 
       MapStatus(SparkEnv.get.blockManager.blockManagerId, blockSizes.map(_.toLong))
     } catch {

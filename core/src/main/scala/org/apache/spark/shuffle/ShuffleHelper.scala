@@ -109,6 +109,7 @@ class ShuffleHelper[K, V, C](
   def getDeserializedAggregatedSortedData(): Iterator[Product2[K, C]] = {
     val shuffleDataSerializer = Serializer.getSerializer(shuffleDependency.serializer)
 
+    val startTime = System.currentTimeMillis()
     val decompressedDeserializedIter = statusesByExecutorId.iterator.flatMap {
       case (blockManagerId, blockIdsAndSizes) =>
         blockIdsAndSizes.flatMap {
@@ -127,6 +128,7 @@ class ShuffleHelper[K, V, C](
             }
         }
     }
+    logInfo(s"Time for getting first it: ${System.currentTimeMillis() - startTime}")
 
     getMaybeSortedIterator(getMaybeAggregatedIterator(decompressedDeserializedIter))
   }
@@ -155,6 +157,7 @@ class ShuffleHelper[K, V, C](
     // because we have an InputStream already (as opposed to a ByteBuffer).
     val inputStream = dataBuffer.createInputStream()
     val decompressedStream = blockManager.wrapForCompression(blockId, inputStream)
+    // TODO: reuse serializers!!
     val iter = serializer.newInstance().deserializeStream(decompressedStream).asIterator
 
     // Create an iterator that will record the number of records read.
