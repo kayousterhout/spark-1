@@ -50,7 +50,7 @@ class ShuffleHelper[K, V, C](
   private val startTime = System.currentTimeMillis
   private val statusesByExecutorId: Seq[(BlockManagerId, Seq[(ShuffleBlockId, Long)])] =
     SparkEnv.get.mapOutputTracker.getMapStatusesByExecutorId(shuffleDependency.shuffleId, reduceId)
-  logDebug("Fetching map output location for shuffle %d, reduce %d took %d ms".format(
+  logInfo("Fetching map output location for shuffle %d, reduce %d took %d ms".format(
     shuffleDependency.shuffleId, reduceId, System.currentTimeMillis - startTime))
 
   def getReadMonotasks(): Seq[Monotask] = {
@@ -58,7 +58,10 @@ class ShuffleHelper[K, V, C](
       case (blockManagerId, blockIdsAndSizes) =>
         val nonZeroBlockIdsAndSizes = blockIdsAndSizes.filter(_._2 > 0)
         if (nonZeroBlockIdsAndSizes.size > 0) {
-          getReadMonotasksForBlocks(nonZeroBlockIdsAndSizes, blockManagerId)
+          val ret = getReadMonotasksForBlocks(nonZeroBlockIdsAndSizes, blockManagerId)
+          logInfo("ShuffleHelper: elapsed time to end of getRead: " +
+            s"${System.currentTimeMillis - startTime}")
+          ret
         } else {
           None
         }

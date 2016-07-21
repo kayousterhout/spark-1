@@ -406,6 +406,7 @@ abstract class RDD[T: ClassTag](
       context: TaskContextImpl,
       nextMonotask: Monotask,
       blockManager: BlockManager = SparkEnv.get.blockManager): Seq[Monotask] = {
+    val startTimeMillis = System.currentTimeMillis()
     val blockId = new RDDBlockId(this.id, partition.index)
     val storageLocations = blockManager.getAllStorageLocations(blockId)
     if (blockManager.isStoredLocally(blockId)) {
@@ -428,6 +429,7 @@ abstract class RDD[T: ClassTag](
       // TODO: Remove this once monotasks support reading remote data.
       val remoteStr = blockManager.getAllStorageLocations(blockId).map(
         b => s"${b.executorId} (${b.host})").mkString(", ")
+      logInfo(s"BD: time to get all locs: ${System.currentTimeMillis - startTimeMillis}")
       val message = s"Block $blockId (read by partition ${partition.index} for task " +
         s"${context.taskAttemptId}) is stored remotely on $remoteStr. Exiting to avoid " +
         "re-computing the block."
