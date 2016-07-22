@@ -62,7 +62,8 @@ private[spark] class ShuffleMapMonotask[T](
       val blockSizes = shuffleWriter.stop(success = true)
       logInfo(s"SMM: Elapsed time after stop: ${System.currentTimeMillis() - startTime}")
 
-      if (SparkEnv.get.conf.getBoolean("spark.monotasks.earlyShuffle", false)) {
+      val env = SparkEnv.get
+      if (env.conf.getBoolean("spark.monotasks.earlyShuffle", false) && env.executorId == "0") {
         notifyReduceTasksOfMapOutput(blockSizes)
       }
       logInfo(s"SMM: Elapsed time after notify: ${System.currentTimeMillis() - startTime}")
