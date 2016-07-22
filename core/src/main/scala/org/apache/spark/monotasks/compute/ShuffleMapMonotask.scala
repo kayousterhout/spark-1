@@ -60,10 +60,12 @@ private[spark] class ShuffleMapMonotask[T](
       shuffleWriter.write(castedIterator.map(product2 => (product2._1, product2._2)))
       logInfo(s"SMM: Elapsed time after shuffle write: ${System.currentTimeMillis() - startTime}")
       val blockSizes = shuffleWriter.stop(success = true)
-      logInfo(s"SMM: Elapsed time after stop: ${System.currentTimeMillis() - startTime}")
-
       val env = SparkEnv.get
-      if (env.conf.getBoolean("spark.monotasks.earlyShuffle", false) && env.executorId == "0") {
+      logInfo(s"SMM: Elapsed time after stop (${env.executorId}): " +
+        s"${System.currentTimeMillis() - startTime}")
+
+      if (env.conf.getBoolean("spark.monotasks.earlyShuffle", false)
+        && env.executorId.equals("0")) {
         notifyReduceTasksOfMapOutput(blockSizes)
       }
       logInfo(s"SMM: Elapsed time after notify: ${System.currentTimeMillis() - startTime}")
