@@ -65,7 +65,7 @@ private[spark] class ShuffleMapMonotask[T](
         s"${System.currentTimeMillis() - startTime}")
 
       if (env.conf.getBoolean("spark.monotasks.earlyShuffle", false)
-        && env.executorId.equals("0")) {
+        && env.executorId.equals("0") && partition.index >= 16) {
         notifyReduceTasksOfMapOutput(blockSizes)
       }
       logInfo(s"SMM: Elapsed time after notify: ${System.currentTimeMillis() - startTime}")
