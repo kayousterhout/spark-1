@@ -121,7 +121,6 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val actorSyste
         val taskSetId = scheduler.taskIdToTaskSetId.getOrElse(taskId, "invalid")
         scheduler.statusUpdate(taskId, state, data.value)
         if (TaskState.isFinished(state)) {
-          logInfo(s"Task $taskId finished; scheduler map is ${scheduler.taskIdToTaskSetId}")
           executorDataMap.get(executorId) match {
             case Some(executorInfo) =>
               executorInfo.freeSlots += scheduler.CPUS_PER_TASK
@@ -131,8 +130,6 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val actorSyste
               } else {
                 executorInfo.taskSetIdToRunningTasks.remove(taskSetId)
               }
-              logInfo(s"After task $taskId completed on $executorId, " +
-                s"taskIdToRunningTasks is ${executorInfo.taskSetIdToRunningTasks}")
               makeOffers(executorId)
             case None =>
               // Ignoring the update since we don't know about the executor.

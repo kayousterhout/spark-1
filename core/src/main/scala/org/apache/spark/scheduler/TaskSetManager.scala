@@ -237,7 +237,6 @@ private[spark] class TaskSetManager(
     }
 
     if (isShuffleStage || tasks(index).preferredLocations == Nil) {
-      logInfo(s"Adding task to no-prefs list")
       addTo(pendingTasksWithNoPrefs)
     }
 
