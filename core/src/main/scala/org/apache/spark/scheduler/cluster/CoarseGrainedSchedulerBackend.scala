@@ -118,7 +118,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val actorSyste
         }
 
       case StatusUpdate(executorId, taskId, state, data) =>
-        val taskSetId = scheduler.taskIdToTaskSetId.getOrElse(taskSetId, "invalid")
+        val taskSetId = scheduler.taskIdToTaskSetId.getOrElse(taskId, "invalid")
         scheduler.statusUpdate(taskId, state, data.value)
         if (TaskState.isFinished(state)) {
           logInfo(s"Task $taskId finished; scheduler map is ${scheduler.taskIdToTaskSetId}")
