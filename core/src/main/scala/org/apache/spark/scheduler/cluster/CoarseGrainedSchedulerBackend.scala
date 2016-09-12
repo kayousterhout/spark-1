@@ -118,13 +118,13 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val actorSyste
         }
 
       case StatusUpdate(executorId, taskId, state, data) =>
+        val taskSetId = scheduler.taskIdToTaskSetId.getOrElse(taskSetId, "invalid")
         scheduler.statusUpdate(taskId, state, data.value)
         if (TaskState.isFinished(state)) {
           logInfo(s"Task $taskId finished; scheduler map is ${scheduler.taskIdToTaskSetId}")
           executorDataMap.get(executorId) match {
             case Some(executorInfo) =>
               executorInfo.freeSlots += scheduler.CPUS_PER_TASK
-              val taskSetId = scheduler.taskIdToTaskSetId(taskId)
               val numRunningTasks = executorInfo.taskSetIdToRunningTasks(taskSetId)
               if (numRunningTasks > 1) {
                 executorInfo.taskSetIdToRunningTasks.put(taskSetId, numRunningTasks - 1)
