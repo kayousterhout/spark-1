@@ -37,6 +37,9 @@ private[spark] abstract class Monotask(val context: TaskContextImpl) extends Log
   /** Whether this monotask has finished executing. */
   var isFinished = false
 
+  // TODO
+  var virtualSize: Double = 1
+
   /**
    * The BlockId with which this monotask stored temporary data in the BlockManager for use by its
    * dependencies, or None if the monotask did not store any temporary data.

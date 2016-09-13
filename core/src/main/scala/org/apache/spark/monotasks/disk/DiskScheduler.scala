@@ -18,10 +18,10 @@ package org.apache.spark.monotasks.disk
 
 import java.nio.channels.ClosedByInterruptException
 import java.util.Comparator
-import java.util.concurrent.{LinkedBlockingQueue, PriorityBlockingQueue}
+import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.atomic.AtomicInteger
 
-import scala.collection.mutable.HashMap
+import scala.collection.mutable.{ArrayBuffer, HashMap, Queue}
 import scala.util.control.NonFatal
 
 import org.apache.spark.{Logging, SparkConf, SparkEnv, SparkException}
@@ -77,9 +77,10 @@ private[spark] class DiskScheduler(
    */
   private def buildDiskAccessors(conf: SparkConf) {
     val numThreadsPerDisk = conf.getInt("spark.monotasks.threadsPerDisk", 1)
+    val monotaskTypeQueue = new MonotaskOrderHelper()
     diskIds.foreach { diskId =>
       logInfo(s"Creating $numThreadsPerDisk threads for disk $diskId")
-      diskAccessors(diskId) = new DiskAccessor(diskId, numThreadsPerDisk)
+      diskAccessors(diskId) = new DiskAccessor(diskId, numThreadsPerDisk, monotaskTypeQueue)
     }
   }
 
@@ -233,21 +234,14 @@ private[spark] class DiskScheduler(
     }
   }
 
-  /** Orders disk monotasks based on the macrotask's ID. */
-  private class MonotaskComparator extends Comparator[DiskMonotask] {
-    @Override def compare(monotask1: DiskMonotask, monotask2: DiskMonotask): Int = {
-      // Monotasks with smaller macrotask IDs should be prioritized first.
-      return (monotask1.context.taskAttemptId - monotask2.context.taskAttemptId).toInt
-    }
-  }
-
   /**
    * Stores and services the DiskMonotask queue for the specified disk.
    *
    * @param concurrency The maximum number of DiskMonotasks that will be executed concurrently on
    *                    each disk.
    */
-  private class DiskAccessor(diskId: String, concurrency: Int) extends Runnable {
+  private class DiskAccessor(
+      diskId: String, concurrency: Int, monotaskOrderHelper: MonotaskOrderHelper) extends Runnable {
 
     /** The name of the physical disk on which this DiskAccessor will operate. */
     val diskName = BlockFileManager.getDiskNameFromPath(diskId)
@@ -257,7 +251,7 @@ private[spark] class DiskScheduler(
      * are ordered by task ID so that requests from one machine can't accumulate and temporarily
      * starve requests from other machines).
      */
-    private val taskQueue = new PriorityBlockingQueue[DiskMonotask](11, new MonotaskComparator)
+    private val taskQueue = new RoundRobinByRemoteMachineQueue()
 
     private val numRunningAndQueuedDiskMonotasks = new AtomicInteger(0)
 
@@ -275,7 +269,7 @@ private[spark] class DiskScheduler(
     }
 
     def submitMonotask(monotask: DiskMonotask): Unit = {
-      taskQueue.put(monotask)
+      taskQueue.enqueue(monotask)
       numRunningAndQueuedDiskMonotasks.incrementAndGet()
     }
 
@@ -290,7 +284,9 @@ private[spark] class DiskScheduler(
 
       try {
         while (!currentThread.isInterrupted()) {
-          val diskMonotask = taskQueue.take()
+          val diskMonotask = taskQueue.dequeue()
+          logInfo(
+            s"Disk $diskName now running $diskMonotask for ${diskMonotask.context.remoteName}")
           var monotaskNotYetRun = true
           if (loadBalanceDiskWrites && diskMonotask.isInstanceOf[DiskWriteMonotask]) {
             // assignToDisk will return false if the task has already been completed by another disk
@@ -300,6 +296,8 @@ private[spark] class DiskScheduler(
             diskMonotask.context.taskMetrics.incDiskWaitNanos(diskMonotask.getQueueTime())
             executeMonotask(diskMonotask)
           }
+          // TODO: If the monotask already ran, we should treat the queue differently: rather than
+          // doing round-robin, we should select from the same queue again!
           numRunningAndQueuedDiskMonotasks.decrementAndGet()
         }
       } catch {
