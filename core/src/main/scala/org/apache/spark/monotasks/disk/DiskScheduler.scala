@@ -240,8 +240,8 @@ private[spark] class DiskScheduler(
       return (monotask1.context.taskAttemptId - monotask2.context.taskAttemptId).toInt
     }
   }
-
-  private class DiskQueue() {
+  
+  private class RoundRobinByTypeQueue() {
     // For each type of monotask, a FIFO queue of those monotasks.
     private val monotaskTypeToQueue = new HashMap[Class[_], Queue[DiskMonotask]]()
     // There are a fixed number of monotask types, so we assume we'll never need to remove anything
@@ -296,7 +296,7 @@ private[spark] class DiskScheduler(
      * are ordered by task ID so that requests from one machine can't accumulate and temporarily
      * starve requests from other machines).
      */
-    private val taskQueue = new DiskQueue()
+    private val taskQueue = new RoundRobinByTypeQueue()
 
     private val numRunningAndQueuedDiskMonotasks = new AtomicInteger(0)
 
@@ -340,6 +340,8 @@ private[spark] class DiskScheduler(
             diskMonotask.context.taskMetrics.incDiskWaitNanos(diskMonotask.getQueueTime())
             executeMonotask(diskMonotask)
           }
+          // TODO: If the monotask already ran, we should treat the queue differently: rather than
+          // doing round-robin, we should select from the same queue again!
           numRunningAndQueuedDiskMonotasks.decrementAndGet()
         }
       } catch {
