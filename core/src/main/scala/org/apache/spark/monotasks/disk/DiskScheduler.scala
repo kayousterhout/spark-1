@@ -308,8 +308,6 @@ private[spark] class DiskScheduler(
         newQueue
       }
       queue.enqueue(monotask)
-      logInfo(s"Remote machine disk map is now at " +
-        s"${remoteMachines(currentIndex)} in $remoteMachineToQueue")
       notify()
     }
 
@@ -321,7 +319,6 @@ private[spark] class DiskScheduler(
           currentIndex = (currentIndex + 1) % remoteMachines.length
           val queue = remoteMachineToQueue(currentRemoteMachine)
           if (!queue.isEmpty) {
-            logInfo(s"Running task for ${currentRemoteMachine}")
             return queue.dequeue()
           }
         }
