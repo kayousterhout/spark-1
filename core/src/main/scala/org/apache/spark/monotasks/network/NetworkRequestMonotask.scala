@@ -80,7 +80,7 @@ private[spark] class NetworkRequestMonotask(
 
   override def toString(): String = {
     s"Monotask ${this.taskId} (${this.getClass().getName()} for macrotask " +
-      s"${context.taskAttemptId} reduce ID $reduceId)}"
+      s"${context.taskAttemptId} reduce ID $reduceId to remote machine $remoteAddress))}"
   }
 
   override def execute(scheduler: NetworkScheduler): Unit = {

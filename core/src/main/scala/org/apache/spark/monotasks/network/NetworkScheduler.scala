@@ -88,7 +88,7 @@ private[spark] class NetworkScheduler(conf: SparkConf) extends Logging {
       } else {
         lowPriorityNetworkRequestMonotaskQueue.take()
       }
-      logDebug(s"Launching NetworkRequestMonotask $monotask when current outstanding bytes " +
+      logInfo(s"Launching NetworkRequestMonotask $monotask when current outstanding bytes " +
         s"is ${currentOutstandingBytes.get()} and max outstanding bytes is $maxOutstandingBytes.")
       addOutstandingBytes(monotask.totalBytes)
       readyMonotaskQueue.put(monotask)
