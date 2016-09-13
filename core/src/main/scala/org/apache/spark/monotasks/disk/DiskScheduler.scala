@@ -330,6 +330,7 @@ private[spark] class DiskScheduler(
       try {
         while (!currentThread.isInterrupted()) {
           val diskMonotask = taskQueue.dequeue()
+          logInfo(s"Disk $diskName now running $diskMonotask")
           var monotaskNotYetRun = true
           if (loadBalanceDiskWrites && diskMonotask.isInstanceOf[DiskWriteMonotask]) {
             // assignToDisk will return false if the task has already been completed by another disk
