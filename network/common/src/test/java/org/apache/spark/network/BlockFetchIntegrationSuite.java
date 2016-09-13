@@ -102,7 +102,8 @@ public class BlockFetchIntegrationSuite {
     BlockFetcher blockFetcher = new BlockFetcher() {
       @Override
       public void getBlockData(
-          String[] blockIds, Channel channel, long taskAttemptId, int attemptNumber) {
+          String[] blockIds, String remoteName, Channel channel, long taskAttemptId,
+          int attemptNumber) {
         for (String blockId : blockIds) {
           if (blockId.equals(BUFFER_BLOCK_ID)) {
             channel.writeAndFlush(
@@ -120,6 +121,7 @@ public class BlockFetchIntegrationSuite {
 
       @Override
       public void signalBlocksAvailable(
+          String remoteName,
           String[] blockIds,
           int[] blockSizes,
           long taskAttemptId,
