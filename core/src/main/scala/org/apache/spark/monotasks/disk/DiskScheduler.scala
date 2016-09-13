@@ -21,7 +21,7 @@ import java.util.Comparator
 import java.util.concurrent.{LinkedBlockingQueue, PriorityBlockingQueue}
 import java.util.concurrent.atomic.AtomicInteger
 
-import scala.collection.mutable.HashMap
+import scala.collection.mutable.{ArrayBuffer, HashMap, Queue}
 import scala.util.control.NonFatal
 
 import org.apache.spark.{Logging, SparkConf, SparkEnv, SparkException}
@@ -241,6 +241,45 @@ private[spark] class DiskScheduler(
     }
   }
 
+  private class DiskQueue() {
+    // For each type of monotask, a FIFO queue of those monotasks.
+    private val monotaskTypeToQueue = new HashMap[Class[_], Queue[DiskMonotask]]()
+    // There are a fixed number of monotask types, so we assume we'll never need to remove anything
+    // from this list.
+    private val monotaskTypes = new ArrayBuffer[Class[_]]
+    private var currentIndex = 0
+
+    def enqueue(monotask: DiskMonotask): Unit = synchronized {
+      val queue = monotaskTypeToQueue.get(monotask.getClass).getOrElse {
+        // TODO: linked list?
+        val newQueue = new Queue[DiskMonotask]()
+        monotaskTypeToQueue.put(monotask.getClass, newQueue)
+        monotaskTypes.append(monotask.getClass)
+        newQueue
+      }
+      queue.enqueue(monotask)
+      logInfo(s"Disk map is now $monotaskTypeToQueue")
+      notify()
+    }
+
+    def dequeue(): DiskMonotask = synchronized {
+      while (true) {
+        (0 until monotaskTypes.length).foreach {i =>
+          val currentType = monotaskTypes(currentIndex)
+          // Update currentIndex
+          currentIndex = (currentIndex + 1) % monotaskTypes.length
+          val queue = monotaskTypeToQueue(currentType)
+          if (!queue.isEmpty) {
+            return queue.dequeue()
+          }
+        }
+        wait()
+      }
+      // This exception is needed to satisfy the Scala compiler.
+      throw new Exception("Should not reach this state")
+    }
+  }
+
   /**
    * Stores and services the DiskMonotask queue for the specified disk.
    *
@@ -257,7 +296,7 @@ private[spark] class DiskScheduler(
      * are ordered by task ID so that requests from one machine can't accumulate and temporarily
      * starve requests from other machines).
      */
-    private val taskQueue = new PriorityBlockingQueue[DiskMonotask](11, new MonotaskComparator)
+    private val taskQueue = new DiskQueue()
 
     private val numRunningAndQueuedDiskMonotasks = new AtomicInteger(0)
 
@@ -275,7 +314,7 @@ private[spark] class DiskScheduler(
     }
 
     def submitMonotask(monotask: DiskMonotask): Unit = {
-      taskQueue.put(monotask)
+      taskQueue.enqueue(monotask)
       numRunningAndQueuedDiskMonotasks.incrementAndGet()
     }
 
@@ -290,7 +329,7 @@ private[spark] class DiskScheduler(
 
       try {
         while (!currentThread.isInterrupted()) {
-          val diskMonotask = taskQueue.take()
+          val diskMonotask = taskQueue.dequeue()
           var monotaskNotYetRun = true
           if (loadBalanceDiskWrites && diskMonotask.isInstanceOf[DiskWriteMonotask]) {
             // assignToDisk will return false if the task has already been completed by another disk
