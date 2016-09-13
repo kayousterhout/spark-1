@@ -243,7 +243,7 @@ private[spark] class DiskScheduler(
   
   private class RoundRobinByTypeQueue() {
     // For each type of monotask, a FIFO queue of those monotasks.
-    private val monotaskTypeToQueue = new HashMap[Class[_], Queue[DiskMonotask]]()
+    private val monotaskTypeToQueue = new HashMap[Class[_], RoundRobinByRemoteMachineQueue]()
     // There are a fixed number of monotask types, so we assume we'll never need to remove anything
     // from this list.
     private val monotaskTypes = new ArrayBuffer[Class[_]]
@@ -251,7 +251,7 @@ private[spark] class DiskScheduler(
 
     def enqueue(monotask: DiskMonotask): Unit = synchronized {
       val queue = monotaskTypeToQueue.get(monotask.getClass).getOrElse {
-        val newQueue = new Queue[DiskMonotask]()
+        val newQueue = new RoundRobinByRemoteMachineQueue()
         monotaskTypeToQueue.put(monotask.getClass, newQueue)
         monotaskTypes.append(monotask.getClass)
         newQueue
@@ -293,7 +293,7 @@ private[spark] class DiskScheduler(
   // with parameter types for key type and value type.
   private class RoundRobinByRemoteMachineQueue() {
     // For each remote machine, a FIFO queue of those monotasks.
-    private val remoteMachineToQueue = new HashMap[String, RoundRobinByTypeQueue]()
+    private val remoteMachineToQueue = new HashMap[String, Queue[DiskMonotask]]()
     // There are a fixed number of remote machines (for now), so we assume we'll never need to
     // remove anything from this list.
     private val remoteMachines = new ArrayBuffer[String]
@@ -302,7 +302,7 @@ private[spark] class DiskScheduler(
     def enqueue(monotask: DiskMonotask): Unit = synchronized {
       val remoteName = monotask.context.remoteName
       val queue = remoteMachineToQueue.get(remoteName).getOrElse {
-        val newQueue = new RoundRobinByTypeQueue()
+        val newQueue = new Queue[DiskMonotask]()
         remoteMachineToQueue.put(remoteName, newQueue)
         remoteMachines.append(remoteName)
         newQueue
@@ -327,6 +327,12 @@ private[spark] class DiskScheduler(
       // This exception is needed to satisfy the Scala compiler.
       throw new Exception("Should not reach this state")
     }
+
+    def isEmpty(): Boolean = {
+      remoteMachineToQueue.forall {
+        case (_, queue) => queue.isEmpty
+      }
+    }
   }
 
   /**
@@ -345,7 +351,7 @@ private[spark] class DiskScheduler(
      * are ordered by task ID so that requests from one machine can't accumulate and temporarily
      * starve requests from other machines).
      */
-    private val taskQueue = new RoundRobinByRemoteMachineQueue()
+    private val taskQueue = new RoundRobinByTypeQueue()
 
     private val numRunningAndQueuedDiskMonotasks = new AtomicInteger(0)
 
