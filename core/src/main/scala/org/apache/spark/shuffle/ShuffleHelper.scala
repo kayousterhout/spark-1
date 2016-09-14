@@ -106,10 +106,7 @@ class ShuffleHelper[K, V, C](
       if (filteredShuffleBlockIdsAndSizes.isEmpty) {
         Seq.empty[Monotask]
       } else {
-        blockIdsAndSizes.map {
-          case (blockId, size) =>
-            new NetworkRequestMonotask(context, location, Seq((blockId, size)))
-        }
+        Seq(new NetworkRequestMonotask(context, location, blockIdsAndSizes))
       }
     }
   }

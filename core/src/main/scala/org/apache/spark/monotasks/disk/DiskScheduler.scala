@@ -297,7 +297,8 @@ private[spark] class DiskScheduler(
     // There are a fixed number of remote machines (for now), so we assume we'll never need to
     // remove anything from this list.
     private val remoteMachines = new ArrayBuffer[String]
-    private var currentIndex = 0
+    private var previousIndex = 0
+    private var previousMacrotaskId: Long = -1
 
     def enqueue(monotask: DiskMonotask): Unit = synchronized {
       val remoteName = monotask.context.remoteName
@@ -313,13 +314,25 @@ private[spark] class DiskScheduler(
 
     def dequeue(): DiskMonotask = synchronized {
       while (true) {
+        // Try to launch a monotask at the previous index, if it was for the same macrotask as the
+        // previously launched task.
+        val previousRemoteMachineQueue = remoteMachineToQueue(remoteMachines(previousIndex))
+        val headForSameMacrotask = previousRemoteMachineQueue.headOption.map(
+          _.context.taskAttemptId == previousMacrotaskId).getOrElse(false)
+        if (headForSameMacrotask) {
+          logInfo(s"Running task for same macrotask $previousMacrotaskId")
+          return previousRemoteMachineQueue.dequeue()
+        }
+
         (0 until remoteMachines.length).foreach {i =>
-          val currentRemoteMachine = remoteMachines(currentIndex)
-          // Update currentIndex
-          currentIndex = (currentIndex + 1) % remoteMachines.length
+          // Update previousIndex before using it.
+          previousIndex = (previousIndex + 1) % remoteMachines.length
+          val currentRemoteMachine = remoteMachines(previousIndex)
           val queue = remoteMachineToQueue(currentRemoteMachine)
           if (!queue.isEmpty) {
-            return queue.dequeue()
+            val nextMonotask = queue.dequeue()
+            previousMacrotaskId = nextMonotask.context.taskAttemptId
+            return nextMonotask
           }
         }
         wait()
