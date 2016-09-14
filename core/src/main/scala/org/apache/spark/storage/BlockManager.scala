@@ -288,14 +288,14 @@ private[spark] class BlockManager(
       taskAttemptId: Long,
       attemptNumber: Int): Unit = {
     val taskContext = new TaskContextImpl(taskAttemptId, attemptNumber, remoteName = remoteName)
-    val monotasks = blockIdStrs.flatMap { blockIdStr =>
+    blockIdStrs.foreach { blockIdStr =>
       val blockId = BlockId(blockIdStr)
 
       val networkResponseMonotask = new NetworkResponseMonotask(blockId, channel, taskContext)
 
       // Try to send the block back from in-memory.
       if (memoryStore.contains(blockId)) {
-        Seq(networkResponseMonotask)
+        localDagScheduler.post(SubmitMonotask(networkResponseMonotask))
       } else {
         // Try to load the block from disk.
         getBlockLoadMonotask(blockId, taskContext) match {
@@ -304,19 +304,16 @@ private[spark] class BlockManager(
               networkResponseMonotask.markAsFailed(failureReason.toErrorString)
             }
             networkResponseMonotask.addDependency(blockLoadMonotask)
-            Seq(networkResponseMonotask, blockLoadMonotask)
+            localDagScheduler.post(SubmitMonotasks(Seq(networkResponseMonotask, blockLoadMonotask)))
 
           case None =>
             val failureMessage = s"Block $blockId not found in memory or on disk"
             logError(failureMessage)
             networkResponseMonotask.markAsFailed(failureMessage)
-            Seq(networkResponseMonotask)
+            localDagScheduler.post(SubmitMonotask(networkResponseMonotask))
         }
       }
     }
-    // Submit all of the monotasks in one chunk, so that they all end up back-to-back in each
-    // resource scheduler.
-    localDagScheduler.post(SubmitMonotasks(monotasks))
   }
 
   /**
