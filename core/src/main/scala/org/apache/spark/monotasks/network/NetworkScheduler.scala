@@ -22,6 +22,7 @@ import java.util.concurrent.atomic.AtomicLong
 import scala.collection.mutable.HashSet
 
 import org.apache.spark.{Logging, SparkConf, SparkException}
+import org.apache.spark.monotasks.RoundRobinBlockingQueue
 
 private[spark] class NetworkScheduler(conf: SparkConf) extends Logging {
   /** Number of bytes that this executor is currently waiting to receive over the network. */
@@ -51,7 +52,8 @@ private[spark] class NetworkScheduler(conf: SparkConf) extends Logging {
    * with all monotasks for a given task, so they'll all be submitted to the per-resource
    * schedulers in order, and no others will get inserted in between).
    */
-  private val networkRequestMonotaskQueue = new LinkedBlockingQueue[NetworkRequestMonotask]()
+  private val networkRequestMonotaskQueue =
+    new RoundRobinBlockingQueue[String, NetworkRequestMonotask]()
 
   /** Maximum number of bytes that can be outstanding over the network at once. */
   private val maxOutstandingBytes =
@@ -84,7 +86,7 @@ private[spark] class NetworkScheduler(conf: SparkConf) extends Logging {
     while (currentOutstandingBytes.get() < maxOutstandingBytes &&
       !(lowPriorityNetworkRequestMonotaskQueue.isEmpty && networkRequestMonotaskQueue.isEmpty)) {
       val monotask = if (!networkRequestMonotaskQueue.isEmpty) {
-        networkRequestMonotaskQueue.take()
+        networkRequestMonotaskQueue.dequeue()
       } else {
         lowPriorityNetworkRequestMonotaskQueue.take()
       }
@@ -108,7 +110,8 @@ private[spark] class NetworkScheduler(conf: SparkConf) extends Logging {
         if (networkRequestMonotask.isLowPriority()) {
           lowPriorityNetworkRequestMonotaskQueue.put(networkRequestMonotask)
         } else {
-          networkRequestMonotaskQueue.put(networkRequestMonotask)
+          networkRequestMonotaskQueue.enqueue(
+            networkRequestMonotask.remoteAddress.host, networkRequestMonotask)
         }
         maybeLaunchMonotasks()
 
