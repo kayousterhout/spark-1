@@ -283,6 +283,7 @@ private[spark] class BlockManager(
 
   override def getBlockData(
       blockIdStrs: Array[String],
+      totalVirtualSize: Double,
       remoteName: String,
       channel: Channel,
       taskAttemptId: Long,
@@ -300,6 +301,7 @@ private[spark] class BlockManager(
         // Try to load the block from disk.
         getBlockLoadMonotask(blockId, taskContext) match {
           case Some(blockLoadMonotask) =>
+            blockLoadMonotask.virtualSize = totalVirtualSize / blockIdStrs.length
             blockLoadMonotask.addAlternateFailureHandler { failureReason: TaskFailedReason =>
               networkResponseMonotask.markAsFailed(failureReason.toErrorString)
             }

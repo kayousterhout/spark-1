@@ -266,10 +266,9 @@ private[spark] class DiskScheduler(
           val queue = monotaskTypeToQueue(monotaskType)
           if (!queue.isEmpty) {
             val monotask = queue.dequeue()
-            val size = blockFileManager.getSize(monotask.blockId, diskId)
-            logInfo(s"Starting monotask $monotask of size $size on disk $diskId (map is " +
-              s"${orderHelper.monotaskTypeToOperationBytes}")
-            orderHelper.updateStateForStartedMonotask(monotaskType, size)
+            logInfo(s"Starting monotask $monotask of size ${monotask.virtualSize} on disk " +
+              s"$diskId (map is ${orderHelper.monotaskTypeToTotalSize}")
+            orderHelper.updateStateForStartedMonotask(monotaskType, monotask.virtualSize)
             return monotask
           }
         }

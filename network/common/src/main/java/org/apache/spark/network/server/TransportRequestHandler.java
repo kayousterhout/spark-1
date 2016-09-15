@@ -92,7 +92,8 @@ public class TransportRequestHandler extends MessageHandler<RequestMessage> {
 
     logger.debug("Received req from {} to fetch blocks {}", client, Arrays.toString(req.blockIds));
 
-    blockFetcher.getBlockData(req.blockIds, client, channel, req.taskAttemptId, req.attemptNumber);
+    blockFetcher.getBlockData(
+        req.blockIds, req.totalVirtualSize, client, channel, req.taskAttemptId, req.attemptNumber);
   }
 
   private void processBlocksAvailable(final BlocksAvailable blocksAvailable) {

@@ -54,7 +54,7 @@ class ShuffleHelper[K, V, C](
     shuffleDependency.shuffleId, reduceId, System.currentTimeMillis - startTime))
 
   def getReadMonotasks(): Seq[Monotask] = {
-    statusesByExecutorId.flatMap {
+    val readMonotasks = statusesByExecutorId.flatMap {
       case (blockManagerId, blockIdsAndSizes) =>
         val nonZeroBlockIdsAndSizes = blockIdsAndSizes.filter(_._2 > 0)
         if (nonZeroBlockIdsAndSizes.size > 0) {
@@ -63,6 +63,9 @@ class ShuffleHelper[K, V, C](
           None
         }
     }
+    val sizePerMonotask = 1.0 / readMonotasks.length
+    readMonotasks.foreach(_.virtualSize = sizePerMonotask)
+    readMonotasks
   }
 
   /**

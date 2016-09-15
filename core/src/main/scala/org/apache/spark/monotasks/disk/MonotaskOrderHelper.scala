@@ -25,7 +25,7 @@ import scala.collection.mutable.HashMap
  * simultaneously.
  */
 class MonotaskOrderHelper {
-  val monotaskTypeToOperationBytes = new HashMap[Class[_], Long]
+  val monotaskTypeToTotalSize = new HashMap[Class[_], Double]
 
   /**
    * Returns the given monotask types, sorted by which types should be run first.
@@ -35,12 +35,12 @@ class MonotaskOrderHelper {
    * type).
    */
   def getOrderedTypes(unorderedTyes: Seq[Class[_]]): Seq[Class[_]] = synchronized {
-    unorderedTyes.sortBy(monotaskTypeToOperationBytes.get(_).getOrElse(0L))
+    unorderedTyes.sortBy(monotaskTypeToTotalSize.get(_).getOrElse(0.0))
   }
 
-  def updateStateForStartedMonotask(monotaskClass: Class[_], size: Long): Unit = synchronized {
-    // Update the bytes used by each type of monotask.
-    val existingBytes = monotaskTypeToOperationBytes.get(monotaskClass).getOrElse(0L)
-    monotaskTypeToOperationBytes.put(monotaskClass, existingBytes + size)
+  def updateStateForStartedMonotask(monotaskClass: Class[_], size: Double): Unit = synchronized {
+    // Update the total size used by each type of monotask.
+    val existingSize = monotaskTypeToTotalSize.get(monotaskClass).getOrElse(0.0)
+    monotaskTypeToTotalSize.put(monotaskClass, existingSize + size)
   }
 }
