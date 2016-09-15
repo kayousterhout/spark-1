@@ -18,7 +18,7 @@ package org.apache.spark.monotasks.disk
 
 import java.nio.channels.ClosedByInterruptException
 import java.util.Comparator
-import java.util.concurrent.{LinkedBlockingQueue, PriorityBlockingQueue}
+import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.atomic.AtomicInteger
 
 import scala.collection.mutable.{ArrayBuffer, HashMap, Queue}
@@ -77,9 +77,10 @@ private[spark] class DiskScheduler(
    */
   private def buildDiskAccessors(conf: SparkConf) {
     val numThreadsPerDisk = conf.getInt("spark.monotasks.threadsPerDisk", 1)
+    val monotaskTypeQueue = new MonotaskOrderHelper()
     diskIds.foreach { diskId =>
       logInfo(s"Creating $numThreadsPerDisk threads for disk $diskId")
-      diskAccessors(diskId) = new DiskAccessor(diskId, numThreadsPerDisk)
+      diskAccessors(diskId) = new DiskAccessor(diskId, numThreadsPerDisk, monotaskTypeQueue)
     }
   }
 
@@ -240,18 +241,17 @@ private[spark] class DiskScheduler(
       return (monotask1.context.taskAttemptId - monotask2.context.taskAttemptId).toInt
     }
   }
-  
-  private class RoundRobinByTypeQueue() {
+
+  private class TypeQueue(val orderHelper: MonotaskOrderHelper, val diskId: String) {
     // For each type of monotask, a FIFO queue of those monotasks.
-    private val monotaskTypeToQueue = new HashMap[Class[_], RoundRobinByRemoteMachineQueue]()
+    private val monotaskTypeToQueue = new HashMap[Class[_], Queue[DiskMonotask]]()
     // There are a fixed number of monotask types, so we assume we'll never need to remove anything
     // from this list.
     private val monotaskTypes = new ArrayBuffer[Class[_]]
-    private var currentIndex = 0
 
     def enqueue(monotask: DiskMonotask): Unit = synchronized {
       val queue = monotaskTypeToQueue.get(monotask.getClass).getOrElse {
-        val newQueue = new RoundRobinByRemoteMachineQueue()
+        val newQueue = new Queue[DiskMonotask]()
         monotaskTypeToQueue.put(monotask.getClass, newQueue)
         monotaskTypes.append(monotask.getClass)
         newQueue
@@ -262,13 +262,15 @@ private[spark] class DiskScheduler(
 
     def dequeue(): DiskMonotask = synchronized {
       while (true) {
-        (0 until monotaskTypes.length).foreach {i =>
-          val currentType = monotaskTypes(currentIndex)
-          // Update currentIndex
-          currentIndex = (currentIndex + 1) % monotaskTypes.length
-          val queue = monotaskTypeToQueue(currentType)
+        orderHelper.getOrderedTypes(monotaskTypes).foreach { monotaskType =>
+          val queue = monotaskTypeToQueue(monotaskType)
           if (!queue.isEmpty) {
-            return queue.dequeue()
+            val monotask = queue.dequeue()
+            val size = blockFileManager.getSize(monotask.blockId, diskId)
+            logInfo(s"Starting monotask $monotask of size $size on disk $diskId (map is " +
+              s"${orderHelper.monotaskTypeToOperationBytes}")
+            orderHelper.updateStateForStartedMonotask(monotaskType, size)
+            return monotask
           }
         }
         wait()
@@ -282,15 +284,13 @@ private[spark] class DiskScheduler(
         case (_, queue) => queue.isEmpty
       }
     }
-
-    override def toString(): String = {
-      s"RoundRobinByTypeQueue at ${monotaskTypes(currentIndex)} in map $monotaskTypeToQueue"
-    }
   }
 
   // TODO: group tasks for the same remote monotask.
   // TODO: Eliminate redundant code between this and RoundRobinByTypeQueue. Just make a class
   // with parameter types for key type and value type.
+  // For each machine, it's fine to do round robin -- we assume monotasks have already been
+  // grouped by type, so we can roughly assume that all monotasks are of the same size.
   private class RoundRobinByRemoteMachineQueue() {
     // For each remote machine, a FIFO queue of those monotasks.
     private val remoteMachineToQueue = new HashMap[String, Queue[DiskMonotask]]()
@@ -341,7 +341,8 @@ private[spark] class DiskScheduler(
    * @param concurrency The maximum number of DiskMonotasks that will be executed concurrently on
    *                    each disk.
    */
-  private class DiskAccessor(diskId: String, concurrency: Int) extends Runnable {
+  private class DiskAccessor(
+      diskId: String, concurrency: Int, monotaskOrderHelper: MonotaskOrderHelper) extends Runnable {
 
     /** The name of the physical disk on which this DiskAccessor will operate. */
     val diskName = BlockFileManager.getDiskNameFromPath(diskId)
@@ -351,7 +352,7 @@ private[spark] class DiskScheduler(
      * are ordered by task ID so that requests from one machine can't accumulate and temporarily
      * starve requests from other machines).
      */
-    private val taskQueue = new RoundRobinByTypeQueue()
+    private val taskQueue = new TypeQueue(monotaskOrderHelper, diskId)
 
     private val numRunningAndQueuedDiskMonotasks = new AtomicInteger(0)
 
