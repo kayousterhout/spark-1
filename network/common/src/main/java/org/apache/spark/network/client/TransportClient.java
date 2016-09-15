@@ -108,7 +108,7 @@ public class TransportClient implements Closeable {
    */
   public void fetchBlocks(
       final String[] rawBlockIds,
-      Double totalVirtualSize,
+      double totalVirtualSize,
       Long taskAttemptId,
       int attemptNumber,
       final BlockReceivedCallback callback) {
