@@ -316,9 +316,20 @@ private[spark] class DiskScheduler(
           val currentRemoteMachine = remoteMachines(currentIndex)
           // Update currentIndex
           currentIndex = (currentIndex + 1) % remoteMachines.length
-          val queue = remoteMachineToQueue(currentRemoteMachine)
-          if (!queue.isEmpty) {
-            return queue.dequeue()
+          if (!currentRemoteMachine.equals("localhost")) {
+            val queue = remoteMachineToQueue(currentRemoteMachine)
+            if (!queue.isEmpty) {
+              logInfo(s"Running task from ${currentRemoteMachine}. Other queues are " +
+                s"${remoteMachineToQueue.toSeq.map(pair => (pair._1, pair._2.length))}")
+              return queue.dequeue()
+            }
+          }
+        }
+        // Try localhost last.
+        remoteMachineToQueue.get("localhost").map { q =>
+          if (!q.isEmpty) {
+            logInfo(s"Running local task")
+            return q.dequeue()
           }
         }
         wait()
