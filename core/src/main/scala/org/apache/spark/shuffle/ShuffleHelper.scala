@@ -55,19 +55,21 @@ class ShuffleHelper[K, V, C](
     shuffleDependency.shuffleId, reduceId, System.currentTimeMillis - startTime))
 
   def getReadMonotasks(): Seq[Monotask] = {
+    val numLocations = statusesByExecutorId.size
     val readMonotasks = statusesByExecutorId.flatMap {
       case (blockManagerId, blockIdsAndSizes) =>
         val nonZeroBlockIdsAndSizes = blockIdsAndSizes.filter(_._2 > 0)
         if (nonZeroBlockIdsAndSizes.size > 0) {
-          getReadMonotasksForBlocks(nonZeroBlockIdsAndSizes, blockManagerId)
+          val monotasks = getReadMonotasksForBlocks(nonZeroBlockIdsAndSizes, blockManagerId)
+          monotasks.foreach(_.virtualSize = 1.0 / (monotasks.length * numLocations))
+          monotasks
         } else {
           None
         }
     }
-    val sizePerMonotask = 1.0 / readMonotasks.length
-    readMonotasks.foreach(_.virtualSize = sizePerMonotask)
     val totalLocal = readMonotasks.filter(_.isInstanceOf[DiskReadMonotask]).map(_.virtualSize).sum
-    logInfo(s"Total virtual size for local monotasks is $totalLocal")
+    val totalAll = readMonotasks.map(_.virtualSize).sum
+    logInfo(s"Total virtual size for local monotasks is $totalLocal and overall total is $totalAll")
     readMonotasks
   }
 
