@@ -24,6 +24,7 @@ import org.apache.spark.network.buffer.ManagedBuffer
 import org.apache.spark.serializer.Serializer
 import org.apache.spark.storage.{BlockManagerId, ShuffleBlockId}
 import org.apache.spark.util.CompletionIterator
+import org.apache.spark.monotasks.disk.DiskReadMonotask
 
 /**
  * Handles creating network monotasks to read shuffle data over the network and disk monotasks to
@@ -65,6 +66,8 @@ class ShuffleHelper[K, V, C](
     }
     val sizePerMonotask = 1.0 / readMonotasks.length
     readMonotasks.foreach(_.virtualSize = sizePerMonotask)
+    val totalLocal = readMonotasks.filter(_.isInstanceOf[DiskReadMonotask]).map(_.virtualSize).sum
+    logInfo(s"Total virtual size for local monotasks is $totalLocal")
     readMonotasks
   }
 

@@ -318,6 +318,8 @@ private[spark] class DiskScheduler(
           currentIndex = (currentIndex + 1) % remoteMachines.length
           val queue = remoteMachineToQueue(currentRemoteMachine)
           if (!queue.isEmpty) {
+            logInfo(s"Running task from ${currentRemoteMachine}. Other queues are " +
+              s"${remoteMachineToQueue.toSeq.map(pair => (pair._1, pair._2.length))}")
             return queue.dequeue()
           }
         }
