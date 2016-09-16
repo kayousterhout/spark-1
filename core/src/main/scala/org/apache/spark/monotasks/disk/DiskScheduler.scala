@@ -244,14 +244,14 @@ private[spark] class DiskScheduler(
 
   private class TypeQueue(val orderHelper: MonotaskOrderHelper, val diskId: String) {
     // For each type of monotask, a FIFO queue of those monotasks.
-    private val monotaskTypeToQueue = new HashMap[Class[_], Queue[DiskMonotask]]()
+    private val monotaskTypeToQueue = new HashMap[Class[_], RoundRobinByRemoteMachineQueue]()
     // There are a fixed number of monotask types, so we assume we'll never need to remove anything
     // from this list.
     private val monotaskTypes = new ArrayBuffer[Class[_]]
 
     def enqueue(monotask: DiskMonotask): Unit = synchronized {
       val queue = monotaskTypeToQueue.get(monotask.getClass).getOrElse {
-        val newQueue = new Queue[DiskMonotask]()
+        val newQueue = new RoundRobinByRemoteMachineQueue
         monotaskTypeToQueue.put(monotask.getClass, newQueue)
         monotaskTypes.append(monotask.getClass)
         newQueue
