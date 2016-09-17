@@ -251,7 +251,7 @@ private[spark] class DiskScheduler(
      * are ordered by task ID so that requests from one machine can't accumulate and temporarily
      * starve requests from other machines).
      */
-    private val taskQueue = new RoundRobinByRemoteMachineQueue[Class[_]]()
+    private val taskQueue = new RoundRobinByRemoteMachineQueue()
 
     private val numRunningAndQueuedDiskMonotasks = new AtomicInteger(0)
 
@@ -269,7 +269,7 @@ private[spark] class DiskScheduler(
     }
 
     def submitMonotask(monotask: DiskMonotask): Unit = {
-      taskQueue.enqueue(monotask.getClass, monotask)
+      taskQueue.enqueue(monotask)
       numRunningAndQueuedDiskMonotasks.incrementAndGet()
     }
 
