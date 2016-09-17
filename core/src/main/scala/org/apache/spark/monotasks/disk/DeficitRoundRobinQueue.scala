@@ -88,6 +88,7 @@ private[spark] class DeficitRoundRobinQueue[K] extends Logging {
     // of queues is large (for now, we expect is to be small because there are only a few types
     // of disk monotasks).
     currentQuantum = keyToQueue.map(_._2.minQuantumNeeded).min
+    logInfo(s"Calculated new quantum of $currentQuantum")
   }
 
   /**
@@ -140,7 +141,6 @@ private[spark] class DeficitRoundRobinQueue[K] extends Logging {
         if (currentIndex == 0) {
           // Decide on the correct quantum for the next round.
           updateQuantum()
-          logDebug(s"Calculated new quantum of $currentQuantum")
         }
         // Grant the quantum to the currentIndex.
         keyToQueue(keys(currentIndex)).grantQuantum()
