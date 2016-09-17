@@ -16,6 +16,8 @@
 
 package org.apache.spark.shuffle
 
+import scala.util.Random
+
 import org.apache.spark.{InterruptibleIterator, Logging, ShuffleDependency, SparkEnv,
   TaskContextImpl}
 import org.apache.spark.monotasks.Monotask
@@ -70,7 +72,7 @@ class ShuffleHelper[K, V, C](
     val totalLocal = readMonotasks.filter(_.isInstanceOf[DiskReadMonotask]).map(_.virtualSize).sum
     val totalAll = readMonotasks.map(_.virtualSize).sum
     logInfo(s"Total virtual size for local monotasks is $totalLocal and overall total is $totalAll")
-    readMonotasks
+    Random.shuffle(readMonotasks)
   }
 
   /**
