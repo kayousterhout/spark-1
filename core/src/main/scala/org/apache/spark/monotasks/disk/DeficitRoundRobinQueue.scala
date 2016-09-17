@@ -37,7 +37,7 @@ private[spark] class DeficitRoundRobinQueue[K] extends Logging {
         // NB: If the Queue is changed to a non-FIFO queue, will need to make sure this is
         // nonnegative.
         val ret = head.virtualSize - deficit
-        logInfo(s"For queue for $t with size ${queue.length}, deficit $deficit and " +
+        logDebug(s"For queue for $t with size ${queue.length}, deficit $deficit and " +
           s"head size ${head.virtualSize} so returning $ret")
         ret
       }.getOrElse(Double.MaxValue)
@@ -93,7 +93,6 @@ private[spark] class DeficitRoundRobinQueue[K] extends Logging {
     // of queues is large (for now, we expect is to be small because there are only a few types
     // of disk monotasks).
     currentQuantum = keyToQueue.map(_._2.minQuantumNeeded).min
-    logInfo(s"Calculated new quantum of $currentQuantum")
   }
 
   /**
@@ -134,7 +133,7 @@ private[spark] class DeficitRoundRobinQueue[K] extends Logging {
 
         // Get something from the queue maybe
         queue.maybeDequeue.map { monotask =>
-          logInfo(s"With quantum $currentQuantum, dequeued something for ${keys(currentIndex)} " +
+          logDebug(s"With quantum $currentQuantum, dequeued something for ${keys(currentIndex)} " +
             s"that has size ${monotask.virtualSize}. deficit now ${queue.deficit}")
           // If this returns, currentIndex will *not* be updated, which is correct: we may be
           // able to dequeue more things from the same queue.

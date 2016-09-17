@@ -110,7 +110,7 @@ private[spark] class NetworkRequestMonotask(
       // Issue requests to fetch all of the data.
       val blockIds = filteredShuffleBlockIdsAndSizes.map(_._1)
       val blockIdsAsString = blockIds.mkString(", ")
-      logInfo(s"Monotask $taskId: sending request for blocks $blockIdsAsString (total size " +
+      logDebug(s"Monotask $taskId: sending request for blocks $blockIdsAsString (total size " +
         s"(${Utils.bytesToString(filteredTotalBytes)}}) to $remoteAddress")
       networkScheduler = Some(scheduler)
       requestIssueTimeNanos = System.nanoTime()
@@ -165,7 +165,7 @@ private[spark] class NetworkRequestMonotask(
     removeOutstandingBlock(blockId, "onSuccess")
 
     val elapsedNanos = System.nanoTime() - requestIssueTimeNanos
-    logInfo(s"Received block $blockId from BlockManagerId $remoteAddress (total elapsed nanos: " +
+    logDebug(s"Received block $blockId from BlockManagerId $remoteAddress (total elapsed nanos: " +
       s"$elapsedNanos; nanos on remote machine: $totalRemoteNanos; disk nanos: $diskReadNanos)")
 
     // Increment the ref count because we need to pass this to a different thread.
@@ -184,7 +184,8 @@ private[spark] class NetworkRequestMonotask(
 
     if (outstandingBlockIdToSize.isEmpty) {
       setFinishTime()
-      logInfo(s"Notifying LocalDagScheduler of completion of monotask $taskId")
+
+      networkScheduler.get.notifyOfCompletion(this)
       localDagScheduler.post(TaskSuccess(this))
     } else {
       logDebug(s"On success, monotask $this: blocks still outstanding: " +
@@ -196,10 +197,10 @@ private[spark] class NetworkRequestMonotask(
     removeOutstandingBlock(failedBlockId, "onFailure")
 
     if (outstandingBlockIdToSize.isEmpty) {
-      logInfo(s"Notifying NetworkScheduler of completion of monotask $taskId (after failure)")
+      logWarning(s"Notifying NetworkScheduler of completion of monotask $taskId (after failure)")
       networkScheduler.get.addOutstandingBytes(-filteredTotalBytes)
     } else {
-      logInfo(s"On failure, monotask $this: blocks still outstanding: " +
+      logWarning(s"On failure, monotask $this: blocks still outstanding: " +
         s"${outstandingBlockIdToSize.mkString(", ")}")
     }
 

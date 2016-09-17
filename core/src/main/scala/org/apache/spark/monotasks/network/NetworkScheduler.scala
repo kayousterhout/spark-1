@@ -19,7 +19,7 @@ package org.apache.spark.monotasks.network
 import java.util.concurrent.{LinkedBlockingQueue, PriorityBlockingQueue}
 import java.util.concurrent.atomic.AtomicLong
 
-import scala.collection.mutable.HashSet
+import scala.collection.mutable.{HashMap, HashSet}
 
 import org.apache.spark.{Logging, SparkConf, SparkException}
 import org.apache.spark.monotasks.RoundRobinBlockingQueue
@@ -54,6 +54,8 @@ private[spark] class NetworkScheduler(conf: SparkConf) extends Logging {
    */
   private val networkRequestMonotaskQueue =
     new RoundRobinBlockingQueue[String, NetworkRequestMonotask]()
+
+  private val remoteHostToOutstandingRequests = new HashMap[String, Int]()
 
   /** Maximum number of bytes that can be outstanding over the network at once. */
   private val maxOutstandingBytes =
@@ -90,8 +92,14 @@ private[spark] class NetworkScheduler(conf: SparkConf) extends Logging {
       } else {
         lowPriorityNetworkRequestMonotaskQueue.take()
       }
-      logDebug(s"Launching NetworkRequestMonotask $monotask when current outstanding bytes " +
-        s"is ${currentOutstandingBytes.get()} and max outstanding bytes is $maxOutstandingBytes.")
+      logInfo(s"Launching NetworkRequestMonotask $monotask (size ${monotask.totalBytes}) when " +
+        s"current outstanding bytes is ${currentOutstandingBytes.get()} and max outstanding " +
+        s"bytes is $maxOutstandingBytes.")
+      val host = monotask.remoteAddress.host
+      val newOutstanding = remoteHostToOutstandingRequests.getOrElse(host, 0) + 1
+      remoteHostToOutstandingRequests.put(host, newOutstanding)
+      // logInfo(s"PNET outstanding is $remoteHostToOutstandingRequests, waiting is " +
+      //  s"$networkRequestMonotaskQueue")
       addOutstandingBytes(monotask.totalBytes)
       readyMonotaskQueue.put(monotask)
     }
@@ -102,8 +110,9 @@ private[spark] class NetworkScheduler(conf: SparkConf) extends Logging {
       case networkResponseMonotask: NetworkResponseMonotask =>
         // This logging with the special "KNET" keyword exists so it's easy to grep for it
         // in the executor logs and generate corresponding graphs about network performance.
-        logInfo(s"KNET Monotask ${monotask.taskId} block ${networkResponseMonotask.blockId} to " +
-          s"${networkResponseMonotask.channel.remoteAddress()} READY ${System.currentTimeMillis}")
+        // logInfo(s"KNET Monotask ${monotask.taskId} block ${networkResponseMonotask.blockId} " +
+        //   s"to ${networkResponseMonotask.channel.remoteAddress()} READY " +
+        //   s"${System.currentTimeMillis}")
         readyMonotaskQueue.put(monotask)
 
       case networkRequestMonotask: NetworkRequestMonotask =>
@@ -131,6 +140,14 @@ private[spark] class NetworkScheduler(conf: SparkConf) extends Logging {
   }
 
   def getOutstandingBytes: Long = currentOutstandingBytes.get()
+
+  /** Updates tracking about how many requests are outstanding for each remote host. */
+  def notifyOfCompletion(monotask: NetworkRequestMonotask): Unit = {
+    // Update tracking in the network scheduler.
+    val host = monotask.remoteAddress.host
+    val newOutstanding = remoteHostToOutstandingRequests.getOrElse(host, 1) - 1
+    remoteHostToOutstandingRequests.put(host, newOutstanding)
+  }
 
   /**
    * Called when a NetworkResponseMonotask is about to send its data. Updates internal metadata

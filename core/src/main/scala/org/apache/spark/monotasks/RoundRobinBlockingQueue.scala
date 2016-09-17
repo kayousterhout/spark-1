@@ -62,4 +62,8 @@ class RoundRobinBlockingQueue[K, V] {
       case (_, queue) => queue.isEmpty
     }
   }
+
+  override def toString(): String = {
+    s"${keyToQueue.map(pair => s"${pair._1}: ${pair._2.size}")}"
+  }
 }
