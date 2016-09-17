@@ -27,7 +27,7 @@ import org.apache.spark.Logging
  * Each queue internally uses a RoundRobinByRemoteMachineQueue to prioritize tasks over machines.
  */
 private[spark] class DeficitRoundRobinQueue[K] extends Logging {
-  class DeficitQueue {
+  class DeficitQueue(val t: String) {
     val queue = new Queue[DiskMonotask]()
     var deficit: Double = 0
 
@@ -36,7 +36,10 @@ private[spark] class DeficitRoundRobinQueue[K] extends Logging {
       queue.headOption.map { head =>
         // NB: If the Queue is changed to a non-FIFO queue, will need to make sure this is
         // nonnegative.
-        head.virtualSize - deficit
+        val ret = head.virtualSize - deficit
+        logInfo(s"For queue for $t with size ${queue.length}, deficit $deficit and " +
+          s"head size ${head.virtualSize} so returning $ret")
+        ret
       }.getOrElse(Double.MaxValue)
     }
 
@@ -72,7 +75,7 @@ private[spark] class DeficitRoundRobinQueue[K] extends Logging {
 
   def enqueue(key: K, item: DiskMonotask): Unit = synchronized {
     val queue = keyToQueue.get(key).getOrElse {
-      val newQueue = new DeficitQueue()
+      val newQueue = new DeficitQueue(key.toString)
       keyToQueue.put(key, newQueue)
       keys.append(key)
       newQueue
@@ -131,6 +134,8 @@ private[spark] class DeficitRoundRobinQueue[K] extends Logging {
 
         // Get something from the queue maybe
         queue.maybeDequeue.map { monotask =>
+          logInfo(s"With quantum $currentQuantum, dequeued something for ${keys(currentIndex)} " +
+            s"that has size ${monotask.virtualSize}. deficit now ${queue.deficit}")
           // If this returns, currentIndex will *not* be updated, which is correct: we may be
           // able to dequeue more things from the same queue.
           return monotask
