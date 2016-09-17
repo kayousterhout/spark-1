@@ -63,7 +63,7 @@ class ShuffleHelper[K, V, C](
         val nonZeroBlockIdsAndSizes = blockIdsAndSizes.filter(_._2 > 0)
         if (nonZeroBlockIdsAndSizes.size > 0) {
           val monotasks = getReadMonotasksForBlocks(nonZeroBlockIdsAndSizes, blockManagerId)
-          monotasks.foreach(_.virtualSize = 1.0 / (monotasks.length * numLocations))
+          monotasks.foreach(_.virtualSize = 1.0 / monotasks.length)
           monotasks
         } else {
           None

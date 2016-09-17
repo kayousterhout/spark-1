@@ -26,7 +26,7 @@ import org.apache.spark.Logging
  */
 private[spark] class RoundRobinByRemoteMachineQueue() extends Logging {
   // For each remote machine, a FIFO queue of those monotasks.
-  private val remoteMachineToQueue = new HashMap[String, Queue[DiskMonotask]]()
+  private val remoteMachineToQueue = new HashMap[String, DeficitRoundRobinQueue[Class[_]]]()
   // There are a fixed number of remote machines (for now), so we assume we'll never need to
   // remove anything from this list.
   private val remoteMachines = new ArrayBuffer[String]
@@ -35,41 +35,13 @@ private[spark] class RoundRobinByRemoteMachineQueue() extends Logging {
   def enqueue(monotask: DiskMonotask): Unit = synchronized {
     val remoteName = monotask.context.remoteName
     val queue = remoteMachineToQueue.get(remoteName).getOrElse {
-      val newQueue = new Queue[DiskMonotask]()
+      val newQueue = new DeficitRoundRobinQueue[Class[_]]()
       remoteMachineToQueue.put(remoteName, newQueue)
       remoteMachines.append(remoteName)
       newQueue
     }
-    queue.enqueue(monotask)
+    queue.enqueue(monotask.getClass, monotask)
     notify()
-  }
-
-  def headOption(): Option[DiskMonotask] = {
-    if (isEmpty()) {
-      None
-    } else {
-      // Don't want to actually update current index, because may not dequeue anything
-      // right now (and the correct thing to dequeue may change).
-      var tempCurrentIndex = currentIndex
-      (0 until remoteMachines.length).foreach {i =>
-        val currentRemoteMachine = remoteMachines(tempCurrentIndex)
-        // Update currentIndex
-        tempCurrentIndex = (tempCurrentIndex + 1) % remoteMachines.length
-        if (!currentRemoteMachine.equals("localhost")) {
-          val queue = remoteMachineToQueue(currentRemoteMachine)
-          if (!queue.isEmpty) {
-            return Some(queue.head)
-          }
-        }
-      }
-      // Try localhost last.
-      remoteMachineToQueue.get("localhost").map { q =>
-        if (!q.isEmpty) {
-          return Some(q.head)
-        }
-      }
-      throw new Exception("Should not reach this state; check isEmpty() correctness")
-    }
   }
 
   def dequeue(): DiskMonotask = synchronized {

@@ -28,7 +28,7 @@ import org.apache.spark.Logging
  */
 private[spark] class DeficitRoundRobinQueue[K] extends Logging {
   class DeficitQueue {
-    val queue = new RoundRobinByRemoteMachineQueue()
+    val queue = new Queue[DiskMonotask]()
     var deficit: Double = 0
 
     /** Returns the minimum quantum needed for the queue to return something. */
@@ -67,6 +67,8 @@ private[spark] class DeficitRoundRobinQueue[K] extends Logging {
   private var currentIndex = 0
   /** Quantum to grant to each non-empty queue in this round. */
   private var currentQuantum: Double = 0
+
+  def length: Int = keyToQueue.map(_._2.queue.length).sum
 
   def enqueue(key: K, item: DiskMonotask): Unit = synchronized {
     val queue = keyToQueue.get(key).getOrElse {
