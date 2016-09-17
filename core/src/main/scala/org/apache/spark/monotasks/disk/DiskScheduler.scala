@@ -234,117 +234,6 @@ private[spark] class DiskScheduler(
     }
   }
 
-  /** Orders disk monotasks based on the macrotask's ID. */
-  private class MonotaskComparator extends Comparator[DiskMonotask] {
-    @Override def compare(monotask1: DiskMonotask, monotask2: DiskMonotask): Int = {
-      // Monotasks with smaller macrotask IDs should be prioritized first.
-      return (monotask1.context.taskAttemptId - monotask2.context.taskAttemptId).toInt
-    }
-  }
-
-  private class TypeQueue(val orderHelper: MonotaskOrderHelper, val diskId: String) {
-    // For each type of monotask, a FIFO queue of those monotasks.
-    private val monotaskTypeToQueue = new HashMap[Class[_], RoundRobinByRemoteMachineQueue]()
-    // There are a fixed number of monotask types, so we assume we'll never need to remove anything
-    // from this list.
-    private val monotaskTypes = new ArrayBuffer[Class[_]]
-
-    def enqueue(monotask: DiskMonotask): Unit = synchronized {
-      val queue = monotaskTypeToQueue.get(monotask.getClass).getOrElse {
-        val newQueue = new RoundRobinByRemoteMachineQueue
-        monotaskTypeToQueue.put(monotask.getClass, newQueue)
-        monotaskTypes.append(monotask.getClass)
-        newQueue
-      }
-      queue.enqueue(monotask)
-      notify()
-    }
-
-    def dequeue(): DiskMonotask = synchronized {
-      while (true) {
-        orderHelper.getOrderedTypes(monotaskTypes).foreach { monotaskType =>
-          val queue = monotaskTypeToQueue(monotaskType)
-          if (!queue.isEmpty) {
-            val monotask = queue.dequeue()
-            logInfo(s"Starting monotask $monotask of size ${monotask.virtualSize} on disk " +
-              s"$diskId (map is ${orderHelper.monotaskTypeToTotalSize}")
-            orderHelper.updateStateForStartedMonotask(monotaskType, monotask.virtualSize)
-            return monotask
-          }
-        }
-        wait()
-      }
-      // This exception is needed to satisfy the Scala compiler.
-      throw new Exception("Should not reach this state")
-    }
-
-    def isEmpty(): Boolean = {
-      monotaskTypeToQueue.forall {
-        case (_, queue) => queue.isEmpty
-      }
-    }
-  }
-
-  // TODO: group tasks for the same remote monotask.
-  // TODO: Eliminate redundant code between this and RoundRobinByTypeQueue. Just make a class
-  // with parameter types for key type and value type.
-  // For each machine, it's fine to do round robin -- we assume monotasks have already been
-  // grouped by type, so we can roughly assume that all monotasks are of the same size.
-  private class RoundRobinByRemoteMachineQueue() {
-    // For each remote machine, a FIFO queue of those monotasks.
-    private val remoteMachineToQueue = new HashMap[String, Queue[DiskMonotask]]()
-    // There are a fixed number of remote machines (for now), so we assume we'll never need to
-    // remove anything from this list.
-    private val remoteMachines = new ArrayBuffer[String]
-    private var currentIndex = 0
-
-    def enqueue(monotask: DiskMonotask): Unit = synchronized {
-      val remoteName = monotask.context.remoteName
-      val queue = remoteMachineToQueue.get(remoteName).getOrElse {
-        val newQueue = new Queue[DiskMonotask]()
-        remoteMachineToQueue.put(remoteName, newQueue)
-        remoteMachines.append(remoteName)
-        newQueue
-      }
-      queue.enqueue(monotask)
-      notify()
-    }
-
-    def dequeue(): DiskMonotask = synchronized {
-      while (true) {
-        (0 until remoteMachines.length).foreach {i =>
-          val currentRemoteMachine = remoteMachines(currentIndex)
-          // Update currentIndex
-          currentIndex = (currentIndex + 1) % remoteMachines.length
-          if (!currentRemoteMachine.equals("localhost")) {
-            val queue = remoteMachineToQueue(currentRemoteMachine)
-            if (!queue.isEmpty) {
-              logInfo(s"Running task from ${currentRemoteMachine}. Other queues are " +
-                s"${remoteMachineToQueue.toSeq.map(pair => (pair._1, pair._2.length))}")
-              return queue.dequeue()
-            }
-          }
-        }
-        // Try localhost last.
-        remoteMachineToQueue.get("localhost").map { q =>
-          if (!q.isEmpty) {
-            logInfo(s"Running local task")
-            return q.dequeue()
-          }
-        }
-        wait()
-      }
-      // This exception is needed to satisfy the Scala compiler.
-      throw new Exception("Should not reach this state")
-    }
-
-    def isEmpty(): Boolean = {
-      remoteMachineToQueue.forall {
-        case (_, queue) => queue.isEmpty
-      }
-    }
-  }
-
   /**
    * Stores and services the DiskMonotask queue for the specified disk.
    *
@@ -362,7 +251,7 @@ private[spark] class DiskScheduler(
      * are ordered by task ID so that requests from one machine can't accumulate and temporarily
      * starve requests from other machines).
      */
-    private val taskQueue = new TypeQueue(monotaskOrderHelper, diskId)
+    private val taskQueue = new DeficitRoundRobinQueue[Class[_]]()
 
     private val numRunningAndQueuedDiskMonotasks = new AtomicInteger(0)
 
@@ -380,7 +269,7 @@ private[spark] class DiskScheduler(
     }
 
     def submitMonotask(monotask: DiskMonotask): Unit = {
-      taskQueue.enqueue(monotask)
+      taskQueue.enqueue(monotask.getClass, monotask)
       numRunningAndQueuedDiskMonotasks.incrementAndGet()
     }
 
