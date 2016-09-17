@@ -90,7 +90,8 @@ private[spark] class RoundRobinByRemoteMachineQueue() extends Logging {
       // Try localhost last.
       remoteMachineToQueue.get("localhost").map { q =>
         if (!q.isEmpty) {
-          logInfo(s"Running local task")
+          logInfo(s"Running local task. Other queues are " +
+            s"${remoteMachineToQueue.toSeq.map(pair => (pair._1, pair._2.length))}")
           return q.dequeue()
         }
       }
