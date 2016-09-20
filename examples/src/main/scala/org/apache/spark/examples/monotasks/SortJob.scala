@@ -48,7 +48,7 @@ object SortJob extends Logging {
     val readExistingData = if (args.length > 6) args(6).toBoolean else false
     // Caching the HDFS input data and the resulting sorted RDD allows us to easily compare runtimes
     // for cached and uncached data using exactly the same input data.
-    val cacheInputOutputData = if (args.length > 7) args(7).toBoolean else false
+    val cacheInputData = if (args.length > 7) args(7).toBoolean else false
 
     // Sleep for a few seconds to give all of the executors a chance to register. Without this
     // sleep, the first stage can get scheduled before all of the executors have registered,
@@ -81,7 +81,7 @@ object SortJob extends Logging {
 
       val unsortedRdd = spark.sequenceFile(
         filename, classOf[LongWritable], classOf[LongArrayWritable])
-      if (cacheInputOutputData) {
+      if (cacheInputData) {
         // Cache the input data in memory before running any shuffles.
         unsortedRdd.cache()
         unsortedRdd.count()
@@ -103,17 +103,10 @@ object SortJob extends Logging {
           .setKeyOrdering(Ordering[Long])
           .map(pair => (new LongWritable(pair._1), new LongArrayWritable(pair._2)))
 
-        if (cacheInputOutputData) {
-          // Cache the sorted RDD in memory. This data is then removed so that we do not fill up the
-          // cluster's memory when running multiple shuffles.
-          sortedRdd.cache()
-          sortedRdd.count()
-          sortedRdd.unpersist(blocking=true)
-        } else {
-          sortedRdd
-            .saveAsNewAPIHadoopFile[SequenceFileOutputFormat[LongWritable, LongArrayWritable]](
+        // Always save the sorted data to HDFS.
+        sortedRdd
+          .saveAsNewAPIHadoopFile[SequenceFileOutputFormat[LongWritable, LongArrayWritable]](
               s"${filename}_sorted_$i")
-        }
 
         // Force a garbage collection to happen, in order to try to avoid long garbage
         // collections in the middle of jobs.
