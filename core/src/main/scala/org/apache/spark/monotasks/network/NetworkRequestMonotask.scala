@@ -39,7 +39,7 @@ import org.apache.spark.util.Utils
  */
 private[spark] class NetworkRequestMonotask(
     context: TaskContextImpl,
-    val remoteAddress: BlockManagerId,
+    private val remoteAddress: BlockManagerId,
     private val shuffleBlockIdsAndSizes: Seq[(ShuffleBlockId, Long)],
     lowPriority: Boolean = false)
   extends NetworkMonotask(context) with Logging with BlockReceivedCallback
