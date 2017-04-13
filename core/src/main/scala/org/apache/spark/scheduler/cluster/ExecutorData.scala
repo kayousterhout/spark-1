@@ -58,8 +58,9 @@ private[cluster] class ExecutorData(
 ) extends ExecutorInfo(executorHost, totalCores, logUrlMap) with Logging {
   // The total number of slots should be 2 * (max concurrency of any resource) + the sum of
   // the concurrency of all of the other resources - 1.  This is equal to the sum of the
-  // concurrency of each resource + the max concurrency of any resource - 1.
-  var freeSlots = math.max(totalCores, totalDisks) + totalCores + totalDisks - 1
+  // concurrency of each resource + the max concurrency of any resource - 1 (there's no -1 here
+  // because the network has concurrency 1).
+  var freeSlots = math.max(totalCores, totalDisks) + totalCores + totalDisks
 
   val taskSetIdToRunningTasks = new HashMap[String, Int]()
 
