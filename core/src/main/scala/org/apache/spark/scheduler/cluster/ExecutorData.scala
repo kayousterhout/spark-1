@@ -37,6 +37,8 @@ import scala.collection.mutable.HashMap
 
 import akka.actor.{Address, ActorRef}
 
+import org.apache.spark.Logging
+
 /**
  * Grouping of data for an executor used by CoarseGrainedSchedulerBackend.
  *
@@ -53,11 +55,14 @@ private[cluster] class ExecutorData(
    val totalDisks: Int,
    override val totalCores: Int,
    override val logUrlMap: Map[String, String]
-) extends ExecutorInfo(executorHost, totalCores, logUrlMap) {
+) extends ExecutorInfo(executorHost, totalCores, logUrlMap) with Logging {
   // The total number of slots should be 2 * (max concurrency of any resource) + the sum of
   // the concurrency of all of the other resources - 1.  This is equal to the sum of the
   // concurrency of each resource + the max concurrency of any resource - 1.
   var freeSlots = math.max(totalCores, totalDisks) + totalCores + totalDisks - 1
 
   val taskSetIdToRunningTasks = new HashMap[String, Int]()
+
+  logInfo(s"Set free slots for executor $executorHost to be $freeSlots (disks: $totalDisks; " +
+    s"cores: $totalCores)")
 }
