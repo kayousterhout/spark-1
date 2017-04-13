@@ -240,6 +240,7 @@ private[spark] class TaskSchedulerImpl(
         val unusableNetworkSlots = if (taskSet.taskSet.usesNetwork) 0 else 1
         availableSlots(i) - unusableDiskSlots - unusableNetworkSlots
       }
+      logDebug(s"Usable slots are $usableSlots")
 
       if (usableSlots >= CPUS_PER_TASK) {
         try {
@@ -273,6 +274,7 @@ private[spark] class TaskSchedulerImpl(
   def resourceOffers(offers: Seq[WorkerOffer]): Seq[Seq[TaskDescription]] = synchronized {
     // Mark each slave as alive and remember its hostname
     // Also track if new executor is added
+    logInfo(s"Got offer for ${offers.map(_.freeSlots).mkString(",")}")
     var newExecAvail = false
     for (o <- offers) {
       executorIdToHost(o.executorId) = o.host
