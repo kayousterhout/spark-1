@@ -229,9 +229,11 @@ class DAGScheduler(
    * a lower jobId (jobId always increases across jobs.)
    */
   private def getShuffleMapStage(shuffleDep: ShuffleDependency[_, _, _], jobId: Int): Stage = {
+    logInfo(s"getShuffleMapStage for shuffleDeep $shuffleDep")
     shuffleToMapStage.get(shuffleDep.shuffleId) match {
       case Some(stage) => stage
       case None =>
+        logInfo(s"getShuffleMapStage: staeg is not already in shuffleToMapStage")
         // We are going to register ancestor shuffle dependencies
         registerShuffleDependencies(shuffleDep, jobId)
         // Then register current shuffleDep
@@ -283,6 +285,7 @@ class DAGScheduler(
   {
     val stage = newStage(rdd, numTasks, Some(shuffleDep), jobId, callSite)
     if (mapOutputTracker.containsShuffle(shuffleDep.shuffleId)) {
+      logInfo(s"In newOrUsedStage, mapOutputTracker already contains the shuffle, so copying locs")
       val serLocs = mapOutputTracker.getSerializedMapOutputStatuses(shuffleDep.shuffleId)
       val locs = MapOutputTracker.deserializeMapStatuses(serLocs)
       for (i <- 0 until locs.size) {
@@ -388,8 +391,10 @@ class DAGScheduler(
           for (dep <- rdd.dependencies) {
             dep match {
               case shufDep: ShuffleDependency[_, _, _] =>
+                logInfo(s"Getting missing parent stages: generating map stage for ${stage.jobId}")
                 val mapStage = getShuffleMapStage(shufDep, stage.jobId)
                 if (!mapStage.isAvailable) {
+                  logInfo(s"MapStage for ${stage.jobId} is not available, so adding to missing")
                   missing += mapStage
                 }
               case narrowDep: NarrowDependency[_] =>
