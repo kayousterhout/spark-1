@@ -62,7 +62,7 @@ private[spark] class ContinuousMonitor(
         ("Running And Queued Monotasks" -> count._1) ~
         ("Queued Read Monotasks" -> count._2) ~
         ("Queued Remove Monotasks" -> count._3) ~
-        ("Queued Write Monotsaks" -> count._4)
+        ("Queued Write Monotasks" -> count._4)
     })
   }
 
