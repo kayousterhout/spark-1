@@ -281,6 +281,8 @@ class DAGScheduler(
       callSite: CallSite)
     : Stage =
   {
+    logInfo(s"newOrUsedStage for shuffle dep $shuffleDep (# tasks $numTasks); rdd partitions: " +
+      s"${rdd.partitions.size}")
     val stage = newStage(rdd, numTasks, Some(shuffleDep), jobId, callSite)
     if (mapOutputTracker.containsShuffle(shuffleDep.shuffleId)) {
       val serLocs = mapOutputTracker.getSerializedMapOutputStatuses(shuffleDep.shuffleId)
@@ -303,6 +305,7 @@ class DAGScheduler(
    * provided jobId if they haven't already been created with a lower jobId.
    */
   private def getParentStages(rdd: RDD[_], jobId: Int): List[Stage] = {
+    logInfo(s"Getting parent stages for rdd $rdd with ${rdd.partitions.size} partitions")
     val parents = new HashSet[Stage]
     val visited = new HashSet[RDD[_]]
     // We are manually maintaining a stack here to prevent StackOverflowError
