@@ -258,15 +258,21 @@ private[spark] class BlockManager(
       currentOffset += size
       (offset, size)
     }
+    logInfo(s"Registering shuffle offsets for shuffle $shuffleId, map $mapId")
     shuffleAndMapIdToOffsetAndSize.put((shuffleId, mapId), offsetsAndSizes)
   }
 
   def removeShuffleOffsets(shuffleId: Int, mapId: Int): Unit = {
+    logInfo(s"Removing shuffle offsets for shuffle $shuffleId, map $mapId. Printing stack trace!")
+    (new Exception).printStackTrace()
     shuffleAndMapIdToOffsetAndSize.remove((shuffleId, mapId))
   }
 
   def getOffsetAndSize(shuffleId: Int, mapId: Int, reduceId: Int): (Int, Int) = {
-    shuffleAndMapIdToOffsetAndSize((shuffleId, mapId))(reduceId)
+    shuffleAndMapIdToOffsetAndSize.getOrElse((shuffleId, mapId), {
+      throw new SparkException(s"No offset / size entry for shuffle $shuffleId, map $mapId. " +
+        s"map contained entries ${shuffleAndMapIdToOffsetAndSize.keySet}")
+    })(reduceId)
   }
 
   override def signalBlocksAvailable(
