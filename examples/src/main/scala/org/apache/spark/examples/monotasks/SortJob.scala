@@ -103,7 +103,7 @@ object SortJob extends Logging {
           .setKeyOrdering(Ordering[Long])
           .map(pair => (new LongWritable(pair._1), new LongArrayWritable(pair._2)))
 
-        if (cacheInputOutputData) {
+        if (false && cacheInputOutputData) {
           // Cache the sorted RDD in memory. This data is then removed so that we do not fill up the
           // cluster's memory when running multiple shuffles.
           sortedRdd.cache()
