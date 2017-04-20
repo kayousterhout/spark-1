@@ -16,11 +16,11 @@
 
 package org.apache.spark.monotasks.disk
 
-import java.io.{DataInputStream, FileInputStream}
+import java.io.{DataInputStream, FileInputStream, RandomAccessFile}
 import java.nio.ByteBuffer
+import java.nio.channels.FileChannel
 
 import com.google.common.io.ByteStreams
-
 import org.apache.spark.{Logging, TaskContextImpl}
 import org.apache.spark.executor.DataReadMethod
 import org.apache.spark.storage.{BlockId, ShuffleBlockId, StorageLevel}
@@ -40,32 +40,32 @@ private[spark] class DiskReadMonotask(
     val file = blockManager.blockFileManager.getBlockFile(blockId, diskId).getOrElse(
       throw new IllegalStateException(
         s"Could not read block $blockId from disk $diskId because its file could not be found."))
-    val stream = new FileInputStream(file)
+    val channel = new RandomAccessFile(file, "r").getChannel
+    val offsets = ByteBuffer.allocate(8)
 
     blockId match {
       case ShuffleBlockId(shuffleId, mapId, reduceId) =>
-        // Need to read the index data to find the correct location.
-        val in = new DataInputStream(stream)
         try {
           val indexOffset = reduceId * 4
-          ByteStreams.skipFully(in, indexOffset)
-          val offset = in.readInt()
-          val nextOffset = in.readInt()
+          channel.position(indexOffset)
 
-          // The offset describes the offset of the shuffle data, relative to the beginning of the
-          // file. We need to subtract all of the data we've already read (or skipped), which
-          // includes the data skipped to get to the index information, plus 8 bytes for the two
-          // integers we read describing the offset.
-          val bytesToSkip = offset - indexOffset - 8
-          ByteStreams.skipFully(stream, bytesToSkip)
+          // Need to read the index data to find the correct location.
+          while (offsets.remaining() != 0) {
+            channel.read(offsets)
+          }
+          offsets.flip()
+          val offset = offsets.getInt()
+          val nextOffset = offsets.getInt()
 
-          readAndCacheData(stream, nextOffset - offset)
+          channel.position(offset)
+
+          readAndCacheData(channel, nextOffset - offset)
         } finally {
-          in.close()
+          // do nothing.
         }
 
       case _ =>
-        readAndCacheData(stream, file.length().toInt)
+        readAndCacheData(channel, file.length().toInt)
     }
   }
 
@@ -76,8 +76,7 @@ private[spark] class DiskReadMonotask(
    * The number of bytes to read needs to be specified as an Int (rather than a Long) because we
    * store the data in a ByteBuffer, and a ByteBuffer cannot be larger than Integer.MAX_VALUE.
    */
-  private def readAndCacheData(stream: FileInputStream, bytesToRead: Int): Unit = {
-    val channel = stream.getChannel()
+  private def readAndCacheData(channel: FileChannel, bytesToRead: Int): Unit = {
     val buffer = ByteBuffer.allocate(bytesToRead)
 
     try {
@@ -89,7 +88,6 @@ private[spark] class DiskReadMonotask(
         s"disk $diskId in ${totalTime / 1.0e6} ms into $buffer")
     } finally {
       channel.close()
-      stream.close()
     }
 
     buffer.flip()
