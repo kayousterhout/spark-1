@@ -41,25 +41,15 @@ private[spark] class DiskReadMonotask(
       throw new IllegalStateException(
         s"Could not read block $blockId from disk $diskId because its file could not be found."))
     val channel = new RandomAccessFile(file, "r").getChannel
-    val offsets = ByteBuffer.allocate(8)
 
     blockId match {
       case ShuffleBlockId(shuffleId, mapId, reduceId) =>
         try {
-          val indexOffset = reduceId * 4
-          channel.position(indexOffset)
+          val offsetAndSize = blockManager.getOffsetAndSize(shuffleId, mapId, reduceId)
 
-          // Need to read the index data to find the correct location.
-          while (offsets.remaining() != 0) {
-            channel.read(offsets)
-          }
-          offsets.flip()
-          val offset = offsets.getInt()
-          val nextOffset = offsets.getInt()
+          channel.position(offsetAndSize._1)
 
-          channel.position(offset)
-
-          readAndCacheData(channel, nextOffset - offset)
+          readAndCacheData(channel, offsetAndSize._2)
         } finally {
           // do nothing.
         }

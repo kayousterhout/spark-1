@@ -72,6 +72,7 @@ private[spark] class MemoryShuffleBlockManager(conf: SparkConf) extends Logging 
           (0 until state.numBuckets).foreach { reduceId =>
             blockManager.removeBlock(ShuffleBlockId(shuffleId, mapId, reduceId), tellMaster = false)
           }
+          blockManager.removeShuffleOffsets(shuffleId, mapId)
         }
         logInfo(s"Deleted all files for shuffle $shuffleId")
         true

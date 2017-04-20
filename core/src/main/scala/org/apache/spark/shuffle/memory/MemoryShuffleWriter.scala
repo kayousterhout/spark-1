@@ -82,21 +82,6 @@ private[spark] class MemoryShuffleWriter[K, V](
   }
 
   /**
-   * Writes information about where each shuffle block is located within the single file that holds
-   * all of the shuffle data.  For shuffle block i, the Int at byte 4*i describes the offset
-   * of the first byte of the block, and the Int at byte 4*(i+1) describes the offset of the
-   * first byte of the next block.
-   */
-  private def writeIndexInformation(buffer: ByteBuffer, sizes: Seq[Int], indexSize: Int): Unit = {
-    var offset = indexSize
-    buffer.putInt(offset)
-    sizes.foreach { size =>
-      offset += size
-      buffer.putInt(offset)
-    }
-  }
-
-  /**
    * Stops writing shuffle data by storing the shuffle data in the block manager (if the shuffle
    * was successful) and updating the bytes written in the task's ShuffleWriteMetrics.
    */
@@ -124,20 +109,14 @@ private[spark] class MemoryShuffleWriter[K, V](
       shuffleBlocks: Seq[ByteBuffer],
       sizes: Seq[Int],
       totalDataSize: Int): Unit = {
-    // Create a new buffer that first has index information, and then has all of the shuffle
-    // data. Use a direct byte buffer, so that when a disk monotask writes this data
+    // Create a new buffer that has all of the shuffle data. Use a direct byte buffer, so that
+    // when a disk monotask writes this data
     // to disk, it spends less time copying the data out of the JVM (for 200MB blocks, using a
     // DirectByteBuffer, as opposed to a regular ByteBuffer, reduced the copying time from about
     // 150ms to about 110ms).
-    // TODO: Could wait and write this (relatively small) index data at the beginning of the
-    //       disk write monotask, which would allow the disk scheduler to combine multiple
-    //       outputs from different map tasks into a single file (or alternately, could just
-    //       store the index data in-memory).
-    val indexSize = (sizes.length + 1) * 4
-    val bufferSize = indexSize + totalDataSize
-    val directBuffer = ByteBuffer.allocateDirect(bufferSize)
+    val directBuffer = ByteBuffer.allocateDirect(totalDataSize)
 
-    writeIndexInformation(directBuffer, sizes, indexSize)
+    blockManager.registerShuffleOffsets(dep.shuffleId, mapId, sizes)
 
     // Write all of the shuffle data.
     shuffleBlocks.foreach(directBuffer.put(_))

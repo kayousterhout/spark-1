@@ -41,11 +41,9 @@ import scala.concurrent.{Await, Future}
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 import scala.util.Random
-
 import akka.actor.{ActorSystem, Props}
 import io.netty.channel.Channel
 import sun.nio.ch.DirectBuffer
-
 import org.apache.spark._
 import org.apache.spark.executor._
 import org.apache.spark.io.CompressionCodec
@@ -134,6 +132,9 @@ private[spark] class BlockManager(
     MetadataCleanerType.BLOCK_MANAGER, this.dropOldNonBroadcastBlocks, conf)
   private val broadcastCleaner = new MetadataCleaner(
     MetadataCleanerType.BROADCAST_VARS, this.dropOldBroadcastBlocks, conf)
+
+  // Keeps track of the index where the data for each reduce task can be found.
+  private val shuffleAndMapIdToOffsetAndSize = new HashMap[(Int, Int), Seq[(Int, Int)]]()
 
   /* The compression codec to use. Note that the "lazy" val is necessary because we want to delay
    * the initialization of the compression codec until it is first used. The reason is that a Spark
@@ -248,6 +249,24 @@ private[spark] class BlockManager(
     if (task != null) {
       Await.ready(task, Duration.Inf)
     }
+  }
+
+  def registerShuffleOffsets(shuffleId: Int, mapId: Int, sizes: Seq[Int]): Unit = {
+    var currentOffset = 0
+    val offsetsAndSizes = sizes.map { size =>
+      val offset = currentOffset
+      currentOffset += size
+      (offset, size)
+    }
+    shuffleAndMapIdToOffsetAndSize.put((shuffleId, mapId), offsetsAndSizes)
+  }
+
+  def removeShuffleOffsets(shuffleId: Int, mapId: Int): Unit = {
+    shuffleAndMapIdToOffsetAndSize.remove((shuffleId, mapId))
+  }
+
+  def getOffsetAndSize(shuffleId: Int, mapId: Int, reduceId: Int): (Int, Int) = {
+    shuffleAndMapIdToOffsetAndSize((shuffleId, mapId))(reduceId)
   }
 
   override def signalBlocksAvailable(
