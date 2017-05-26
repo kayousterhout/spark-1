@@ -55,6 +55,7 @@ private[spark] abstract class HdfsDiskMonotask(
   def chooseLocalDir(sparkLocalDirs: Seq[String]): String = {
     val path = getPath()
     val pathString = hdfsPathToString(path)
+    logInfo(s"Locating path for block $blockId with path $path")
     val localPathOpt = path.getFileSystem(hadoopConf) match {
       case dfs: DistributedFileSystem =>
         // The path resides in the Hadoop Distributed File System. We need to do extra work to
@@ -73,7 +74,7 @@ private[spark] abstract class HdfsDiskMonotask(
     }
 
     val chosenLocalDirIndex = localPathOpt.flatMap { localPath =>
-      logDebug(s"The local path for block $blockId is: $localPath")
+      logInfo(s"The local path for block $blockId is: $localPath")
 
       // Find a Spark local directory that is on the same disk as the HDFS data directory.
       val dataDiskName = BlockFileManager.getDiskNameFromPath(localPath)
@@ -89,7 +90,7 @@ private[spark] abstract class HdfsDiskMonotask(
 
       localDirIndexOpt
     }.getOrElse {
-      logDebug(s"Unable to find the local path for block $blockId. Selecting a Spark local " +
+      logWarning(s"Unable to find the local path for block $blockId. Selecting a Spark local " +
         "directory at random.")
       Random.nextInt(sparkLocalDirs.size)
     }

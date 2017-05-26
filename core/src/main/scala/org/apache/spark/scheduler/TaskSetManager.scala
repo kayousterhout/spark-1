@@ -208,13 +208,17 @@ private[spark] class TaskSetManager(
       }
     }
 
+    logError(s"Task $index has ${tasks(index).preferredLocations.length} preferred locs")
     for (loc <- tasks(index).preferredLocations) {
+      logError(s"Task $index has preferred location $loc")
       loc match {
         case e: ExecutorCacheTaskLocation =>
+          logError(s"${e.host}")
           addTo(pendingTasksForExecutor.getOrElseUpdate(e.executorId, new ArrayBuffer))
         case r: ReduceExecutorTaskLocation =>
           addTo(pendingTasksForExecutor.getOrElseUpdate(r.executorId, new ArrayBuffer))
         case e: HDFSCacheTaskLocation => {
+          logError(s"hdfs location on $e")
           val exe = sched.getExecutorsAliveOnHost(loc.host)
           exe match {
             case Some(set) => {
