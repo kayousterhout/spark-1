@@ -297,25 +297,7 @@ private[spark] class TaskSchedulerImpl(
 
     val availableSlots = shuffledOffers.map(o => o.freeSlots).toArray
 
-    // First, order tasks based on the rootpool.  This is so when the second ordering yields a tie,
-    // the task sets are sorted by the usual order (e.g., by the task set that got submitted first).
-    // Next, order task sets by the ones that have the fewest tasks running on the machine
-    // corresponding to the first offer.  The reason this works is that resource offers gets called
-    // in one of two cases:
-    // (1) A task set has just been added.  In this case, any existing task sets can't launch any
-    //     more tasks on the machines anyway (otherwise they would have already done so), so the
-    //     order of the task sets is irrelevant.
-    // (2) A machine has just completed a task. In this case, only one executor will be offered,
-    //     so ordering the task sets based on the first offer is the right thing to do.
-    val globallySortedTaskSets = rootPool.getSortedTaskSetQueue
-    val sortedTaskSets = globallySortedTaskSets.sortBy { taskSetManager =>
-      if (offers.length > 0) {
-        offers(0).taskSetIdToRunningTasks.getOrElse(taskSetManager.taskSet.id, 0)
-      } else {
-        // There are no offers, so the order doesn't matter.
-        0
-      }
-    }
+    val sortedTaskSets = rootPool.getSortedTaskSetQueue
     sortedTaskSets.foreach { taskSet =>
       logDebug("parentName: %s, name: %s, runningTasks: %s".format(
         taskSet.parent.name, taskSet.name, taskSet.runningTasks))
