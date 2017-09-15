@@ -73,6 +73,8 @@ private[spark] class TaskSchedulerImpl(
   //       runs one task per CPU.
   val CPUS_PER_TASK = conf.getInt("spark.task.cpus", 1)
 
+  val ignoreUnusable = conf.getBoolean("spark.monotasks.ignoreUnusable", false)
+
   val taskNetworkConcurrency = NetworkScheduler.getMaxConcurrentTasks(conf)
 
   // TaskSetManagers are not thread safe, so any access to one should be synchronized
@@ -238,7 +240,9 @@ private[spark] class TaskSchedulerImpl(
       // that a macrotask is going to use all resources on the machine; if the macrotasks for the
       // job don't use some resources, then the machine should be assigned fewer tasks (because it
       // can run fewer monotasks concrrently).
-      val usableSlots = {
+      val usableSlots = if (ignoreUnusable) {
+        availableSlots(i)
+      } else {
         val unusableDiskSlots = if (taskSet.taskSet.usesDisk) 0 else shuffledOffers(i).totalDisks
         val unusableNetworkSlots = if (taskSet.taskSet.usesNetwork) 0 else taskNetworkConcurrency
         availableSlots(i) - unusableDiskSlots - unusableNetworkSlots
