@@ -18,16 +18,12 @@ package org.apache.spark.examples.monotasks
 
 import scala.language.postfixOps
 import scala.sys.process._
-import scala.concurrent.{Await, future}
-import scala.concurrent.duration.{Duration, MINUTES}
 import scala.util.Random
 import org.apache.hadoop.io.LongWritable
 import org.apache.hadoop.mapreduce.lib.output.SequenceFileOutputFormat
 import org.apache.spark.{Logging, SparkConf, SparkContext}
 import org.apache.spark.rdd.ShuffledRDD
-import org.apache.spark.util.LongArrayWritable
-
-import scala.concurrent.ExecutionContext
+import org.apache.spark.util.{LongArrayWritable, Utils}
 
 /**
  * Job that generates random data and stores the data in HDFS, and then reads the data back and
@@ -46,23 +42,41 @@ object SortJob_NewConcurrent extends Logging {
     // leading to load imbalance.
     Thread.sleep(5000)
 
-    try {
-      import ExecutionContext.Implicits.global
-      val firstFuture = future {
-        spark.setLocalProperty("spark.scheduler.pool", "job1")
-        spark.setJobDescription("job1")
-        runSortJob(spark, args.slice(0, 7))
-      }
-      val secondFuture = future {
-        spark.setLocalProperty("spark.scheduler.pool", "job2")
-        spark.setJobDescription("job2")
-        runSortJob(spark, args.slice(7, 14))
-      }
+    var firstDone = false
+    var secondDone = false
 
-      val waitTime = Duration(200, MINUTES)
-      logInfo(s"Waiting $waitTime for both sort jobs to finish")
-      Await.result(firstFuture, waitTime)
-      Await.result(secondFuture, waitTime)
+    try {
+      val experimentExecutor = Utils.newDaemonFixedThreadPool(2, "experiment executor")
+      experimentExecutor.execute(new Runnable {
+        override def run() {
+          spark.setLocalProperty("spark.scheduler.pool", "job1")
+          spark.setJobDescription("job1")
+          runSortJob(spark, args.slice(0, 7))
+          firstDone = true
+          this.synchronized {
+            logWarning("Notifying for first!")
+            this.notify()
+          }
+        }
+      })
+      experimentExecutor.execute(new Runnable {
+        override def run() {
+          spark.setLocalProperty("spark.scheduler.pool", "job2")
+          spark.setJobDescription("job2")
+          runSortJob(spark, args.slice(7, 14))
+          secondDone = true
+          this.synchronized {
+            logWarning("Notifying for second!")
+            this.notify()
+          }
+        }
+      })
+
+      while (!(firstDone && secondDone)) {
+        this.synchronized {
+          this.wait()
+        }
+      }
     } finally {
       // Be sure to always stop the SparkContext, even when an exception is thrown; otherwise, the
       // event logs are more difficult to access.
