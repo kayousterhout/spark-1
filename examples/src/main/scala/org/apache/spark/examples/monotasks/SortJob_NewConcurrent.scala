@@ -74,7 +74,7 @@ object SortJob_NewConcurrent extends Logging {
 
       while (!(firstDone && secondDone)) {
         this.synchronized {
-          this.wait()
+          this.wait(10000)
         }
       }
     } finally {
