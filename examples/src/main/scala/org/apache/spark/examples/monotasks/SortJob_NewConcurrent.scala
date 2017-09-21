@@ -19,6 +19,9 @@ package org.apache.spark.examples.monotasks
 import scala.language.postfixOps
 import scala.sys.process._
 import scala.util.Random
+
+import java.util.concurrent.TimeUnit
+
 import org.apache.hadoop.io.LongWritable
 import org.apache.hadoop.mapreduce.lib.output.SequenceFileOutputFormat
 import org.apache.spark.{Logging, SparkConf, SparkContext}
@@ -42,9 +45,6 @@ object SortJob_NewConcurrent extends Logging {
     // leading to load imbalance.
     Thread.sleep(5000)
 
-    var firstDone = false
-    var secondDone = false
-
     try {
       val experimentExecutor = Utils.newDaemonFixedThreadPool(2, "experiment executor")
       experimentExecutor.execute(new Runnable {
@@ -52,11 +52,7 @@ object SortJob_NewConcurrent extends Logging {
           spark.setLocalProperty("spark.scheduler.pool", "job1")
           spark.setJobDescription("job1")
           runSortJob(spark, args.slice(0, 7))
-          firstDone = true
-          this.synchronized {
-            logWarning("Notifying for first!")
-            this.notify()
-          }
+          logWarning("Done with first job")
         }
       })
       experimentExecutor.execute(new Runnable {
@@ -64,18 +60,18 @@ object SortJob_NewConcurrent extends Logging {
           spark.setLocalProperty("spark.scheduler.pool", "job2")
           spark.setJobDescription("job2")
           runSortJob(spark, args.slice(7, 14))
-          secondDone = true
-          this.synchronized {
-            logWarning("Notifying for second!")
-            this.notify()
-          }
+          logWarning("Done with second job")
         }
       })
 
-      while (!(firstDone && secondDone)) {
-        this.synchronized {
-          this.wait(10000)
-        }
+      experimentExecutor.shutdown()
+
+      try {
+        // Wait two hours for experiment to finish.
+        experimentExecutor.awaitTermination(180, TimeUnit.MINUTES);
+      } catch {
+        case e: InterruptedException =>
+          logWarning("Concurrent job interrupted before it could finish")
       }
     } finally {
       // Be sure to always stop the SparkContext, even when an exception is thrown; otherwise, the
