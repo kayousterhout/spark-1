@@ -108,11 +108,16 @@ private[spark] class DeficitRoundRobinQueue[K] extends Logging {
       currentIndex = 0
       wait()
 
-      // Update the quantum and grant it to the first queue. This is necessary because usually
-      // the quantum is granted at the end of the loop below, but since the queue was previously
-      // empty, all of the deficits have been zeroed out, and the quantum won't have been granted.
-      updateQuantum()
-      keyToQueue(keys(0)).deficit += currentQuantum
+      if (currentIndex == 0) {
+        // This is needed to guard against many consumers of this queue! It's possible that someone
+        // already reset the quantum.
+        // TODO: This CAN double-grant the quantum to the first queue, if it wraps around.
+        // Update the quantum and grant it to the first queue. This is necessary because usually
+        // the quantum is granted at the end of the loop below, but since the queue was previously
+        // empty, all of the deficits have been zeroed out, and the quantum won't have been granted.
+        updateQuantum()
+        keyToQueue(keys(0)).grantQuantum()
+      }
     }
 
     while (true) {
